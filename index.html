@@ -328,6 +328,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         Send Schedule to Shortcut
       </button>
+      <button class="btn btn-block" id="copy-payload" style="margin-top: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy Payload (debug)
+      </button>
       <p class="help" style="margin-top: 12px;">Don't have the Shortcut yet? See <a href="#" id="show-setup" style="color: var(--crust);">setup instructions</a>.</p>
     </div>
   </div>
@@ -804,6 +808,18 @@ ${text}`;
       const url = `shortcuts://run-shortcut?name=Crumb%20Timers&input=text&text=${encodeURIComponent(json)}`;
       window.location.href = url;
       setTimeout(() => toast('Sent to Shortcuts app'), 400);
+    };
+
+    // Wire up debug copy button
+    document.getElementById('copy-payload').onclick = async () => {
+      const payload = { recipe: recipe.name, milestones };
+      const json = JSON.stringify(payload);
+      try {
+        await navigator.clipboard.writeText(json);
+        toast('Payload copied — paste into Shortcut for testing');
+      } catch (e) {
+        toast('Copy failed — try long-press');
+      }
     };
 
     showModal('modal-shortcut');
