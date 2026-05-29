@@ -16,6 +16,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
+  import { getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
+  window.__firebase = { initializeApp, getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence };
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
 <style>
   :root {
     --bg: #fdf8f1;
@@ -86,6 +92,12 @@
 
   /* Section headers */
   .section-title { font-size: 12px; font-weight: 600; color: var(--ink-mute); letter-spacing: 0.1em; text-transform: uppercase; margin: 24px 0 10px; padding: 0 4px; }
+
+  /* Category headers in recipe list */
+  .cat-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink); margin: 18px 4px 8px; }
+  .cat-header:first-child { margin-top: 4px; }
+  .cat-rename { background: none; border: none; padding: 6px; cursor: pointer; color: var(--ink-mute); display: flex; align-items: center; border-radius: 6px; }
+  .cat-rename:active { background: var(--bg-warm); }
 
   /* Empty state */
   .empty { text-align: center; padding: 60px 20px 40px; color: var(--ink-soft); }
@@ -212,6 +224,19 @@
   .pacing-summary { background: var(--leaven-soft); border: 1px solid var(--leaven); color: var(--rye); padding: 12px 14px; border-radius: var(--radius); margin-bottom: 14px; }
   .pacing-tag { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border: 1px solid; border-radius: 100px; font-family: 'Inter', sans-serif; }
 
+  /* Icon picker (recipe editor) */
+  .icon-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+  .icon-opt { width: 44px; height: 44px; border-radius: 12px; background: var(--bg-elev); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 22px; cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
+  .icon-opt:active { transform: scale(0.95); }
+  .icon-opt.active { background: linear-gradient(135deg, var(--crust-soft), var(--crust)); border-color: var(--crust); box-shadow: inset 0 -3px 6px rgba(120, 60, 20, 0.18); }
+
+  /* Category picker (recipe editor) */
+  .cat-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cat-chip { font-size: 13px; padding: 7px 12px; border: 1px solid var(--line); background: var(--bg-elev); color: var(--ink-soft); border-radius: 100px; cursor: pointer; font-family: inherit; font-weight: 500; transition: all 0.15s; }
+  .cat-chip:active { transform: scale(0.96); }
+  .cat-chip.active { background: var(--crust); color: white; border-color: var(--crust); }
+  .cat-chip.add { color: var(--ink-mute); border-style: dashed; }
+
   /* Photo cards in import grid */
   .photo-card { display: flex; flex-direction: column; gap: 4px; }
   .photo-card-img { position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--line); }
@@ -265,7 +290,15 @@
 
 <header>
   <div class="logo">Crumb<span class="ear">.</span></div>
-  <div class="tagline">Bread Workflows</div>
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <div class="tagline">Bread Workflows</div>
+    <button id="btn-settings" aria-label="Settings" style="background: none; border: none; padding: 4px; cursor: pointer; color: var(--ink-mute); display: flex; align-items: center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </div>
 </header>
 
 <!-- RECIPES VIEW -->
@@ -323,8 +356,16 @@
     </div>
     <div class="modal-body">
       <div class="field">
+        <label>Icon</label>
+        <div id="icon-picker" class="icon-picker"></div>
+      </div>
+      <div class="field">
         <label>Recipe Name</label>
         <input type="text" id="r-name" placeholder="e.g. Country Loaf">
+      </div>
+      <div class="field">
+        <label>Category</label>
+        <div id="cat-picker" class="cat-picker"></div>
       </div>
       <div class="field">
         <label>Notes / Source</label>
@@ -486,6 +527,54 @@
   </div>
 </div>
 
+<!-- SETTINGS MODAL -->
+<div class="modal-backdrop" id="modal-settings">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Settings</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="section-title" style="margin-top: 0;">Cloud Sync</div>
+
+      <div id="sync-status-card" style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+          <span id="sync-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink-mute);"></span>
+          <span id="sync-status-label" style="font-weight: 500; font-size: 14px;">Sync disabled</span>
+        </div>
+        <div id="sync-status-detail" style="font-size: 12px; color: var(--ink-mute);">Recipes and bakes stay on this device only.</div>
+      </div>
+
+      <!-- When sync is OFF -->
+      <div id="sync-off-pane">
+        <div class="banner crust">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+          <div>Enable cloud sync to share recipes, bakes, and active baking state across your devices. Works offline — changes sync when you're back online.</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="enable-sync">Enable Sync (new sync code)</button>
+        <button class="btn btn-block" id="join-sync" style="margin-top: 8px;">Connect with Existing Code</button>
+      </div>
+
+      <!-- When sync is ON -->
+      <div id="sync-on-pane" style="display: none;">
+        <div class="field">
+          <label>Your Sync Code</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div id="sync-code-display" class="mono" style="font-size: 22px; font-weight: 600; letter-spacing: 0.1em; color: var(--crust-deep); background: var(--bg-warm); padding: 10px 14px; border-radius: var(--radius-sm); flex: 1; text-align: center;">------</div>
+            <button class="btn btn-sm" id="copy-sync-code" style="flex-shrink: 0;">Copy</button>
+          </div>
+          <p class="help" style="margin-top: 8px;">Enter this code on another device to connect.</p>
+        </div>
+        <button class="btn btn-block btn-ghost" id="disable-sync" style="color: var(--warn); margin-top: 16px;">Disconnect Sync</button>
+      </div>
+
+      <div class="wheat-deco">·  ·  ·</div>
+
+      <p class="help">Crumb syncs through Firebase. Data is stored under your sync code only — no account or sign-in needed. Anyone with your sync code can read and write your data, so treat it like a password.</p>
+    </div>
+  </div>
+</div>
+
 <!-- BAKE NOTES MODAL -->
 <div class="modal-backdrop" id="modal-bake-notes">
   <div class="modal">
@@ -548,6 +637,7 @@
   const state = {
     recipes: [],
     bakes: [],
+    categories: [], // [{ id, name }]
     currentRecipeId: null,
     scheduleMode: 'now',
     scheduleStart: null,
@@ -555,6 +645,7 @@
     scaleFactor: 1,
     activeBake: null,
     editingRecipe: null,
+    syncCode: null, // Firestore sync code; null = sync disabled
   };
 
   const LS_KEY = 'crumb-state-v1';
@@ -571,6 +662,7 @@
       // Defensive defaults for fields that older saves might lack
       if (!Array.isArray(state.recipes)) state.recipes = [];
       if (!Array.isArray(state.bakes)) state.bakes = [];
+      if (!Array.isArray(state.categories)) state.categories = [];
       if (typeof state.scaleFactor !== 'number' || !state.scaleFactor) state.scaleFactor = 1;
       if (state.scheduleMode !== 'finish' && state.scheduleMode !== 'now') state.scheduleMode = 'now';
     } catch (e) { console.error('load failed', e); }
@@ -581,24 +673,40 @@
       localStorage.setItem(LS_KEY, JSON.stringify({
         recipes: state.recipes,
         bakes: state.bakes,
+        categories: state.categories,
         currentRecipeId: state.currentRecipeId,
         scheduleMode: state.scheduleMode,
         scheduleStart: state.scheduleStart,
         scheduleFinish: state.scheduleFinish,
         scaleFactor: state.scaleFactor,
         activeBake: state.activeBake,
+        syncCode: state.syncCode,
       }));
     } catch (e) { console.error('save failed', e); }
+    // Push shared data to Firestore if sync is enabled
+    if (state.syncCode) {
+      pushToFirestore();
+    }
   }
 
   // ============================================================
   // SAMPLE RECIPE (Tartine-style Country Loaf)
   // ============================================================
   function seedIfEmpty() {
+    if (state.categories.length === 0) {
+      state.categories = [
+        { id: uid(), name: 'Breads' },
+        { id: uid(), name: 'Pizzas' },
+        { id: uid(), name: 'Pastries' },
+      ];
+    }
     if (state.recipes.length > 0) return;
+    const breadsId = state.categories.find(c => c.name === 'Breads')?.id || null;
     state.recipes.push({
       id: uid(),
       name: 'Country Loaf',
+      icon: '🍞',
+      categoryId: breadsId,
       notes: 'Tartine-style sourdough, Dutch oven, ~2 lb. Summer timings.',
       ingredients: [
         { name: 'White bread flour', qty: '295 g', pct: '79%' },
@@ -821,21 +929,97 @@
         </div>`;
       return;
     }
-    list.innerHTML = state.recipes.map(r => {
+
+    // Group recipes by category
+    const groups = new Map();
+    // Initialize with declared categories so empty ones don't appear
+    state.recipes.forEach(r => {
+      const key = r.categoryId || 'uncategorized';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    });
+
+    // Determine order: categories in state.categories order, then "Uncategorized" last
+    const orderedKeys = [];
+    state.categories.forEach(c => { if (groups.has(c.id)) orderedKeys.push(c.id); });
+    if (groups.has('uncategorized')) orderedKeys.push('uncategorized');
+
+    const renderItem = (r) => {
       const isBaking = state.activeBake && state.activeBake.recipeId === r.id;
       return `
-      <div class="recipe-item" data-id="${r.id}">
-        <div class="recipe-thumb">🍞</div>
-        <div class="recipe-meta">
-          <div class="recipe-name">${escapeHtml(r.name)}${isBaking ? ' <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;background:var(--crust);color:white;padding:2px 8px;border-radius:100px;font-family:Inter;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;vertical-align:middle;margin-left:6px;"><span style="width:5px;height:5px;background:white;border-radius:50%;display:inline-block;animation:pulse 1.6s ease-in-out infinite;"></span>Baking</span>' : ''}</div>
-          <div class="recipe-sub">${r.stages.length} stages · ${formatDur(totalMinutes(r))} total</div>
-        </div>
-        <div class="recipe-chev">›</div>
-      </div>
-    `;}).join('');
+        <div class="recipe-item" data-id="${r.id}">
+          <div class="recipe-thumb">${r.icon || DEFAULT_ICON}</div>
+          <div class="recipe-meta">
+            <div class="recipe-name">${escapeHtml(r.name)}${isBaking ? ' <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;background:var(--crust);color:white;padding:2px 8px;border-radius:100px;font-family:Inter;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;vertical-align:middle;margin-left:6px;"><span style="width:5px;height:5px;background:white;border-radius:50%;display:inline-block;animation:pulse 1.6s ease-in-out infinite;"></span>Baking</span>' : ''}</div>
+            <div class="recipe-sub">${r.stages.length} stages · ${formatDur(totalMinutes(r))} total</div>
+          </div>
+          <div class="recipe-chev">›</div>
+        </div>`;
+    };
+
+    // If only one group total AND it's uncategorized (no categories used), render flat
+    const onlyUncategorized = orderedKeys.length === 1 && orderedKeys[0] === 'uncategorized' && state.categories.length === 0;
+    if (onlyUncategorized) {
+      list.innerHTML = groups.get('uncategorized').map(renderItem).join('');
+    } else {
+      list.innerHTML = orderedKeys.map(key => {
+        const cat = key === 'uncategorized' ? { name: 'Uncategorized', id: null } : state.categories.find(c => c.id === key);
+        const recipes = groups.get(key);
+        const renameBtn = cat.id ? `<button class="cat-rename" data-rename-cat="${cat.id}" aria-label="Rename ${escapeHtml(cat.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` : '';
+        return `
+          <div class="cat-header">
+            <span>${escapeHtml(cat.name)} · ${recipes.length}</span>
+            ${renameBtn}
+          </div>
+          ${recipes.map(renderItem).join('')}
+        `;
+      }).join('');
+    }
+
     list.querySelectorAll('.recipe-item').forEach(el => {
       el.addEventListener('click', () => openSchedule(el.dataset.id));
     });
+    list.querySelectorAll('[data-rename-cat]').forEach(b => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openCategoryActions(b.dataset.renameCat);
+      });
+    });
+  }
+
+  async function openCategoryActions(catId) {
+    const cat = state.categories.find(c => c.id === catId);
+    if (!cat) return;
+    const action = await showConfirm({
+      title: `"${cat.name}"`,
+      message: 'What would you like to do with this category?',
+      buttons: [
+        { label: 'Rename', style: 'primary', value: 'rename' },
+        { label: 'Delete (recipes become Uncategorized)', style: 'danger', value: 'delete' },
+        { label: 'Cancel', style: 'ghost', value: 'cancel' },
+      ],
+    });
+    if (action === 'rename') {
+      const newName = await showPrompt({
+        title: 'Rename Category',
+        message: '',
+        placeholder: 'Category name',
+        defaultValue: cat.name,
+      });
+      if (newName && newName.trim()) {
+        cat.name = newName.trim();
+        saveState();
+        renderRecipes();
+        toast('Category renamed');
+      }
+    } else if (action === 'delete') {
+      // Move all recipes in this category to uncategorized
+      state.recipes.forEach(r => { if (r.categoryId === catId) r.categoryId = null; });
+      state.categories = state.categories.filter(c => c.id !== catId);
+      saveState();
+      renderRecipes();
+      toast('Category deleted');
+    }
   }
 
   function renderHistory() {
@@ -1680,19 +1864,77 @@
   // ============================================================
   // RECIPE EDITOR
   // ============================================================
+  const RECIPE_ICONS = ['🍞', '🥖', '🥐', '🥯', '🫓', '🥨', '🌾', '🍕', '🧈', '🥞', '🥧', '🍪'];
+  const DEFAULT_ICON = '🍞';
+
+  function renderIconPicker() {
+    const c = document.getElementById('icon-picker');
+    const current = state.editingRecipe.icon || DEFAULT_ICON;
+    c.innerHTML = RECIPE_ICONS.map(ic => `
+      <div class="icon-opt ${ic === current ? 'active' : ''}" data-icon="${ic}">${ic}</div>
+    `).join('');
+    c.querySelectorAll('[data-icon]').forEach(el => {
+      el.addEventListener('click', () => {
+        state.editingRecipe.icon = el.dataset.icon;
+        renderIconPicker();
+      });
+    });
+  }
+
+  function renderCatPicker() {
+    const c = document.getElementById('cat-picker');
+    const current = state.editingRecipe.categoryId || null;
+    const chips = [
+      `<button class="cat-chip ${current === null ? 'active' : ''}" data-cat="">Uncategorized</button>`,
+      ...state.categories.map(cat => `
+        <button class="cat-chip ${current === cat.id ? 'active' : ''}" data-cat="${cat.id}">${escapeHtml(cat.name)}</button>
+      `),
+      `<button class="cat-chip add" data-cat="__new__">+ New</button>`,
+    ];
+    c.innerHTML = chips.join('');
+    c.querySelectorAll('[data-cat]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const v = b.dataset.cat;
+        if (v === '__new__') {
+          const name = await showPrompt({
+            title: 'New Category',
+            message: '',
+            placeholder: 'e.g. Pizzas, Desserts',
+            defaultValue: '',
+          });
+          if (name && name.trim()) {
+            const newCat = { id: uid(), name: name.trim() };
+            state.categories.push(newCat);
+            state.editingRecipe.categoryId = newCat.id;
+            saveState();
+            renderCatPicker();
+          }
+        } else {
+          state.editingRecipe.categoryId = v || null;
+          renderCatPicker();
+        }
+      });
+    });
+  }
+
   function openRecipeEditor(recipe) {
     state.editingRecipe = recipe ? JSON.parse(JSON.stringify(recipe)) : {
       id: uid(),
       name: '',
       notes: '',
+      icon: DEFAULT_ICON,
+      categoryId: null,
       ingredients: [],
       stages: [],
     };
+    if (!state.editingRecipe.icon) state.editingRecipe.icon = DEFAULT_ICON;
     const isExisting = recipe && state.recipes.some(r => r.id === recipe.id);
     document.getElementById('modal-recipe-title').textContent = isExisting ? 'Edit Recipe' : 'New Recipe';
     document.getElementById('r-name').value = state.editingRecipe.name;
     document.getElementById('r-notes').value = state.editingRecipe.notes || '';
     document.getElementById('delete-recipe').style.display = isExisting ? 'inline-flex' : 'none';
+    renderIconPicker();
+    renderCatPicker();
     renderIngEditor();
     renderStageEditor();
     showModal('modal-recipe');
@@ -1772,10 +2014,14 @@ Rules:
 - Include all stages: starter builds, autolyse, mix, folds, bulk ferment, shape, proof, preheat, bake
 - Ingredient quantities should preserve gram weights when shown
 - If the recipe came from a URL, include the URL in the "notes" field
+- For "icon", pick the most fitting emoji from this list: 🍞 🥖 🥐 🥯 🫓 🥨 🌾 🍕 🧈 🥞 🥧 🍪
+- For "category", pick a short broad category like "Breads", "Pizzas", "Pastries", "Flatbreads", "Desserts" — whichever fits best
 
 Format:
 {
   "name": "string",
+  "icon": "one emoji from the list above",
+  "category": "string (broad category)",
   "notes": "source/URL/notes string",
   "ingredients": [{"name": "string", "qty": "string with grams"}],
   "stages": [{"name": "short imperative", "durMin": number, "detail": "string", "isWait": boolean}]
@@ -1818,9 +2064,25 @@ Here is the recipe:
       return;
     }
 
+    // Resolve category from name (case-insensitive); create new if doesn't exist
+    let categoryId = null;
+    if (parsed.category && typeof parsed.category === 'string' && parsed.category.trim()) {
+      const trimmed = parsed.category.trim();
+      const existing = state.categories.find(c => c.name.toLowerCase() === trimmed.toLowerCase());
+      if (existing) {
+        categoryId = existing.id;
+      } else {
+        const newCat = { id: uid(), name: trimmed };
+        state.categories.push(newCat);
+        categoryId = newCat.id;
+      }
+    }
+
     const newRecipe = {
       id: uid(),
       name: parsed.name || 'Imported Recipe',
+      icon: (parsed.icon && RECIPE_ICONS.includes(parsed.icon)) ? parsed.icon : DEFAULT_ICON,
+      categoryId,
       notes: parsed.notes || '',
       ingredients: Array.isArray(parsed.ingredients) ? parsed.ingredients : [],
       stages: Array.isArray(parsed.stages) ? parsed.stages.map(s => ({
@@ -2182,12 +2444,276 @@ Here is the recipe:
   });
 
   // ============================================================
+  // FIREBASE SYNC
+  // ============================================================
+  // Replace with your own Firebase project config — see SETUP.md
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAgKxDeOuRSmsX5Ht29i6tk6bGIEl0TH1Q",
+    authDomain: "crumb-app-b6559.firebaseapp.com",
+    projectId: "crumb-app-b6559",
+    storageBucket: "crumb-app-b6559.firebasestorage.app",
+    messagingSenderId: "925400735518",
+    appId: "1:925400735518:web:82f694bdeb98529a22b30f",
+  };
+
+  let firebaseApp = null;
+  let firestoreDb = null;
+  let unsubscribeSnapshot = null;
+  let suppressNextRemote = false; // when true, ignore the next remote update (we just wrote it)
+  let pushDebounceTimer = null;
+  let lastPushAt = 0;
+
+  function isFirebaseConfigured() {
+    return FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('REPLACE_WITH');
+  }
+
+  function ensureFirebaseInit() {
+    if (firebaseApp) return true;
+    if (!window.__firebase) {
+      console.warn('Firebase SDK not loaded yet');
+      return false;
+    }
+    if (!isFirebaseConfigured()) {
+      console.warn('Firebase not configured — see SETUP.md');
+      return false;
+    }
+    try {
+      const { initializeApp, getFirestore, enableIndexedDbPersistence } = window.__firebase;
+      firebaseApp = initializeApp(FIREBASE_CONFIG);
+      firestoreDb = getFirestore(firebaseApp);
+      // Enable offline persistence
+      enableIndexedDbPersistence(firestoreDb).catch(err => {
+        console.warn('IndexedDB persistence not available:', err.code);
+      });
+      return true;
+    } catch (e) {
+      console.error('Firebase init failed:', e);
+      return false;
+    }
+  }
+
+  // Generate a 6-char readable sync code (no ambiguous chars)
+  function generateSyncCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
+    let s = '';
+    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  // Push the shared portion of state to Firestore (debounced)
+  function pushToFirestore() {
+    if (!state.syncCode || !firestoreDb) return;
+    clearTimeout(pushDebounceTimer);
+    pushDebounceTimer = setTimeout(async () => {
+      try {
+        const { doc, setDoc } = window.__firebase;
+        const payload = {
+          recipes: state.recipes,
+          bakes: state.bakes,
+          categories: state.categories,
+          activeBake: state.activeBake || null,
+          updatedAt: Date.now(),
+        };
+        suppressNextRemote = true;
+        lastPushAt = Date.now();
+        await setDoc(doc(firestoreDb, 'crumb_households', state.syncCode), payload);
+      } catch (e) {
+        console.error('Firestore push failed:', e);
+        suppressNextRemote = false;
+      }
+    }, 800);
+  }
+
+  // Subscribe to remote changes
+  function startSyncListener() {
+    if (!state.syncCode || !firestoreDb) return;
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+    const { doc, onSnapshot } = window.__firebase;
+    unsubscribeSnapshot = onSnapshot(
+      doc(firestoreDb, 'crumb_households', state.syncCode),
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        // Ignore our own writes that bounce back
+        if (suppressNextRemote) {
+          suppressNextRemote = false;
+          return;
+        }
+        const data = snapshot.data();
+        // Defensive: only merge if remote data looks valid
+        if (Array.isArray(data.recipes)) state.recipes = data.recipes;
+        if (Array.isArray(data.bakes)) state.bakes = data.bakes;
+        if (Array.isArray(data.categories)) state.categories = data.categories;
+        if (data.activeBake !== undefined) state.activeBake = data.activeBake;
+        // Persist the merged result locally
+        try {
+          localStorage.setItem(LS_KEY, JSON.stringify({
+            recipes: state.recipes,
+            bakes: state.bakes,
+            categories: state.categories,
+            currentRecipeId: state.currentRecipeId,
+            scheduleMode: state.scheduleMode,
+            scheduleStart: state.scheduleStart,
+            scheduleFinish: state.scheduleFinish,
+            scaleFactor: state.scaleFactor,
+            activeBake: state.activeBake,
+            syncCode: state.syncCode,
+          }));
+        } catch (e) { console.error('local save failed', e); }
+        // Refresh whatever view is active
+        const activeView = document.querySelector('.view.active');
+        if (activeView) {
+          if (activeView.id === 'view-recipes') renderRecipes();
+          if (activeView.id === 'view-schedule') renderSchedule();
+          if (activeView.id === 'view-history') renderHistory();
+        }
+        if (state.activeBake && !bakeTickerInterval) startBakeTicker();
+        else if (!state.activeBake && bakeTickerInterval) stopBakeTicker();
+      },
+      (err) => {
+        console.error('Firestore listener error:', err);
+        toast('Sync connection issue — will retry');
+      }
+    );
+  }
+
+  function stopSyncListener() {
+    if (unsubscribeSnapshot) {
+      unsubscribeSnapshot();
+      unsubscribeSnapshot = null;
+    }
+  }
+
+  async function enableSync(code) {
+    if (!isFirebaseConfigured()) {
+      toast('Firebase not configured — see SETUP.md');
+      return false;
+    }
+    if (!ensureFirebaseInit()) {
+      toast('Sync engine failed to start');
+      return false;
+    }
+    state.syncCode = code;
+    saveState(); // saves locally + pushes initial state
+    startSyncListener();
+    renderSyncStatus();
+    return true;
+  }
+
+  function disableSync() {
+    stopSyncListener();
+    state.syncCode = null;
+    saveState();
+    renderSyncStatus();
+  }
+
+  function renderSyncStatus() {
+    const dot = document.getElementById('sync-status-dot');
+    const label = document.getElementById('sync-status-label');
+    const detail = document.getElementById('sync-status-detail');
+    const offPane = document.getElementById('sync-off-pane');
+    const onPane = document.getElementById('sync-on-pane');
+    const codeDisplay = document.getElementById('sync-code-display');
+
+    if (!isFirebaseConfigured()) {
+      dot.style.background = 'var(--warn)';
+      label.textContent = 'Not configured';
+      detail.textContent = 'Firebase config is missing — see SETUP.md to enable sync.';
+      offPane.style.display = 'none';
+      onPane.style.display = 'none';
+      return;
+    }
+
+    if (state.syncCode) {
+      dot.style.background = 'var(--leaven)';
+      label.textContent = 'Sync enabled';
+      detail.textContent = 'Recipes, bakes, and active baking state sync across devices.';
+      offPane.style.display = 'none';
+      onPane.style.display = '';
+      codeDisplay.textContent = state.syncCode;
+    } else {
+      dot.style.background = 'var(--ink-mute)';
+      label.textContent = 'Sync disabled';
+      detail.textContent = 'Recipes and bakes stay on this device only.';
+      offPane.style.display = '';
+      onPane.style.display = 'none';
+    }
+  }
+
+  // Wire up settings + sync controls
+  function wireSyncControls() {
+    document.getElementById('btn-settings').addEventListener('click', () => {
+      renderSyncStatus();
+      showModal('modal-settings');
+    });
+
+    document.getElementById('enable-sync').addEventListener('click', async () => {
+      const code = generateSyncCode();
+      const ok = await enableSync(code);
+      if (ok) toast(`Sync enabled · code ${code}`);
+    });
+
+    document.getElementById('join-sync').addEventListener('click', async () => {
+      const code = await showPrompt({
+        title: 'Connect with Code',
+        message: 'Enter the sync code from your other device (6 letters/digits).',
+        placeholder: 'e.g. ABC234',
+        defaultValue: '',
+      });
+      if (!code || !code.trim()) return;
+      const clean = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (clean.length !== 6) {
+        toast('Sync code should be 6 characters');
+        return;
+      }
+      const ok = await enableSync(clean);
+      if (ok) toast(`Connected · code ${clean}`);
+    });
+
+    document.getElementById('copy-sync-code').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(state.syncCode || '');
+        toast('Code copied');
+      } catch (e) { toast('Copy failed'); }
+    });
+
+    document.getElementById('disable-sync').addEventListener('click', async () => {
+      const choice = await showConfirm({
+        title: 'Disconnect sync?',
+        message: 'Your data stays on this device. Other devices keep their copies. You can reconnect later with the same code.',
+        buttons: [
+          { label: 'Disconnect', style: 'danger', value: 'yes' },
+          { label: 'Cancel', style: 'ghost', value: 'no' },
+        ],
+      });
+      if (choice === 'yes') {
+        disableSync();
+        toast('Sync disconnected');
+      }
+    });
+  }
+
+  // ============================================================
   // BOOT
   // ============================================================
   loadState();
   seedIfEmpty();
   renderRecipes();
   if (state.activeBake) startBakeTicker();
+  wireSyncControls();
+
+  // Connect to Firebase once SDK is loaded
+  function tryAutoConnect() {
+    if (state.syncCode && isFirebaseConfigured()) {
+      if (ensureFirebaseInit()) {
+        startSyncListener();
+      }
+    }
+  }
+  if (window.__firebase) {
+    tryAutoConnect();
+  } else {
+    window.addEventListener('firebase-ready', tryAutoConnect);
+  }
 </script>
 </body>
 </html>
