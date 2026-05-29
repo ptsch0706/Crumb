@@ -67,7 +67,7 @@
   .tagline { font-size: 11px; color: var(--ink-mute); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
 
   /* Tab bar */
-  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
+  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
   nav.tabs button { background: none; border: none; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--ink-mute); font-size: 10px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; min-width: 0; }
   nav.tabs button.active { color: var(--crust); }
   nav.tabs button svg { width: 20px; height: 20px; stroke-width: 1.8; }
@@ -344,10 +344,6 @@
   <button class="active" data-view="view-recipes">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
     Recipes
-  </button>
-  <button data-view="view-schedule">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-    Schedule
   </button>
   <button data-view="view-active-bakes" id="tab-active" style="position: relative;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2L4 7l8 5 8-5-8-5z"/><path d="M4 17l8 5 8-5"/><path d="M4 12l8 5 8-5"/></svg>
@@ -1910,6 +1906,11 @@
         Send Remaining to Reminders
       </button>
 
+      <button class="btn btn-block" id="btn-edit-recipe-active" style="margin-top: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Edit Recipe
+      </button>
+
       <div class="section-title">All Stages</div>
       <div class="upcoming-list">
         ${(() => {
@@ -1984,6 +1985,14 @@
       const skipBtn = e.target.closest('[data-skip-to]');
       const shortcutBtn = e.target.closest('#btn-shortcut-active');
       const editBtn = e.target.closest('[data-edit-stage]');
+      const editRecipeBtn = e.target.closest('#btn-edit-recipe-active');
+
+      if (editRecipeBtn) {
+        stopBakeTicker();
+        // Open the recipe editor on the live recipe — changes save permanently
+        openRecipeEditor(recipe);
+        return;
+      }
 
       if (editBtn) {
         stopBakeTicker();
@@ -2663,8 +2672,10 @@ Here is the recipe:
   function switchView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
+    // Schedule is a sub-view of Recipes — keep the Recipes tab highlighted
+    const tabViewId = viewId === 'view-schedule' ? 'view-recipes' : viewId;
     document.querySelectorAll('nav.tabs button').forEach(b => {
-      b.classList.toggle('active', b.dataset.view === viewId);
+      b.classList.toggle('active', b.dataset.view === tabViewId);
     });
     if (viewId === 'view-recipes') renderRecipes();
     if (viewId === 'view-schedule') renderSchedule();
@@ -2711,6 +2722,8 @@ Here is the recipe:
     hideModal('modal-recipe');
     renderRecipes();
     if (state.currentRecipeId === r.id) renderSchedule();
+    // If a bake is in progress for this recipe, restart the ticker so countdowns continue
+    if (getActiveBakeForRecipe(r.id) && !bakeTickerInterval) startBakeTicker();
     toast('Recipe saved');
   });
   document.getElementById('delete-recipe').addEventListener('click', async () => {
@@ -2747,9 +2760,9 @@ Here is the recipe:
         importAppendMode = false;
         showModal('modal-recipe');
       }
-      // Resume bake ticker if the user closed the stage-edit modal mid-bake
-      if (modal.id === 'modal-stage-edit' && state.activeBakes.length > 0) {
-        startBakeTicker();
+      // Resume bake ticker if the user closed an editor mid-bake
+      if ((modal.id === 'modal-stage-edit' || modal.id === 'modal-recipe') && state.activeBakes.length > 0) {
+        if (!bakeTickerInterval) startBakeTicker();
       }
     });
   });
@@ -2761,8 +2774,8 @@ Here is the recipe:
           importAppendMode = false;
           showModal('modal-recipe');
         }
-        if (m.id === 'modal-stage-edit' && state.activeBakes.length > 0) {
-          startBakeTicker();
+        if ((m.id === 'modal-stage-edit' || m.id === 'modal-recipe') && state.activeBakes.length > 0) {
+          if (!bakeTickerInterval) startBakeTicker();
         }
       }
     });
