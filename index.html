@@ -16,7 +16,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root {
     --bg: #fdf8f1;
@@ -49,7 +48,7 @@
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; overscroll-behavior-y: none; }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; overscroll-behavior-y: none; overflow-x: hidden; max-width: 100vw; }
   body { padding: calc(var(--safe-top) + 8px) 0 calc(var(--safe-bot) + 92px); -webkit-font-smoothing: antialiased; }
 
   .display { font-family: 'Fraunces', Georgia, serif; font-optical-sizing: auto; letter-spacing: -0.02em; }
@@ -68,7 +67,7 @@
   nav.tabs button svg { width: 24px; height: 24px; stroke-width: 1.8; }
 
   /* Views */
-  .view { display: none; padding: 0 20px; }
+  .view { display: none; padding: 0 20px; max-width: 100%; overflow-x: hidden; }
   .view.active { display: block; animation: fadeIn 0.25s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -115,7 +114,7 @@
 
   /* Forms */
   label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 6px; }
-  input, textarea, select { font-family: inherit; font-size: 15px; padding: 11px 14px; border: 1px solid var(--line); background: var(--bg-elev); border-radius: var(--radius-sm); width: 100%; color: var(--ink); transition: border-color 0.15s; }
+  input, textarea, select { font-family: inherit; font-size: 15px; padding: 11px 14px; border: 1px solid var(--line); background: var(--bg-elev); border-radius: var(--radius-sm); width: 100%; max-width: 100%; color: var(--ink); transition: border-color 0.15s; min-width: 0; }
   input:focus, textarea:focus, select:focus { outline: none; border-color: var(--crust); }
   textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
   .field { margin-bottom: 16px; }
@@ -279,7 +278,7 @@
   </button>
   <button class="btn btn-block" id="btn-import" style="margin-top: 8px;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 3v4a1 1 0 0 0 1 1h4M5 12V5a2 2 0 0 1 2-2h8l4 4v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4m4-3 3 3-3 3m3-3H3"/></svg>
-    Import from Photo or URL
+    Import from JSON
   </button>
   <div class="wheat-deco">·  ·  ·</div>
 </section>
@@ -344,8 +343,8 @@
       <div class="wheat-deco">·  ·  ·</div>
 
       <button class="btn btn-block" id="append-from-photo" style="margin-bottom: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><circle cx="12" cy="13" r="3"/></svg>
-        Append from Photo
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 3v4a1 1 0 0 0 1 1h4M5 12V5a2 2 0 0 1 2-2h8l4 4v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4m4-3 3 3-3 3m3-3H3"/></svg>
+        Append from JSON
       </button>
 
       <button class="btn btn-primary btn-block" id="save-recipe">Save Recipe</button>
@@ -362,82 +361,34 @@
       <button class="modal-close" data-close>✕</button>
     </div>
     <div class="modal-body">
-      <!-- Mode selector -->
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;">
-        <button class="mode-btn active" data-import-mode="photo" id="import-mode-photo">
-          <div class="lbl">From</div>
-          <div class="val">📸 Photos</div>
-        </button>
-        <button class="mode-btn" data-import-mode="url" id="import-mode-url">
-          <div class="lbl">From</div>
-          <div class="val">🔗 URL</div>
-        </button>
-        <button class="mode-btn" data-import-mode="text" id="import-mode-text">
-          <div class="lbl">From</div>
-          <div class="val">📝 Text</div>
-        </button>
-      </div>
-
-      <!-- Photo mode -->
-      <div id="import-photo-pane">
-        <div class="banner crust">
+      <!-- JSON mode (only mode now — no API key needed) -->
+      <div id="import-json-pane">
+        <div class="banner">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-          <div>Snap or pick photos of a recipe. If ingredients and directions are on different pages, label each photo accordingly — Claude uses the labels for cleaner parsing.</div>
+          <div><strong>No API key needed.</strong> Use the Claude app or claude.ai to convert a recipe (photo, URL, or text) to JSON, then paste it here.</div>
         </div>
 
-        <label for="photo-input" class="btn btn-block" style="cursor: pointer; margin-bottom: 12px;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          Choose Photos
-        </label>
-        <input type="file" id="photo-input" accept="image/*" multiple style="display: none;">
-
-        <div id="photo-preview-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;"></div>
-
-        <div id="ocr-progress" style="display: none; padding: 12px 14px; background: var(--bg-warm); border-radius: var(--radius); margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <div class="spinner" style="color: var(--crust);"></div>
-            <div style="font-size: 13px; color: var(--ink); font-weight: 500;" id="ocr-status">Loading OCR engine…</div>
-          </div>
-          <div style="height: 6px; background: var(--line); border-radius: 100px; overflow: hidden;">
-            <div id="ocr-progress-bar" style="height: 100%; width: 0%; background: var(--crust); transition: width 0.3s;"></div>
-          </div>
+        <div style="background: var(--bg-warm); border-radius: var(--radius); padding: 14px; margin-bottom: 14px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px;">How To</div>
+          <ol style="font-size: 13px; line-height: 1.6; color: var(--ink-soft); padding-left: 18px; margin: 0;">
+            <li>Tap <strong>Copy Prompt</strong> below</li>
+            <li>Open Claude (app or web) and paste it</li>
+            <li>Then add the recipe — attach a photo, paste a URL, or paste recipe text</li>
+            <li>Claude will return a JSON block — copy it</li>
+            <li>Paste it into the field below and tap <strong>Import</strong></li>
+          </ol>
         </div>
 
-        <button class="btn btn-primary btn-block" id="parse-photos" disabled>
-          <span id="parse-photos-label">Extract & Parse</span>
+        <button class="btn btn-block" id="copy-prompt" style="margin-bottom: 12px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy Prompt for Claude
         </button>
-      </div>
 
-      <!-- URL mode -->
-      <div id="import-url-pane" style="display: none;">
-        <div class="banner crust">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-          <div>Paste a recipe URL. Crumb fetches the page, extracts the text, and Claude parses it into stages. Works best with recipe sites that include schedule/timing info.</div>
-        </div>
         <div class="field">
-          <label>Recipe URL</label>
-          <input type="url" id="import-url" placeholder="https://example.com/sourdough-recipe" inputmode="url">
+          <label>Paste Claude's JSON Response</label>
+          <textarea id="import-json" placeholder='{"name": "Country Loaf", "ingredients": [...], "stages": [...]}' style="font-family: ui-monospace, Menlo, monospace; font-size: 12px;"></textarea>
         </div>
-        <button class="btn btn-primary btn-block" id="parse-url">
-          <span id="parse-url-label">Fetch & Parse</span>
-        </button>
-        <p class="help" style="margin-top: 12px;">If a site blocks fetching, copy the page text and use the Text tab instead.</p>
-      </div>
-
-      <!-- Text mode -->
-      <div id="import-text-pane" style="display: none;">
-        <div class="banner crust">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-          <div>Paste recipe text from a website or copied source. Claude will extract the stages and ingredients. Review before saving.</div>
-        </div>
-        <div class="field">
-          <label>Recipe Text</label>
-          <textarea id="import-text" placeholder="Paste recipe text, including any timing information (folds, rises, bake times)..."></textarea>
-        </div>
-        <button class="btn btn-primary btn-block" id="parse-import">
-          <span id="parse-label">Parse Recipe</span>
-        </button>
-        <p class="help" style="margin-top: 12px;">Tip: Include the ingredient table AND any sample schedule. Better input = better parsing.</p>
+        <button class="btn btn-primary btn-block" id="parse-json">Import Recipe</button>
       </div>
     </div>
   </div>
@@ -598,11 +549,11 @@
     recipes: [],
     bakes: [],
     currentRecipeId: null,
-    scheduleMode: 'now', // 'now' or 'finish'
-    scheduleStart: null, // Date
-    scheduleFinish: null, // Date
-    scaleFactor: 1, // 0.5 = half batch, 2 = double, etc.
-    activeBake: null, // { recipeId, startedAt, stageStates: [{done, doneAt}], scaleFactor }
+    scheduleMode: 'now',
+    scheduleStart: null,
+    scheduleFinish: null,
+    scaleFactor: 1,
+    activeBake: null,
     editingRecipe: null,
   };
 
@@ -1025,7 +976,10 @@
 
       <div class="field">
         <label id="time-label">${state.scheduleMode === 'finish' ? 'Bread ready at' : 'Start at'}</label>
-        <input type="datetime-local" id="time-input" value="${state.scheduleMode === 'finish' ? finishVal : startVal}">
+        <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
+          <input type="date" id="time-input-date" value="${state.scheduleMode === 'finish' ? finishVal.slice(0, 10) : startVal.slice(0, 10)}" style="width: auto;">
+          <input type="time" id="time-input-time" value="${state.scheduleMode === 'finish' ? finishVal.slice(11, 16) : startVal.slice(11, 16)}" style="width: auto;">
+        </div>
       </div>
 
       <button class="btn btn-primary btn-block" id="btn-start-bake">
@@ -1104,13 +1058,19 @@
         renderSchedule();
       });
     });
-    document.getElementById('time-input').addEventListener('change', (e) => {
-      const d = new Date(e.target.value);
+    const onTimeChange = () => {
+      const dateVal = document.getElementById('time-input-date').value;
+      const timeVal = document.getElementById('time-input-time').value;
+      if (!dateVal || !timeVal) return;
+      const d = new Date(`${dateVal}T${timeVal}`);
+      if (isNaN(d.getTime())) return;
       if (state.scheduleMode === 'finish') state.scheduleFinish = d;
       else state.scheduleStart = d;
       saveState();
       renderSchedule();
-    });
+    };
+    document.getElementById('time-input-date').addEventListener('change', onTimeChange);
+    document.getElementById('time-input-time').addEventListener('change', onTimeChange);
     document.getElementById('btn-edit-recipe').addEventListener('click', () => {
       openRecipeEditor(recipe);
     });
@@ -1795,315 +1755,111 @@
   }
 
   // ============================================================
-  // IMPORT (Claude API + Tesseract OCR)
+  // JSON IMPORT (no API key needed)
   // ============================================================
-  // Shared: hand raw text to Claude, get a structured recipe back
-  async function parseRecipeText(text) {
-    const prompt = `Extract a bread recipe from this text into structured JSON. The recipe has ingredients and stages (each stage has a duration in minutes).
+  const CLAUDE_PROMPT_TEMPLATE = `I'm using a bread baking app called Crumb. Please convert the following recipe into the exact JSON format below. Return ONLY the JSON, no commentary.
 
-Critical rules:
-- Each stage = ONE action with a single duration. Split combined steps.
-- Long ferments/proofs/rises are stages with isWait: true.
-- Use the SHORTER end of any duration range (e.g. "8 to 12 hours" → 480 min).
-- For folds, use 30 min interval if unspecified.
-- For preheat, treat as its own stage.
-- Include all starter builds, autolyse, mix, folds, bulk ferment, shape, proof, preheat, bake.
-- Text may come from OCR and contain typos, fractions like ½ rendered as 12, or stray characters — be tolerant.
-- Text may be split across labeled sections like "--- INGREDIENTS SECTION ---" or "--- DIRECTIONS / SCHEDULE SECTION ---". When a section is labeled, ONLY pull that type of content from it (e.g., don't try to extract stages from an INGREDIENTS-only section, and don't try to extract ingredients from a DIRECTIONS-only section).
-- If a needed type of content is missing entirely (e.g. only ingredients provided, no directions), return an empty array for the missing field rather than guessing.
+The recipe may be provided as:
+- A photo of a cookbook page or recipe card (attached to this message)
+- A URL — please fetch the page and extract the recipe
+- Pasted text from a website or other source
 
-Return ONLY valid JSON with this exact shape, no markdown fences:
+Rules:
+- Each stage is ONE action with a duration in minutes
+- Long ferments / proofs / rises are stages with isWait: true
+- Use the SHORTER end of any duration range (e.g. "8-12 hours" → 480)
+- For folds without specified intervals, use 30 minutes
+- Include all stages: starter builds, autolyse, mix, folds, bulk ferment, shape, proof, preheat, bake
+- Ingredient quantities should preserve gram weights when shown
+- If the recipe came from a URL, include the URL in the "notes" field
+
+Format:
 {
   "name": "string",
-  "notes": "string with source/details",
+  "notes": "source/URL/notes string",
   "ingredients": [{"name": "string", "qty": "string with grams"}],
   "stages": [{"name": "short imperative", "durMin": number, "detail": "string", "isWait": boolean}]
 }
 
-Recipe text:
-${text}`;
+Here is the recipe:
+`;
 
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '');
-      throw new Error(`Claude API ${resp.status}: ${errText.slice(0, 100)}`);
+  async function copyClaudePrompt() {
+    try {
+      await navigator.clipboard.writeText(CLAUDE_PROMPT_TEMPLATE);
+      toast('Prompt copied — paste into Claude with your recipe photo');
+    } catch (e) {
+      toast('Copy failed — long-press the prompt area');
     }
-    const data = await resp.json();
-    if (!data || !data.content) throw new Error('Invalid API response');
-    const txt = data.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
-    // Strip code fences, then extract the first JSON object found.
-    // Claude sometimes wraps JSON in prose or fences; this handles both.
-    let clean = txt.replace(/```json|```/g, '').trim();
-    const jsonStart = clean.indexOf('{');
-    const jsonEnd = clean.lastIndexOf('}');
-    if (jsonStart >= 0 && jsonEnd > jsonStart) {
-      clean = clean.slice(jsonStart, jsonEnd + 1);
+  }
+
+  function parseJsonImport() {
+    const raw = document.getElementById('import-json').value.trim();
+    if (!raw) { toast('Paste the JSON from Claude first'); return; }
+
+    let parsed;
+    try {
+      // Tolerant extraction: handle code fences or prose around the JSON
+      let clean = raw.replace(/```json|```/g, '').trim();
+      const jsonStart = clean.indexOf('{');
+      const jsonEnd = clean.lastIndexOf('}');
+      if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        clean = clean.slice(jsonStart, jsonEnd + 1);
+      }
+      parsed = JSON.parse(clean);
+    } catch (e) {
+      toast(`Couldn't parse JSON: ${e.message.slice(0, 60)}`);
+      return;
     }
-    const parsed = JSON.parse(clean);
-    return {
+
+    // Light validation
+    if (!parsed.name && !parsed.stages) {
+      toast('JSON is missing "name" and "stages" fields');
+      return;
+    }
+
+    const newRecipe = {
       id: uid(),
       name: parsed.name || 'Imported Recipe',
       notes: parsed.notes || '',
-      ingredients: parsed.ingredients || [],
-      stages: (parsed.stages || []).map(s => ({
+      ingredients: Array.isArray(parsed.ingredients) ? parsed.ingredients : [],
+      stages: Array.isArray(parsed.stages) ? parsed.stages.map(s => ({
         name: s.name || 'Stage',
-        durMin: s.durMin || 0,
+        durMin: parseInt(s.durMin) || 0,
         detail: s.detail || '',
         isWait: !!s.isWait,
-      })),
+      })) : [],
     };
-  }
 
-  // Text-mode import
-  async function parseImport() {
-    const text = document.getElementById('import-text').value.trim();
-    if (!text) { toast('Paste recipe text first'); return; }
-    const btn = document.getElementById('parse-import');
-    const label = document.getElementById('parse-label');
-    btn.disabled = true;
-    label.innerHTML = '<span class="spinner"></span> Parsing…';
-    try {
-      const newRecipe = await parseRecipeText(text);
+    if (importAppendMode && state.editingRecipe) {
+      let appended = [];
+      if (newRecipe.ingredients.length > 0) {
+        state.editingRecipe.ingredients = state.editingRecipe.ingredients.concat(newRecipe.ingredients);
+        appended.push(`${newRecipe.ingredients.length} ingredient${newRecipe.ingredients.length === 1 ? '' : 's'}`);
+      }
+      if (newRecipe.stages.length > 0) {
+        state.editingRecipe.stages = state.editingRecipe.stages.concat(newRecipe.stages);
+        appended.push(`${newRecipe.stages.length} stage${newRecipe.stages.length === 1 ? '' : 's'}`);
+      }
+      importAppendMode = false;
       hideModal('modal-import');
-      document.getElementById('import-text').value = '';
+      document.getElementById('import-json').value = '';
+      showModal('modal-recipe');
+      renderIngEditor();
+      renderStageEditor();
+      toast(appended.length > 0 ? `Appended ${appended.join(' and ')}` : 'Nothing to import');
+    } else {
+      hideModal('modal-import');
+      document.getElementById('import-json').value = '';
       openRecipeEditor(newRecipe);
       toast('Review the parsed recipe before saving');
-    } catch (e) {
-      console.error(e);
-      toast('Parse failed — try again or check the text');
-    } finally {
-      btn.disabled = false;
-      label.textContent = 'Parse Recipe';
     }
   }
 
-  // URL-mode import
-  async function parseUrl() {
-    let url = document.getElementById('import-url').value.trim();
-    if (!url) { toast('Paste a URL first'); return; }
-    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-
-    const btn = document.getElementById('parse-url');
-    const label = document.getElementById('parse-url-label');
-    btn.disabled = true;
-    label.innerHTML = '<span class="spinner"></span> Fetching…';
-
-    try {
-      // Use a CORS proxy since most recipe sites don't allow cross-origin fetches
-      // r.jina.ai converts pages to clean markdown — perfect for recipe extraction
-      const proxyUrl = `https://r.jina.ai/${url}`;
-      const resp = await fetch(proxyUrl);
-      if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
-      const pageText = await resp.text();
-      if (!pageText || pageText.length < 50) throw new Error('Empty or too-short response');
-
-      label.innerHTML = '<span class="spinner"></span> Parsing…';
-
-      // Truncate very long pages to keep the prompt reasonable
-      const truncated = pageText.length > 30000 ? pageText.slice(0, 30000) + '\n[truncated]' : pageText;
-      const sourceNote = `Imported from ${url}`;
-      const newRecipe = await parseRecipeText(`Source URL: ${url}\n\n${truncated}`);
-      // Make sure source URL ends up in notes
-      if (!newRecipe.notes.includes(url)) {
-        newRecipe.notes = newRecipe.notes ? `${newRecipe.notes} · ${sourceNote}` : sourceNote;
-      }
-
-      hideModal('modal-import');
-      document.getElementById('import-url').value = '';
-      openRecipeEditor(newRecipe);
-      toast('Review the parsed recipe before saving');
-    } catch (e) {
-      console.error(e);
-      toast('Fetch failed — try the Text tab and paste the recipe instead');
-    } finally {
-      btn.disabled = false;
-      label.textContent = 'Fetch & Parse';
-    }
-  }
-
-  // Photo-mode state
-  let selectedPhotos = []; // [{ file, dataUrl, type }]
-  let importAppendMode = false; // when true, merge parsed result into state.editingRecipe instead of opening editor
-
-  function setImportMode(mode) {
-    document.getElementById('import-photo-pane').style.display = mode === 'photo' ? '' : 'none';
-    document.getElementById('import-url-pane').style.display = mode === 'url' ? '' : 'none';
-    document.getElementById('import-text-pane').style.display = mode === 'text' ? '' : 'none';
-    document.getElementById('import-mode-photo').classList.toggle('active', mode === 'photo');
-    document.getElementById('import-mode-url').classList.toggle('active', mode === 'url');
-    document.getElementById('import-mode-text').classList.toggle('active', mode === 'text');
-  }
-
-  function renderPhotoPreview() {
-    const grid = document.getElementById('photo-preview-grid');
-    if (selectedPhotos.length === 0) {
-      grid.innerHTML = '';
-      document.getElementById('parse-photos').disabled = true;
-      return;
-    }
-    grid.innerHTML = selectedPhotos.map((p, i) => `
-      <div class="photo-card">
-        <div class="photo-card-img">
-          <img src="${p.dataUrl}" alt="Recipe photo ${i + 1}">
-          <button class="rm-overlay" data-rm-photo="${i}">×</button>
-          <div class="photo-num">${i + 1}</div>
-        </div>
-        <select class="photo-type" data-photo-type="${i}">
-          <option value="auto" ${p.type === 'auto' ? 'selected' : ''}>Auto</option>
-          <option value="ingredients" ${p.type === 'ingredients' ? 'selected' : ''}>Ingredients</option>
-          <option value="directions" ${p.type === 'directions' ? 'selected' : ''}>Directions</option>
-          <option value="both" ${p.type === 'both' ? 'selected' : ''}>Both</option>
-        </select>
-      </div>
-    `).join('');
-    grid.querySelectorAll('[data-rm-photo]').forEach(b => {
-      b.addEventListener('click', () => {
-        selectedPhotos.splice(+b.dataset.rmPhoto, 1);
-        renderPhotoPreview();
-      });
-    });
-    grid.querySelectorAll('[data-photo-type]').forEach(sel => {
-      sel.addEventListener('change', (e) => {
-        selectedPhotos[+sel.dataset.photoType].type = e.target.value;
-      });
-    });
-    document.getElementById('parse-photos').disabled = false;
-  }
-
-  function handlePhotoSelection(files) {
-    const newFiles = Array.from(files);
-    newFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        selectedPhotos.push({ file, dataUrl: e.target.result, type: 'auto' });
-        renderPhotoPreview();
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // Downscale large images before OCR — phone photos are often 3000+px,
-  // which is wasteful and can crash Tesseract on mobile. ~1600px is plenty for text.
-  function downscaleForOcr(dataUrl, maxDim = 1600) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width <= maxDim && height <= maxDim) {
-          resolve(dataUrl); // already small enough
-          return;
-        }
-        const ratio = Math.min(maxDim / width, maxDim / height);
-        const w = Math.round(width * ratio);
-        const h = Math.round(height * ratio);
-        const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
-        c.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(c.toDataURL('image/jpeg', 0.92));
-      };
-      img.onerror = reject;
-      img.src = dataUrl;
-    });
-  }
-
-  async function runOcrAndParse() {
-    if (selectedPhotos.length === 0) { toast('Choose at least one photo'); return; }
-    if (typeof Tesseract === 'undefined') { toast('OCR engine failed to load — check connection or reload the app'); return; }
-
-    const btn = document.getElementById('parse-photos');
-    const label = document.getElementById('parse-photos-label');
-    const progressBox = document.getElementById('ocr-progress');
-    const progressBar = document.getElementById('ocr-progress-bar');
-    const statusText = document.getElementById('ocr-status');
-
-    btn.disabled = true;
-    label.textContent = 'Working…';
-    progressBox.style.display = '';
-    progressBar.style.width = '0%';
-
-    let stage = 'starting';
-    try {
-      const allText = [];
-      for (let i = 0; i < selectedPhotos.length; i++) {
-        stage = `downscaling photo ${i + 1}`;
-        statusText.textContent = `Preparing photo ${i + 1} of ${selectedPhotos.length}…`;
-        const scaledUrl = await downscaleForOcr(selectedPhotos[i].dataUrl);
-
-        stage = `OCR on photo ${i + 1}`;
-        statusText.textContent = `Reading photo ${i + 1} of ${selectedPhotos.length}…`;
-        const result = await Tesseract.recognize(scaledUrl, 'eng', {
-          logger: (m) => {
-            if (m.status === 'recognizing text') {
-              const overallProgress = ((i + m.progress) / selectedPhotos.length) * 100;
-              progressBar.style.width = `${Math.round(overallProgress)}%`;
-            }
-          },
-        });
-        const text = result && result.data && result.data.text ? result.data.text : '';
-        if (!text.trim()) {
-          throw new Error(`Photo ${i + 1}: no text detected`);
-        }
-        const typeLabel = {
-          ingredients: 'INGREDIENTS SECTION',
-          directions: 'DIRECTIONS / SCHEDULE SECTION',
-          both: 'INGREDIENTS AND DIRECTIONS',
-          auto: 'UNLABELED PAGE',
-        }[selectedPhotos[i].type || 'auto'];
-        allText.push(`--- ${typeLabel} (Photo ${i + 1}) ---\n${text}`);
-      }
-      progressBar.style.width = '100%';
-
-      stage = 'calling Claude API';
-      statusText.textContent = 'Parsing recipe with Claude…';
-      const combinedText = allText.join('\n\n');
-      const newRecipe = await parseRecipeText(combinedText);
-
-      // Reset photo state
-      selectedPhotos = [];
-      renderPhotoPreview();
-      progressBox.style.display = 'none';
-      hideModal('modal-import');
-
-      if (importAppendMode && state.editingRecipe) {
-        let appended = [];
-        if (newRecipe.ingredients && newRecipe.ingredients.length > 0) {
-          state.editingRecipe.ingredients = state.editingRecipe.ingredients.concat(newRecipe.ingredients);
-          appended.push(`${newRecipe.ingredients.length} ingredient${newRecipe.ingredients.length === 1 ? '' : 's'}`);
-        }
-        if (newRecipe.stages && newRecipe.stages.length > 0) {
-          state.editingRecipe.stages = state.editingRecipe.stages.concat(newRecipe.stages);
-          appended.push(`${newRecipe.stages.length} stage${newRecipe.stages.length === 1 ? '' : 's'}`);
-        }
-        importAppendMode = false;
-        showModal('modal-recipe');
-        renderIngEditor();
-        renderStageEditor();
-        toast(appended.length > 0 ? `Appended ${appended.join(' and ')}` : 'Nothing extracted from photos');
-      } else {
-        openRecipeEditor(newRecipe);
-        toast('Review the parsed recipe before saving');
-      }
-    } catch (e) {
-      console.error('Import error at stage:', stage, e);
-      // Surface specific error info to the user
-      let msg = e && e.message ? e.message : String(e);
-      if (msg.length > 80) msg = msg.slice(0, 80) + '…';
-      toast(`Failed during ${stage}: ${msg}`);
-      progressBox.style.display = 'none';
-    } finally {
-      btn.disabled = false;
-      label.textContent = 'Extract & Parse';
-    }
-  }
+  // ============================================================
+  // IMPORT
+  // ============================================================
+  let importAppendMode = false; // when true, merge parsed JSON into state.editingRecipe instead of opening editor
 
   // ============================================================
   // SHORTCUT INTEGRATION
@@ -2289,20 +2045,12 @@ ${text}`;
   });
   document.getElementById('btn-new-recipe').addEventListener('click', () => openRecipeEditor(null));
   document.getElementById('btn-import').addEventListener('click', () => {
-    selectedPhotos = [];
     importAppendMode = false;
-    renderPhotoPreview();
-    setImportMode('photo');
-    document.getElementById('ocr-progress').style.display = 'none';
     showModal('modal-import');
   });
   document.getElementById('append-from-photo').addEventListener('click', () => {
     if (!state.editingRecipe) return;
-    selectedPhotos = [];
     importAppendMode = true;
-    renderPhotoPreview();
-    setImportMode('photo');
-    document.getElementById('ocr-progress').style.display = 'none';
     hideModal('modal-recipe');
     showModal('modal-import');
   });
@@ -2350,20 +2098,10 @@ ${text}`;
     renderRecipes();
     toast('Recipe deleted');
   });
-  document.getElementById('parse-import').addEventListener('click', parseImport);
 
-  // Photo OCR wiring
-  document.getElementById('import-mode-photo').addEventListener('click', () => setImportMode('photo'));
-  document.getElementById('import-mode-url').addEventListener('click', () => setImportMode('url'));
-  document.getElementById('import-mode-text').addEventListener('click', () => setImportMode('text'));
-  document.getElementById('photo-input').addEventListener('change', (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handlePhotoSelection(e.target.files);
-      e.target.value = ''; // allow re-selecting same files
-    }
-  });
-  document.getElementById('parse-photos').addEventListener('click', runOcrAndParse);
-  document.getElementById('parse-url').addEventListener('click', parseUrl);
+  // Import wiring (JSON only)
+  document.getElementById('copy-prompt').addEventListener('click', copyClaudePrompt);
+  document.getElementById('parse-json').addEventListener('click', parseJsonImport);
 
   document.querySelectorAll('[data-close]').forEach(b => {
     b.addEventListener('click', () => {
