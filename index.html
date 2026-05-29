@@ -331,6 +331,12 @@
   <div id="history-list"></div>
 </section>
 
+<!-- ACTIVE BAKES VIEW -->
+<section class="view" id="view-active-bakes">
+  <div class="section-title">Active Bakes</div>
+  <div id="active-bakes-list"></div>
+</section>
+
 <!-- TAB BAR -->
 <nav class="tabs">
   <button class="active" data-view="view-recipes">
@@ -340,6 +346,11 @@
   <button data-view="view-schedule">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
     Schedule
+  </button>
+  <button data-view="view-active-bakes" id="tab-active" style="position: relative;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2L4 7l8 5 8-5-8-5z"/><path d="M4 17l8 5 8-5"/><path d="M4 12l8 5 8-5"/></svg>
+    Active
+    <span id="active-badge" style="display:none; position:absolute; top:4px; right:14px; min-width:18px; height:18px; padding:0 5px; background:var(--crust); color:white; border-radius:100px; font-size:10px; font-weight:700; font-family:Inter,sans-serif; line-height:18px; text-align:center;">0</span>
   </button>
   <button data-view="view-history">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/><path d="M12 7v5l3 2"/></svg>
@@ -527,6 +538,39 @@
   </div>
 </div>
 
+<!-- QUICK STAGE EDIT MODAL (during active bake) -->
+<div class="modal-backdrop" id="modal-stage-edit">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Edit Stage</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="help" style="margin-bottom: 14px;">Changes save to the recipe permanently. Future bakes will use the updated version.</p>
+      <div class="field">
+        <label>Stage Name</label>
+        <input type="text" id="se-name" placeholder="e.g. Fold 1">
+      </div>
+      <div class="field">
+        <label>Duration (minutes)</label>
+        <input type="number" id="se-dur" inputmode="numeric" min="0">
+        <p class="help" style="margin-top: 6px;" id="se-dur-help">Changing duration of upcoming stages will shift the rest of the bake.</p>
+      </div>
+      <div class="field">
+        <label>Detail / Notes</label>
+        <textarea id="se-detail" placeholder="Tips, reminders, what to watch for..." style="min-height: 90px;"></textarea>
+      </div>
+      <div class="field">
+        <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink);">
+          <input type="checkbox" id="se-iswait" style="width: auto;"> Wait/rest period (auto-advances when done)
+        </label>
+      </div>
+      <button class="btn btn-primary btn-block" id="se-save">Save to Recipe</button>
+      <button class="btn btn-block btn-ghost" id="se-cancel" style="margin-top: 8px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div class="modal-backdrop" id="modal-settings">
   <div class="modal">
@@ -643,10 +687,52 @@
     scheduleStart: null,
     scheduleFinish: null,
     scaleFactor: 1,
-    activeBake: null,
+    activeBakes: [], // [{ id, recipeId, startedAt, stageStates, scaleFactor, color }]
+    focusedBakeId: null, // which active bake is currently shown in the schedule view
     editingRecipe: null,
-    syncCode: null, // Firestore sync code; null = sync disabled
+    syncCode: null,
   };
+
+  // 6 distinct bread-themed colors for simultaneous bakes
+  const BAKE_COLORS = [
+    { id: 'crust',      hex: '#c97b3c', soft: '#f7e8d4', name: 'Crust' },
+    { id: 'leaven',     hex: '#7a8d5c', soft: '#e8eed8', name: 'Leaven' },
+    { id: 'slate',      hex: '#5b8aa5', soft: '#dceaf2', name: 'Slate' },
+    { id: 'plum',       hex: '#9b7aa5', soft: '#e8dfec', name: 'Plum' },
+    { id: 'honey',      hex: '#d4a843', soft: '#f7ecc8', name: 'Honey' },
+    { id: 'terracotta', hex: '#c45a4a', soft: '#f3d7d2', name: 'Terracotta' },
+  ];
+  const MAX_ACTIVE_BAKES = 6;
+
+  function pickNextBakeColor() {
+    const used = new Set((state.activeBakes || []).map(b => b.color));
+    for (const c of BAKE_COLORS) {
+      if (!used.has(c.id)) return c.id;
+    }
+    return BAKE_COLORS[0].id;
+  }
+
+  function getBakeColor(colorId) {
+    return BAKE_COLORS.find(c => c.id === colorId) || BAKE_COLORS[0];
+  }
+
+  function getActiveBakeById(id) {
+    return (state.activeBakes || []).find(b => b.id === id) || null;
+  }
+
+  function getActiveBakeForRecipe(recipeId) {
+    return (state.activeBakes || []).find(b => b.recipeId === recipeId) || null;
+  }
+
+  // Backward-compat accessor: returns the focused bake or the first active bake
+  function getFocusedBake() {
+    if (!state.activeBakes || state.activeBakes.length === 0) return null;
+    if (state.focusedBakeId) {
+      const found = state.activeBakes.find(b => b.id === state.focusedBakeId);
+      if (found) return found;
+    }
+    return state.activeBakes[0];
+  }
 
   const LS_KEY = 'crumb-state-v1';
 
@@ -665,6 +751,21 @@
       if (!Array.isArray(state.categories)) state.categories = [];
       if (typeof state.scaleFactor !== 'number' || !state.scaleFactor) state.scaleFactor = 1;
       if (state.scheduleMode !== 'finish' && state.scheduleMode !== 'now') state.scheduleMode = 'now';
+      if (!Array.isArray(state.activeBakes)) state.activeBakes = [];
+
+      // Migrate legacy single activeBake to activeBakes array
+      if (state.activeBake && typeof state.activeBake === 'object' && state.activeBake.recipeId) {
+        const legacy = state.activeBake;
+        state.activeBakes.push({
+          id: legacy.id || uid(),
+          recipeId: legacy.recipeId,
+          startedAt: legacy.startedAt,
+          stageStates: legacy.stageStates || [],
+          scaleFactor: legacy.scaleFactor || 1,
+          color: legacy.color || pickNextBakeColor(),
+        });
+      }
+      state.activeBake = null; // clear legacy field
     } catch (e) { console.error('load failed', e); }
   }
 
@@ -679,7 +780,8 @@
         scheduleStart: state.scheduleStart,
         scheduleFinish: state.scheduleFinish,
         scaleFactor: state.scaleFactor,
-        activeBake: state.activeBake,
+        activeBakes: state.activeBakes,
+        focusedBakeId: state.focusedBakeId,
         syncCode: state.syncCode,
       }));
     } catch (e) { console.error('save failed', e); }
@@ -945,12 +1047,14 @@
     if (groups.has('uncategorized')) orderedKeys.push('uncategorized');
 
     const renderItem = (r) => {
-      const isBaking = state.activeBake && state.activeBake.recipeId === r.id;
+      const bake = getActiveBakeForRecipe(r.id);
+      const isBaking = !!bake;
+      const c = isBaking ? getBakeColor(bake.color) : null;
       return `
-        <div class="recipe-item" data-id="${r.id}">
+        <div class="recipe-item" data-id="${r.id}"${isBaking ? ` style="border-left: 3px solid ${c.hex};"` : ''}>
           <div class="recipe-thumb">${r.icon || DEFAULT_ICON}</div>
           <div class="recipe-meta">
-            <div class="recipe-name">${escapeHtml(r.name)}${isBaking ? ' <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;background:var(--crust);color:white;padding:2px 8px;border-radius:100px;font-family:Inter;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;vertical-align:middle;margin-left:6px;"><span style="width:5px;height:5px;background:white;border-radius:50%;display:inline-block;animation:pulse 1.6s ease-in-out infinite;"></span>Baking</span>' : ''}</div>
+            <div class="recipe-name">${escapeHtml(r.name)}${isBaking ? ` <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;background:${c.hex};color:white;padding:2px 8px;border-radius:100px;font-family:Inter;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;vertical-align:middle;margin-left:6px;"><span style="width:5px;height:5px;background:white;border-radius:50%;display:inline-block;animation:pulse 1.6s ease-in-out infinite;"></span>Baking</span>` : ''}</div>
             <div class="recipe-sub">${r.stages.length} stages · ${formatDur(totalMinutes(r))} total</div>
           </div>
           <div class="recipe-chev">›</div>
@@ -977,7 +1081,32 @@
     }
 
     list.querySelectorAll('.recipe-item').forEach(el => {
-      el.addEventListener('click', () => openSchedule(el.dataset.id));
+      el.addEventListener('click', async () => {
+        const recipeId = el.dataset.id;
+        const activeForThis = getActiveBakeForRecipe(recipeId);
+        if (activeForThis) {
+          // Recipe is currently baking — offer choice
+          const recipe = state.recipes.find(r => r.id === recipeId);
+          const choice = await showConfirm({
+            title: `${recipe ? recipe.name : 'Recipe'} is currently baking`,
+            message: 'What would you like to do?',
+            buttons: [
+              { label: 'Open Active Bake', style: 'primary', value: 'bake' },
+              { label: 'Edit Recipe', style: 'default', value: 'edit' },
+              { label: 'Cancel', style: 'ghost', value: 'cancel' },
+            ],
+          });
+          if (choice === 'bake') {
+            state.focusedBakeId = activeForThis.id;
+            saveState();
+            openSchedule(recipeId);
+          } else if (choice === 'edit') {
+            openRecipeEditor(state.recipes.find(r => r.id === recipeId));
+          }
+        } else {
+          openSchedule(recipeId);
+        }
+      });
     });
     list.querySelectorAll('[data-rename-cat]').forEach(b => {
       b.addEventListener('click', (e) => {
@@ -1097,8 +1226,12 @@
 
   function openSchedule(recipeId) {
     state.currentRecipeId = recipeId;
-    // Always reset start time to now when opening a recipe (unless a bake is already active)
-    if (!state.activeBake || state.activeBake.recipeId !== recipeId) {
+    const activeForThis = getActiveBakeForRecipe(recipeId);
+    // If a bake exists for this recipe, focus it
+    if (activeForThis) {
+      state.focusedBakeId = activeForThis.id;
+    } else {
+      // Reset schedule planning state for fresh scheduling
       state.scheduleStart = new Date();
       state.scheduleMode = 'now';
       state.scheduleFinish = null;
@@ -1118,8 +1251,9 @@
     }
 
     // If a bake is active for this recipe, render bake mode instead
-    if (state.activeBake && state.activeBake.recipeId === recipe.id) {
-      renderActiveBake(recipe);
+    const activeForThis = getActiveBakeForRecipe(recipe.id);
+    if (activeForThis) {
+      renderActiveBake(recipe, activeForThis);
       return;
     }
 
@@ -1289,49 +1423,76 @@
   // ACTIVE BAKE MODE
   // ============================================================
   async function startBake(recipe, startTime) {
-    if (state.activeBake) {
+    // Allow up to MAX_ACTIVE_BAKES simultaneous bakes
+    if (state.activeBakes.length >= MAX_ACTIVE_BAKES) {
+      await showConfirm({
+        title: 'Active bake limit reached',
+        message: `You can have up to ${MAX_ACTIVE_BAKES} bakes going at once. Finish or end one before starting another.`,
+        buttons: [{ label: 'OK', style: 'primary', value: 'ok' }],
+      });
+      return;
+    }
+    // If THIS recipe is already baking, ask before starting again
+    const existing = getActiveBakeForRecipe(recipe.id);
+    if (existing) {
       const choice = await showConfirm({
-        title: 'Replace current bake?',
-        message: 'Another bake is in progress. Starting this one will end the other.',
+        title: `${recipe.name} is already baking`,
+        message: 'Start a second concurrent bake of the same recipe?',
         buttons: [
-          { label: 'Replace', style: 'primary', value: 'yes' },
+          { label: 'Start another', style: 'primary', value: 'yes' },
           { label: 'Cancel', style: 'ghost', value: 'no' },
         ],
       });
       if (choice !== 'yes') return;
     }
-    state.activeBake = {
+    const newBake = {
+      id: uid(),
       recipeId: recipe.id,
       startedAt: startTime.toISOString(),
       stageStates: recipe.stages.map(() => ({ done: false, doneAt: null })),
       scaleFactor: state.scaleFactor || 1,
+      color: pickNextBakeColor(),
     };
+    state.activeBakes.push(newBake);
+    state.focusedBakeId = newBake.id;
     saveState();
     renderSchedule();
+    updateActiveTabBadge();
     startBakeTicker();
     toast('Bake started');
   }
 
-  function endBake(save = true) {
-    if (!state.activeBake) return;
+  // Remove an active bake by id; if it was focused, clear focus
+  function removeActiveBake(bakeId) {
+    state.activeBakes = state.activeBakes.filter(b => b.id !== bakeId);
+    if (state.focusedBakeId === bakeId) {
+      state.focusedBakeId = state.activeBakes.length > 0 ? state.activeBakes[0].id : null;
+    }
+  }
+
+  function endBake(bakeOrId, save = true) {
+    const bake = typeof bakeOrId === 'string' ? getActiveBakeById(bakeOrId) : bakeOrId;
+    if (!bake) return;
     if (save) {
-      // Open the notes modal instead of saving immediately
-      openBakeNotes(null, state.activeBake);
+      // Open the notes modal — bake reference is stashed so finalizeBakeSave knows which bake
+      openBakeNotes(null, bake);
     } else {
-      state.activeBake = null;
+      removeActiveBake(bake.id);
       saveState();
-      stopBakeTicker();
+      const stillBaking = state.activeBakes.length > 0;
+      if (!stillBaking) stopBakeTicker();
       renderRecipes();
       renderSchedule();
+      if (document.getElementById('view-active-bakes').classList.contains('active')) renderActiveBakes();
+      updateActiveTabBadge();
       toast('Bake discarded');
     }
   }
 
   // Finalize the save after notes modal closes
   function finalizeBakeSave(notesData) {
-    if (!state.activeBake && !notesData._editingBakeId) return;
     if (notesData._editingBakeId) {
-      // Editing existing bake
+      // Editing an existing bake from history
       const b = state.bakes.find(x => x.id === notesData._editingBakeId);
       if (!b) return;
       Object.assign(b, {
@@ -1345,30 +1506,37 @@
       saveState();
       renderHistory();
       toast('Bake updated');
-    } else {
-      // New bake from active session
-      state.bakes = state.bakes || [];
-      state.bakes.push({
-        id: uid(),
-        recipeId: state.activeBake.recipeId,
-        startedAt: state.activeBake.startedAt,
-        completedAt: new Date().toISOString(),
-        stageStates: state.activeBake.stageStates,
-        scaleFactor: state.activeBake.scaleFactor || 1,
-        kitchenTemp: notesData.kitchenTemp,
-        score: notesData.score,
-        worked: notesData.worked,
-        changeNext: notesData.changeNext,
-        notes: notesData.notes,
-        photos: notesData.photos,
-      });
-      state.activeBake = null;
-      saveState();
-      stopBakeTicker();
-      renderRecipes();
-      renderSchedule();
-      toast('Bake logged to history');
+      return;
     }
+    // New bake from active session — bakeId tells us which active bake to finalize
+    const activeBake = notesData._activeBakeId
+      ? getActiveBakeById(notesData._activeBakeId)
+      : (state.activeBakes.length === 1 ? state.activeBakes[0] : null);
+    if (!activeBake) return;
+    state.bakes = state.bakes || [];
+    state.bakes.push({
+      id: uid(),
+      recipeId: activeBake.recipeId,
+      startedAt: activeBake.startedAt,
+      completedAt: new Date().toISOString(),
+      stageStates: activeBake.stageStates,
+      scaleFactor: activeBake.scaleFactor || 1,
+      kitchenTemp: notesData.kitchenTemp,
+      score: notesData.score,
+      worked: notesData.worked,
+      changeNext: notesData.changeNext,
+      notes: notesData.notes,
+      photos: notesData.photos,
+    });
+    removeActiveBake(activeBake.id);
+    saveState();
+    const stillBaking = state.activeBakes.length > 0;
+    if (!stillBaking) stopBakeTicker();
+    renderRecipes();
+    renderSchedule();
+    if (document.getElementById('view-active-bakes').classList.contains('active')) renderActiveBakes();
+    updateActiveTabBadge();
+    toast('Bake logged to history');
   }
 
   // ============================================================
@@ -1392,6 +1560,7 @@
       if (!b) return;
       bakeNotesState = {
         editingBakeId: existingBakeId,
+        activeBakeId: null,
         kitchenTemp: b.kitchenTemp || '',
         score: b.score || 0,
         worked: b.worked || '',
@@ -1403,6 +1572,7 @@
     } else {
       bakeNotesState = {
         editingBakeId: null,
+        activeBakeId: activeBake ? activeBake.id : null,
         kitchenTemp: '', score: 0, worked: '', changeNext: '', notes: '', photos: [],
       };
       document.getElementById('bake-notes-title').textContent = 'Save Bake';
@@ -1495,8 +1665,8 @@
     document.getElementById('photo-viewer').classList.add('show');
   }
 
-  function getCurrentStageIdx(recipe) {
-    const ab = state.activeBake;
+  function getCurrentStageIdx(recipe, bake) {
+    const ab = bake || getFocusedBake();
     if (!ab) return -1;
     // First not-done stage
     for (let i = 0; i < recipe.stages.length; i++) {
@@ -1508,26 +1678,26 @@
   // #1 — Auto-advance WAIT stages once their planned end passes.
   // Wait stages are time-based (ferments, proofs) so no manual tap is needed.
   // Returns true if anything changed.
-  function autoAdvanceWaitStages(recipe) {
-    const ab = state.activeBake;
+  function autoAdvanceWaitStages(recipe, bake) {
+    const ab = bake || getFocusedBake();
     if (!ab) return false;
     let changed = false;
     const now = Date.now();
     // Process sequentially: only auto-complete the current stage if it's a wait stage and overdue
     let guard = 0;
     while (guard++ < recipe.stages.length) {
-      const idx = getCurrentStageIdx(recipe);
+      const idx = getCurrentStageIdx(recipe, ab);
       if (idx === -1) break;
       const stage = recipe.stages[idx];
       if (!stage.isWait) break; // hands-on stage — stop, needs manual tap
-      const end = getStageScheduledStart(recipe, idx).getTime() + stage.durMin * 60000;
+      const end = getStageScheduledStart(recipe, idx, ab).getTime() + stage.durMin * 60000;
       if (now >= end) {
         ab.stageStates[idx].done = true;
-        ab.stageStates[idx].doneAt = new Date(end).toISOString(); // mark done at planned end
+        ab.stageStates[idx].doneAt = new Date(end).toISOString();
         ab.stageStates[idx].autoAdvanced = true;
         changed = true;
       } else {
-        break; // current wait stage not yet over
+        break;
       }
     }
     if (changed) saveState();
@@ -1537,29 +1707,27 @@
   // #5 — Detect a hands-on stage that's significantly overdue and needs a catch-up prompt.
   // Returns the overdue stage index, or -1.
   const OVERDUE_THRESHOLD_MIN = 15;
-  function findOverdueHandsOnStage(recipe) {
-    const ab = state.activeBake;
+  function findOverdueHandsOnStage(recipe, bake) {
+    const ab = bake || getFocusedBake();
     if (!ab) return -1;
-    const idx = getCurrentStageIdx(recipe);
+    const idx = getCurrentStageIdx(recipe, ab);
     if (idx === -1) return -1;
     const stage = recipe.stages[idx];
-    if (stage.isWait) return -1; // wait stages auto-advance, never prompt
-    const end = getStageScheduledStart(recipe, idx).getTime() + stage.durMin * 60000;
+    if (stage.isWait) return -1;
+    const end = getStageScheduledStart(recipe, idx, ab).getTime() + stage.durMin * 60000;
     const overdueMin = (Date.now() - end) / 60000;
     if (overdueMin >= OVERDUE_THRESHOLD_MIN) return idx;
     return -1;
   }
 
   let catchupDialogOpen = false;
-  async function maybePromptCatchup(recipe) {
+  async function maybePromptCatchup(recipe, bake) {
     if (catchupDialogOpen) return;
-    const ab = state.activeBake;
+    const ab = bake || getFocusedBake();
     if (!ab) return;
-    const idx = findOverdueHandsOnStage(recipe);
+    const idx = findOverdueHandsOnStage(recipe, ab);
     if (idx === -1) return;
-    // Don't re-prompt for a stage we've already prompted this session and the user said "not yet"
     if (ab.stageStates[idx].catchupDismissedAt) {
-      // Re-prompt only if it's been another 15 min since dismissal
       if (Date.now() - new Date(ab.stageStates[idx].catchupDismissedAt).getTime() < OVERDUE_THRESHOLD_MIN * 60000) {
         return;
       }
@@ -1588,13 +1756,14 @@
       ab.stageStates[idx].doneAt = new Date(Date.now() - minsAgo * 60000).toISOString();
       saveState();
     }
-    renderActiveBake(recipe);
+    renderActiveBake(recipe, ab);
     startBakeTicker();
   }
 
-  function getStageScheduledStart(recipe, stageIdx) {
+  function getStageScheduledStart(recipe, stageIdx, bake) {
     // Use actual done-times when available, fall back to planned durations from previous done stage
-    const ab = state.activeBake;
+    const ab = bake || getFocusedBake();
+    if (!ab) return new Date();
     const baseStart = new Date(ab.startedAt);
     let t = baseStart;
     for (let i = 0; i < stageIdx; i++) {
@@ -1607,20 +1776,72 @@
     return t;
   }
 
-  function renderActiveBake(recipe) {
-    const ab = state.activeBake;
+  // Open the quick stage editor (during active bake) — edits the recipe permanently
+  function openStageEditor(recipe, stageIdx, bake) {
+    const stage = recipe.stages[stageIdx];
+    if (!stage) return;
+    const ab = bake || getFocusedBake();
+    const isDone = ab && ab.stageStates[stageIdx] && ab.stageStates[stageIdx].done;
+
+    document.getElementById('se-name').value = stage.name || '';
+    document.getElementById('se-dur').value = stage.durMin || 0;
+    document.getElementById('se-detail').value = stage.detail || '';
+    document.getElementById('se-iswait').checked = !!stage.isWait;
+
+    // Disable duration editing for completed stages (would corrupt timing history)
+    const durInput = document.getElementById('se-dur');
+    const durHelp = document.getElementById('se-dur-help');
+    if (isDone) {
+      durInput.disabled = true;
+      durHelp.textContent = 'Duration is locked — this stage has already been completed.';
+    } else {
+      durInput.disabled = false;
+      durHelp.textContent = 'Changing duration of upcoming stages will shift the rest of the bake.';
+    }
+
+    document.getElementById('se-save').onclick = () => {
+      const newName = document.getElementById('se-name').value.trim() || stage.name;
+      const newDurRaw = parseInt(document.getElementById('se-dur').value);
+      const newDur = isDone ? stage.durMin : (isNaN(newDurRaw) || newDurRaw < 0 ? stage.durMin : newDurRaw);
+      const newDetail = document.getElementById('se-detail').value;
+      const newIsWait = document.getElementById('se-iswait').checked;
+
+      // Mutate the recipe stored in state.recipes
+      stage.name = newName;
+      stage.durMin = newDur;
+      stage.detail = newDetail;
+      stage.isWait = newIsWait;
+      saveState();
+      hideModal('modal-stage-edit');
+      renderActiveBake(recipe, ab);
+      startBakeTicker();
+      toast('Stage updated');
+    };
+
+    document.getElementById('se-cancel').onclick = () => {
+      hideModal('modal-stage-edit');
+      startBakeTicker();
+    };
+
+    showModal('modal-stage-edit');
+  }
+
+  function renderActiveBake(recipe, bake) {
+    const ab = bake || getFocusedBake();
+    if (!ab) return;
+    const color = getBakeColor(ab.color);
     const container = document.getElementById('schedule-content');
     // #1 — auto-complete any wait stages whose time has passed
-    autoAdvanceWaitStages(recipe);
-    const curIdx = getCurrentStageIdx(recipe);
+    autoAdvanceWaitStages(recipe, ab);
+    const curIdx = getCurrentStageIdx(recipe, ab);
     const allDone = curIdx === -1;
 
     // #5 — if a hands-on stage is well overdue, prompt to catch up (async, won't block render)
-    maybePromptCatchup(recipe);
+    maybePromptCatchup(recipe, ab);
 
     if (allDone) {
       container.innerHTML = `
-        <div class="bake-banner"><span class="label"><span class="dot"></span>Bake complete</span></div>
+        <div class="bake-banner" style="--bake-accent: ${color.hex}; --bake-accent-soft: ${color.soft};"><span class="label"><span class="dot"></span>Bake complete</span></div>
         <div class="bake-hero idle">
           <div class="status">All stages complete</div>
           <div class="stage-name">${escapeHtml(recipe.name)}</div>
@@ -1629,7 +1850,7 @@
         <button class="btn btn-primary btn-block" id="btn-save-bake">Save to History</button>
         <button class="btn btn-block" id="btn-discard-bake" style="margin-top: 8px; color: var(--warn);">Discard Bake</button>
       `;
-      document.getElementById('btn-save-bake').onclick = () => endBake(true);
+      document.getElementById('btn-save-bake').onclick = () => endBake(ab.id, true);
       document.getElementById('btn-discard-bake').onclick = async () => {
         const choice = await showConfirm({
           title: 'Discard this bake?',
@@ -1639,19 +1860,18 @@
             { label: 'Cancel', style: 'ghost', value: 'no' },
           ],
         });
-        if (choice === 'yes') endBake(false);
+        if (choice === 'yes') endBake(ab.id, false);
       };
       return;
     }
 
     const curStage = recipe.stages[curIdx];
-    const scheduledStart = getStageScheduledStart(recipe, curIdx);
+    const scheduledStart = getStageScheduledStart(recipe, curIdx, ab);
     const scheduledEnd = new Date(scheduledStart.getTime() + curStage.durMin * 60000);
     const now = new Date();
     const msToEnd = scheduledEnd - now;
     const msToStart = scheduledStart - now;
 
-    // Determine state: pre-start, in-stage, overdue, waiting
     let heroState = '';
     let statusText = '';
     let countdownLabel = '';
@@ -1660,21 +1880,18 @@
     let showOverdueBadge = false;
 
     if (msToStart > 0) {
-      // Before this stage even starts (rare — happens if previous was done early)
       heroState = 'waiting';
       statusText = 'Up next';
       countdownLabel = 'Starts in';
       countdownValue = formatCountdown(msToStart);
       countdownWhen = `at ${formatTime(scheduledStart)}`;
     } else if (curStage.isWait) {
-      // Currently in a wait stage — will auto-advance, so "over" just means transitioning
       heroState = 'waiting';
       statusText = 'Now resting';
       countdownLabel = 'Ready in';
       countdownValue = formatCountdown(Math.abs(msToEnd));
       countdownWhen = `at ${formatTime(scheduledEnd)}`;
     } else {
-      // Active hands-on stage — this is where real urgency lives
       heroState = msToEnd < 0 ? 'overdue' : '';
       statusText = msToEnd < 0 ? 'Past scheduled end' : 'Now doing';
       countdownLabel = msToEnd < 0 ? 'Overdue by' : 'Should be done in';
@@ -1683,13 +1900,30 @@
       showOverdueBadge = msToEnd < 0;
     }
 
+    // Count of other concurrent bakes for switcher
+    const otherBakes = state.activeBakes.filter(b => b.id !== ab.id);
+
     container.innerHTML = `
-      <div class="bake-banner">
-        <span class="label"><span class="dot"></span>Bake in progress</span>
-        <button id="btn-end-bake" style="background: var(--crust); color: white; border: none; padding: 6px 14px; border-radius: 100px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;">End Bake</button>
+      ${otherBakes.length > 0 ? `
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; align-items: center;">
+          <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;">Active:</div>
+          ${state.activeBakes.map(b => {
+            const c = getBakeColor(b.color);
+            const r = state.recipes.find(x => x.id === b.recipeId);
+            const active = b.id === ab.id;
+            return `<button data-switch-bake="${b.id}" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 100px; border: 1px solid ${active ? c.hex : 'var(--line)'}; background: ${active ? c.soft : 'var(--bg-elev)'}; color: var(--ink); font-family: inherit; font-size: 12px; font-weight: ${active ? '600' : '500'}; cursor: pointer;">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: ${c.hex};"></span>
+              ${r ? escapeHtml(r.name) : 'Unknown'}
+            </button>`;
+          }).join('')}
+        </div>
+      ` : ''}
+      <div class="bake-banner" style="border-color: ${color.hex}; background: ${color.soft}; color: ${color.hex};">
+        <span class="label"><span class="dot" style="background: ${color.hex};"></span>Bake in progress</span>
+        <button id="btn-end-bake" style="background: ${color.hex}; color: white; border: none; padding: 6px 14px; border-radius: 100px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;">End Bake</button>
       </div>
 
-      <div class="bake-hero ${heroState}">
+      <div class="bake-hero ${heroState}" style="--bake-accent: ${color.hex}; --bake-accent-soft: ${color.soft};">
         ${showOverdueBadge ? '<div class="overdue-badge">Overdue · Don\'t forget to mark done</div>' : ''}
         <div class="status">${statusText} · Stage ${curIdx + 1} of ${recipe.stages.length}</div>
         <div class="stage-name">${escapeHtml(curStage.name)}</div>
@@ -1702,16 +1936,20 @@
       </div>
 
       <div class="done-btn">
-        <button class="btn btn-done btn-block" id="btn-mark-done">
+        <button class="btn btn-done btn-block" id="btn-mark-done" style="background: ${color.hex};">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
           Mark Done
         </button>
       </div>
 
+      <button class="btn btn-block" id="btn-shortcut-active" style="margin-top: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        Send Remaining to Reminders
+      </button>
+
       <div class="section-title">All Stages</div>
       <div class="upcoming-list">
         ${(() => {
-          // Compute original planned times (based on initial start, ignoring actual done times)
           const originalStart = new Date(ab.startedAt);
           const plannedTimes = [];
           let t = originalStart;
@@ -1724,7 +1962,7 @@
           const pacing = computeRecipePacing(recipe);
           return recipe.stages.map((s, i) => {
             const st = ab.stageStates[i];
-            const stStart = getStageScheduledStart(recipe, i);
+            const stStart = getStageScheduledStart(recipe, i, ab);
             const planned = plannedTimes[i];
             const isCurrent = i === curIdx;
 
@@ -1743,24 +1981,29 @@
                 timeLine = `Completed at ${formatTime(doneAt)} · Planned ${formatTime(planned.end)}${diffLabel}`;
               }
             } else {
-              // For upcoming stages, append pacing hint if we have one
               let pacingHint = '';
               const p = pacing && pacing[i];
               if (p && Math.abs(p.medianDriftMin) >= 2) {
-                const color = p.medianDriftMin > 0 ? 'var(--warn)' : 'var(--leaven)';
-                pacingHint = ` · <span style="color: ${color};">usually ${formatDrift(p.medianDriftMin)}</span>`;
+                const colorVar = p.medianDriftMin > 0 ? 'var(--warn)' : 'var(--leaven)';
+                pacingHint = ` · <span style="color: ${colorVar};">usually ${formatDrift(p.medianDriftMin)}</span>`;
               }
               timeLine = `${formatTime(stStart)} · ${formatDur(s.durMin)}${pacingHint}`;
             }
 
             return `
-              <div class="upcoming-item ${st.done ? 'done' : ''}" style="${isCurrent ? 'border-color: var(--crust); background: var(--bg-warm);' : ''}">
-                <div class="num">${st.done ? '✓' : i + 1}</div>
+              <div class="upcoming-item ${st.done ? 'done' : ''}" style="${isCurrent ? `border-color: ${color.hex}; background: ${color.soft};` : ''}">
+                <div class="num"${isCurrent ? ` style="background: ${color.hex}; color: white;"` : ''}>${st.done ? '✓' : i + 1}</div>
                 <div class="info">
                   <div class="nm">${escapeHtml(s.name)}</div>
                   <div class="tm">${timeLine}</div>
+                  ${s.detail ? `<div style="font-size: 11px; color: var(--ink-mute); margin-top: 2px; line-height: 1.4;">${escapeHtml(s.detail)}</div>` : ''}
                 </div>
-                ${!st.done && !isCurrent ? `<button class="btn-ghost btn btn-sm" data-skip-to="${i}" style="padding: 4px 10px; font-size: 11px; color: var(--ink-mute);">Skip to</button>` : ''}
+                <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                  ${!st.done && !isCurrent ? `<button class="btn-ghost btn btn-sm" data-skip-to="${i}" style="padding: 4px 8px; font-size: 11px; color: var(--ink-mute);">Skip to</button>` : ''}
+                  <button class="btn-ghost btn btn-sm" data-edit-stage="${i}" style="padding: 4px 8px; font-size: 11px; color: var(--ink-mute);" aria-label="Edit stage">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                </div>
               </div>
             `;
           }).join('');
@@ -1768,8 +2011,7 @@
       </div>
     `;
 
-    // Event delegation on the container — handlers survive ticker re-renders
-    // Remove any previous delegated handler first
+    // Event delegation
     if (container._bakeClickHandler) {
       container.removeEventListener('click', container._bakeClickHandler);
     }
@@ -1777,6 +2019,57 @@
       const endBtn = e.target.closest('#btn-end-bake');
       const doneBtn = e.target.closest('#btn-mark-done');
       const skipBtn = e.target.closest('[data-skip-to]');
+      const shortcutBtn = e.target.closest('#btn-shortcut-active');
+      const editBtn = e.target.closest('[data-edit-stage]');
+      const switchBtn = e.target.closest('[data-switch-bake]');
+
+      if (switchBtn) {
+        const targetId = switchBtn.dataset.switchBake;
+        if (targetId === ab.id) return;
+        state.focusedBakeId = targetId;
+        const targetBake = getActiveBakeById(targetId);
+        if (!targetBake) return;
+        const targetRecipe = state.recipes.find(r => r.id === targetBake.recipeId);
+        if (!targetRecipe) return;
+        state.currentRecipeId = targetRecipe.id;
+        saveState();
+        renderActiveBake(targetRecipe, targetBake);
+        return;
+      }
+
+      if (editBtn) {
+        stopBakeTicker();
+        openStageEditor(recipe, +editBtn.dataset.editStage, ab);
+        return;
+      }
+
+      if (shortcutBtn) {
+        stopBakeTicker();
+        const remainingTimeline = [];
+        for (let i = 0; i < recipe.stages.length; i++) {
+          if (ab.stageStates[i].done) continue;
+          const stage = recipe.stages[i];
+          const start = getStageScheduledStart(recipe, i, ab);
+          const end = new Date(start.getTime() + stage.durMin * 60000);
+          remainingTimeline.push({
+            idx: i,
+            name: stage.name,
+            detail: stage.detail || '',
+            isWait: !!stage.isWait,
+            startAt: start,
+            endAt: end,
+            durMin: stage.durMin,
+          });
+        }
+        if (remainingTimeline.length === 0) {
+          toast('No remaining stages to send');
+          startBakeTicker();
+          return;
+        }
+        openShortcutModal(recipe, remainingTimeline);
+        startBakeTicker();
+        return;
+      }
 
       if (endBtn) {
         stopBakeTicker();
@@ -1789,8 +2082,8 @@
             { label: 'Keep Baking', style: 'ghost', value: 'cancel' },
           ],
         });
-        if (choice === 'save') endBake(true);
-        else if (choice === 'discard') endBake(false);
+        if (choice === 'save') endBake(ab.id, true);
+        else if (choice === 'discard') endBake(ab.id, false);
         else startBakeTicker();
         return;
       }
@@ -1800,7 +2093,7 @@
         ab.stageStates[curIdx].done = true;
         ab.stageStates[curIdx].doneAt = new Date().toISOString();
         saveState();
-        renderActiveBake(recipe);
+        renderActiveBake(recipe, ab);
         startBakeTicker();
         return;
       }
@@ -1825,7 +2118,7 @@
             }
           }
           saveState();
-          renderActiveBake(recipe);
+          renderActiveBake(recipe, ab);
         }
         startBakeTicker();
         return;
@@ -1839,11 +2132,17 @@
   function startBakeTicker() {
     stopBakeTicker();
     bakeTickerInterval = setInterval(() => {
-      // Only re-render if we're currently on the schedule view AND a bake is active
       const scheduleView = document.getElementById('view-schedule');
-      if (scheduleView && scheduleView.classList.contains('active') && state.activeBake) {
-        const recipe = state.recipes.find(r => r.id === state.activeBake.recipeId);
-        if (recipe) renderActiveBake(recipe);
+      const activeView = document.getElementById('view-active-bakes');
+      if (scheduleView && scheduleView.classList.contains('active')) {
+        const focused = getFocusedBake();
+        if (focused) {
+          const recipe = state.recipes.find(r => r.id === focused.recipeId);
+          if (recipe) renderActiveBake(recipe, focused);
+        }
+      }
+      if (activeView && activeView.classList.contains('active')) {
+        renderActiveBakes();
       }
     }, 1000);
   }
@@ -2288,6 +2587,125 @@ Here is the recipe:
     });
   }
 
+  // ============================================================
+  // ACTIVE BAKES VIEW
+  // ============================================================
+  function updateActiveTabBadge() {
+    const badge = document.getElementById('active-badge');
+    if (!badge) return;
+    const count = (state.activeBakes || []).length;
+    if (count === 0) {
+      badge.style.display = 'none';
+    } else {
+      badge.style.display = 'inline-block';
+      badge.textContent = String(count);
+    }
+  }
+
+  function renderActiveBakes() {
+    const list = document.getElementById('active-bakes-list');
+    const bakes = state.activeBakes || [];
+    if (bakes.length === 0) {
+      list.innerHTML = `
+        <div class="empty">
+          <div class="icon">🥖</div>
+          <div class="title">No active bakes</div>
+          <div class="body">Start a bake from any recipe to see it here. You can run up to ${MAX_ACTIVE_BAKES} bakes at once.</div>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = bakes.map(b => {
+      const recipe = state.recipes.find(r => r.id === b.recipeId);
+      if (!recipe) return '';
+      const color = getBakeColor(b.color);
+      const curIdx = getCurrentStageIdx(recipe, b);
+      const completedCount = b.stageStates.filter(s => s.done).length;
+      const totalCount = recipe.stages.length;
+      const progress = Math.round((completedCount / totalCount) * 100);
+      const allDone = curIdx === -1;
+
+      let statusLine = '';
+      let countdownLine = '';
+      if (allDone) {
+        statusLine = 'All stages complete';
+        countdownLine = '<span style="color: var(--leaven); font-weight: 600;">Ready to save</span>';
+      } else {
+        const stage = recipe.stages[curIdx];
+        const scheduledStart = getStageScheduledStart(recipe, curIdx, b);
+        const scheduledEnd = new Date(scheduledStart.getTime() + stage.durMin * 60000);
+        const msToEnd = scheduledEnd - new Date();
+        const msToStart = scheduledStart - new Date();
+        statusLine = `Stage ${curIdx + 1} of ${totalCount} · ${escapeHtml(stage.name)}`;
+        if (msToStart > 0) {
+          countdownLine = `Starts in ${formatCountdown(msToStart)}`;
+        } else if (stage.isWait) {
+          countdownLine = `Ready in <span class="mono">${formatCountdown(Math.abs(msToEnd))}</span>`;
+        } else if (msToEnd < 0) {
+          countdownLine = `<span style="color: var(--warn); font-weight: 600;">Overdue by ${formatCountdown(Math.abs(msToEnd))}</span>`;
+        } else {
+          countdownLine = `<span class="mono">${formatCountdown(Math.abs(msToEnd))}</span> remaining`;
+        }
+      }
+
+      return `
+        <div class="active-bake-card" data-bake-id="${b.id}" style="border-left: 4px solid ${color.hex}; background: var(--bg-elev); border: 1px solid var(--line); border-left: 4px solid ${color.hex}; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; cursor: pointer;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="font-size: 22px;">${recipe.icon || DEFAULT_ICON}</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1.2;">${escapeHtml(recipe.name)}</div>
+              <div style="font-size: 11px; color: ${color.hex}; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px;">${color.name}</div>
+            </div>
+            <button data-end-bake="${b.id}" style="background: none; border: 1px solid var(--line); color: var(--ink-mute); padding: 4px 10px; border-radius: 100px; font-family: inherit; font-size: 11px; font-weight: 500; cursor: pointer;">End</button>
+          </div>
+          <div style="font-size: 13px; color: var(--ink); margin-bottom: 4px;">${statusLine}</div>
+          <div style="font-size: 12px; color: var(--ink-mute); margin-bottom: 10px;">${countdownLine}</div>
+          <div style="height: 4px; background: var(--line); border-radius: 100px; overflow: hidden;">
+            <div style="height: 100%; width: ${progress}%; background: ${color.hex}; transition: width 0.3s;"></div>
+          </div>
+          <div style="font-size: 10px; color: var(--ink-mute); margin-top: 4px; font-family: 'JetBrains Mono', monospace;">${completedCount} / ${totalCount} stages</div>
+        </div>
+      `;
+    }).join('');
+
+    // Click on the card opens that bake in the schedule view
+    list.querySelectorAll('.active-bake-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        // Don't trigger if End button was clicked
+        if (e.target.closest('[data-end-bake]')) return;
+        const bakeId = card.dataset.bakeId;
+        const b = getActiveBakeById(bakeId);
+        if (!b) return;
+        state.focusedBakeId = bakeId;
+        state.currentRecipeId = b.recipeId;
+        saveState();
+        switchView('view-schedule');
+      });
+    });
+
+    // End buttons
+    list.querySelectorAll('[data-end-bake]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const bakeId = btn.dataset.endBake;
+        const b = getActiveBakeById(bakeId);
+        if (!b) return;
+        const recipe = state.recipes.find(r => r.id === b.recipeId);
+        const choice = await showConfirm({
+          title: `End "${recipe ? recipe.name : 'this bake'}"?`,
+          message: 'Save to history or discard without saving?',
+          buttons: [
+            { label: 'Save to History', style: 'primary', value: 'save' },
+            { label: 'Discard', style: 'danger', value: 'discard' },
+            { label: 'Cancel', style: 'ghost', value: 'cancel' },
+          ],
+        });
+        if (choice === 'save') endBake(bakeId, true);
+        else if (choice === 'discard') endBake(bakeId, false);
+      });
+    });
+  }
+
   function switchView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
@@ -2297,6 +2715,7 @@ Here is the recipe:
     if (viewId === 'view-recipes') renderRecipes();
     if (viewId === 'view-schedule') renderSchedule();
     if (viewId === 'view-history') renderHistory();
+    if (viewId === 'view-active-bakes') renderActiveBakes();
   }
 
   // ============================================================
@@ -2374,6 +2793,10 @@ Here is the recipe:
         importAppendMode = false;
         showModal('modal-recipe');
       }
+      // Resume bake ticker if the user closed the stage-edit modal mid-bake
+      if (modal.id === 'modal-stage-edit' && state.activeBakes.length > 0) {
+        startBakeTicker();
+      }
     });
   });
   document.querySelectorAll('.modal-backdrop').forEach(m => {
@@ -2383,6 +2806,9 @@ Here is the recipe:
         if (m.id === 'modal-import' && importAppendMode) {
           importAppendMode = false;
           showModal('modal-recipe');
+        }
+        if (m.id === 'modal-stage-edit' && state.activeBakes.length > 0) {
+          startBakeTicker();
         }
       }
     });
@@ -2413,6 +2839,7 @@ Here is the recipe:
   document.getElementById('bn-save').addEventListener('click', () => {
     const data = {
       _editingBakeId: bakeNotesState.editingBakeId,
+      _activeBakeId: bakeNotesState.activeBakeId,
       kitchenTemp: bakeNotesState.kitchenTemp,
       score: bakeNotesState.score,
       worked: bakeNotesState.worked,
@@ -2429,8 +2856,10 @@ Here is the recipe:
       hideModal('modal-bake-notes');
       return;
     }
+    const activeBakeId = bakeNotesState.activeBakeId;
     hideModal('modal-bake-notes');
     finalizeBakeSave({
+      _activeBakeId: activeBakeId,
       kitchenTemp: '', score: 0, worked: '', changeNext: '', notes: '', photos: [],
     });
   });
@@ -2511,7 +2940,7 @@ Here is the recipe:
           recipes: state.recipes,
           bakes: state.bakes,
           categories: state.categories,
-          activeBake: state.activeBake || null,
+          activeBakes: state.activeBakes || [],
           updatedAt: Date.now(),
         };
         suppressNextRemote = true;
@@ -2543,7 +2972,11 @@ Here is the recipe:
         if (Array.isArray(data.recipes)) state.recipes = data.recipes;
         if (Array.isArray(data.bakes)) state.bakes = data.bakes;
         if (Array.isArray(data.categories)) state.categories = data.categories;
-        if (data.activeBake !== undefined) state.activeBake = data.activeBake;
+        if (Array.isArray(data.activeBakes)) state.activeBakes = data.activeBakes;
+        else if (data.activeBake !== undefined) {
+          // Backward-compat: remote might be using old single-bake schema
+          state.activeBakes = data.activeBake ? [data.activeBake] : [];
+        }
         // Persist the merged result locally
         try {
           localStorage.setItem(LS_KEY, JSON.stringify({
@@ -2555,7 +2988,8 @@ Here is the recipe:
             scheduleStart: state.scheduleStart,
             scheduleFinish: state.scheduleFinish,
             scaleFactor: state.scaleFactor,
-            activeBake: state.activeBake,
+            activeBakes: state.activeBakes,
+            focusedBakeId: state.focusedBakeId,
             syncCode: state.syncCode,
           }));
         } catch (e) { console.error('local save failed', e); }
@@ -2565,9 +2999,12 @@ Here is the recipe:
           if (activeView.id === 'view-recipes') renderRecipes();
           if (activeView.id === 'view-schedule') renderSchedule();
           if (activeView.id === 'view-history') renderHistory();
+          if (activeView.id === 'view-active-bakes') renderActiveBakes();
         }
-        if (state.activeBake && !bakeTickerInterval) startBakeTicker();
-        else if (!state.activeBake && bakeTickerInterval) stopBakeTicker();
+        const hasAnyActive = state.activeBakes && state.activeBakes.length > 0;
+        if (hasAnyActive && !bakeTickerInterval) startBakeTicker();
+        else if (!hasAnyActive && bakeTickerInterval) stopBakeTicker();
+        updateActiveTabBadge();
       },
       (err) => {
         console.error('Firestore listener error:', err);
@@ -2698,7 +3135,8 @@ Here is the recipe:
   loadState();
   seedIfEmpty();
   renderRecipes();
-  if (state.activeBake) startBakeTicker();
+  updateActiveTabBadge();
+  if (state.activeBakes.length > 0) startBakeTicker();
   wireSyncControls();
 
   // Connect to Firebase once SDK is loaded
