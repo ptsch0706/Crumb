@@ -1384,6 +1384,7 @@
             message: 'Enter a multiplier (e.g. 0.75, 1.25, 4)',
             placeholder: 'e.g. 1.5',
             defaultValue: state.scaleFactor.toString(),
+            inputMode: 'decimal',
           });
           if (input === null) return;
           const n = parseFloat(input);
@@ -2492,7 +2493,10 @@ Here is the recipe:
       input.placeholder = opts.placeholder || '';
       input.value = opts.defaultValue || '';
       input.style.marginBottom = '12px';
-      input.inputMode = 'decimal';
+      // Caller can specify inputMode (numeric, decimal, text); default to text
+      input.inputMode = opts.inputMode || 'text';
+      if (opts.autocapitalize) input.setAttribute('autocapitalize', opts.autocapitalize);
+      if (opts.autocomplete) input.setAttribute('autocomplete', opts.autocomplete);
       btnContainer.appendChild(input);
 
       const okBtn = document.createElement('button');
@@ -3046,6 +3050,9 @@ Here is the recipe:
         message: 'Enter the sync code from your other device (6 letters/digits).',
         placeholder: 'e.g. ABC234',
         defaultValue: '',
+        inputMode: 'text',
+        autocapitalize: 'characters',
+        autocomplete: 'off',
       });
       if (!code || !code.trim()) return;
       const clean = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
