@@ -3,11 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#1a1612">
+<meta name="theme-color" content="#a35a22">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Crumb">
-<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23c97b3c'/><text x='50' y='68' font-size='60' text-anchor='middle' fill='%23fdf8f1' font-family='Georgia'>🌾</text></svg>">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="manifest" href="manifest.json">
 <title>Crumb — Bread Workflow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1828,6 +1832,10 @@ ${text}`;
         messages: [{ role: 'user', content: prompt }],
       }),
     });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`Claude API ${resp.status}: ${errText.slice(0, 100)}`);
+    }
     const data = await resp.json();
     if (!data || !data.content) throw new Error('Invalid API response');
     const txt = data.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
@@ -1982,9 +1990,34 @@ ${text}`;
     });
   }
 
+  // Downscale large images before OCR — phone photos are often 3000+px,
+  // which is wasteful and can crash Tesseract on mobile. ~1600px is plenty for text.
+  function downscaleForOcr(dataUrl, maxDim = 1600) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width <= maxDim && height <= maxDim) {
+          resolve(dataUrl); // already small enough
+          return;
+        }
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        const w = Math.round(width * ratio);
+        const h = Math.round(height * ratio);
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.92));
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+
   async function runOcrAndParse() {
     if (selectedPhotos.length === 0) { toast('Choose at least one photo'); return; }
-    if (typeof Tesseract === 'undefined') { toast('OCR engine failed to load — check connection'); return; }
+    if (typeof Tesseract === 'undefined') { toast('OCR engine failed to load — check connection or reload the app'); return; }
 
     const btn = document.getElementById('parse-photos');
     const label = document.getElementById('parse-photos-label');
@@ -1997,11 +2030,17 @@ ${text}`;
     progressBox.style.display = '';
     progressBar.style.width = '0%';
 
+    let stage = 'starting';
     try {
       const allText = [];
       for (let i = 0; i < selectedPhotos.length; i++) {
+        stage = `downscaling photo ${i + 1}`;
+        statusText.textContent = `Preparing photo ${i + 1} of ${selectedPhotos.length}…`;
+        const scaledUrl = await downscaleForOcr(selectedPhotos[i].dataUrl);
+
+        stage = `OCR on photo ${i + 1}`;
         statusText.textContent = `Reading photo ${i + 1} of ${selectedPhotos.length}…`;
-        const result = await Tesseract.recognize(selectedPhotos[i].dataUrl, 'eng', {
+        const result = await Tesseract.recognize(scaledUrl, 'eng', {
           logger: (m) => {
             if (m.status === 'recognizing text') {
               const overallProgress = ((i + m.progress) / selectedPhotos.length) * 100;
@@ -2009,18 +2048,22 @@ ${text}`;
             }
           },
         });
-        // Label the section by user-specified type
+        const text = result && result.data && result.data.text ? result.data.text : '';
+        if (!text.trim()) {
+          throw new Error(`Photo ${i + 1}: no text detected`);
+        }
         const typeLabel = {
           ingredients: 'INGREDIENTS SECTION',
           directions: 'DIRECTIONS / SCHEDULE SECTION',
           both: 'INGREDIENTS AND DIRECTIONS',
           auto: 'UNLABELED PAGE',
         }[selectedPhotos[i].type || 'auto'];
-        allText.push(`--- ${typeLabel} (Photo ${i + 1}) ---\n${result.data.text}`);
+        allText.push(`--- ${typeLabel} (Photo ${i + 1}) ---\n${text}`);
       }
       progressBar.style.width = '100%';
-      statusText.textContent = 'Parsing recipe with Claude…';
 
+      stage = 'calling Claude API';
+      statusText.textContent = 'Parsing recipe with Claude…';
       const combinedText = allText.join('\n\n');
       const newRecipe = await parseRecipeText(combinedText);
 
@@ -2031,7 +2074,6 @@ ${text}`;
       hideModal('modal-import');
 
       if (importAppendMode && state.editingRecipe) {
-        // Merge into the existing recipe being edited — only fill in what's missing or append new
         let appended = [];
         if (newRecipe.ingredients && newRecipe.ingredients.length > 0) {
           state.editingRecipe.ingredients = state.editingRecipe.ingredients.concat(newRecipe.ingredients);
@@ -2051,8 +2093,11 @@ ${text}`;
         toast('Review the parsed recipe before saving');
       }
     } catch (e) {
-      console.error(e);
-      toast('OCR or parsing failed — try again');
+      console.error('Import error at stage:', stage, e);
+      // Surface specific error info to the user
+      let msg = e && e.message ? e.message : String(e);
+      if (msg.length > 80) msg = msg.slice(0, 80) + '…';
+      toast(`Failed during ${stage}: ${msg}`);
       progressBox.style.display = 'none';
     } finally {
       btn.disabled = false;

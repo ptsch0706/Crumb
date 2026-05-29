@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Crumb Icon Generator</title>
+<style>
+  body { background: #2a2520; color: #fdf8f1; font-family: -apple-system, sans-serif; padding: 40px 20px; margin: 0; text-align: center; }
+  h1 { font-family: Georgia, serif; font-weight: 500; }
+  canvas { background: #c97b3c; border-radius: 40px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); margin: 20px auto; display: block; }
+  button { font-family: inherit; font-size: 16px; padding: 14px 28px; background: #c97b3c; color: white; border: none; border-radius: 100px; cursor: pointer; margin: 8px; font-weight: 600; }
+  button:hover { background: #a35a22; }
+  .help { color: #8a7866; max-width: 500px; margin: 0 auto 20px; line-height: 1.5; }
+  #status { font-size: 13px; color: #d68a4f; min-height: 1.5em; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Crumb Icon Generator</h1>
+<p class="help">Renders the wheat-score boule to a sharp PNG that iOS will accept as the home-screen icon.</p>
+
+<canvas id="canvas" width="360" height="360" style="width: 180px; height: 180px;"></canvas>
+
+<div>
+  <button id="dl-1024">Download icon.png (1024×1024)</button>
+</div>
+
+<div id="status"></div>
+
+<p class="help">Save as <strong>icon.png</strong> in your repo. The 1024px size ensures crisp display on every iPhone.</p>
+
+<script>
+// All coordinates work in a 180x180 design space. ctx.scale() handles size translation.
+function drawIcon(ctx, outputSize) {
+  ctx.save();
+  const s = outputSize / 180;
+  ctx.scale(s, s);
+
+  // Background
+  const bgGrad = ctx.createRadialGradient(90, 72, 0, 90, 72, 144);
+  bgGrad.addColorStop(0, '#d68a4f');
+  bgGrad.addColorStop(1, '#a35a22');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, 180, 180);
+
+  // Drop shadow + loaf body
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 3;
+  const loafGrad = ctx.createRadialGradient(68, 57, 0, 68, 57, 87);
+  loafGrad.addColorStop(0, '#ffffff');
+  loafGrad.addColorStop(0.35, '#fdf8f1');
+  loafGrad.addColorStop(0.78, '#e8c89a');
+  loafGrad.addColorStop(1, '#a87038');
+  ctx.fillStyle = loafGrad;
+  ctx.beginPath();
+  ctx.arc(90, 92, 58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Rim shadow
+  const rimGrad = ctx.createRadialGradient(90, 92, 46, 90, 92, 58);
+  rimGrad.addColorStop(0, 'rgba(122, 60, 20, 0)');
+  rimGrad.addColorStop(1, 'rgba(122, 60, 20, 0.5)');
+  ctx.fillStyle = rimGrad;
+  ctx.beginPath();
+  ctx.arc(90, 92, 58, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Wheat score: shadow layer
+  ctx.strokeStyle = 'rgba(92, 44, 13, 0.85)';
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  const shadowLines = [
+    [90, 55, 90, 129],
+    [78, 68, 90, 78], [102, 68, 90, 78],
+    [78, 86, 90, 96], [102, 86, 90, 96],
+    [78, 104, 90, 114], [102, 104, 90, 114],
+  ];
+  for (const [x1, y1, x2, y2] of shadowLines) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  // Wheat score: highlight (offset up-left)
+  ctx.strokeStyle = 'rgba(255, 245, 224, 0.7)';
+  ctx.lineWidth = 1.4;
+  const highlightLines = [
+    [88.5, 53.5, 88.5, 127.5],
+    [76.5, 66.5, 88.5, 76.5], [100.5, 66.5, 88.5, 76.5],
+    [76.5, 84.5, 88.5, 94.5], [100.5, 84.5, 88.5, 94.5],
+    [76.5, 102.5, 88.5, 112.5], [100.5, 102.5, 88.5, 112.5],
+  ];
+  for (const [x1, y1, x2, y2] of highlightLines) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  // Top sheen
+  const sheenGrad = ctx.createRadialGradient(72, 50, 0, 72, 50, 63);
+  sheenGrad.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+  sheenGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = sheenGrad;
+  ctx.beginPath();
+  ctx.arc(90, 92, 58, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+const status = document.getElementById('status');
+
+try {
+  const previewCanvas = document.getElementById('canvas');
+  drawIcon(previewCanvas.getContext('2d'), previewCanvas.width);
+} catch (e) {
+  status.textContent = 'Preview error: ' + e.message;
+}
+
+document.getElementById('dl-1024').onclick = function() {
+  try {
+    status.textContent = 'Rendering at 1024×1024…';
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 1024;
+    drawIcon(c.getContext('2d'), 1024);
+    c.toBlob(function(blob) {
+      if (!blob) {
+        status.textContent = 'Failed to encode PNG';
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'icon.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+      status.textContent = 'Downloaded icon.png ✓';
+    }, 'image/png');
+  } catch (e) {
+    status.textContent = 'Download error: ' + e.message;
+  }
+};
+</script>
+</body>
+</html>
