@@ -117,6 +117,8 @@
   /* Modal */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(26, 22, 18, 0.5); backdrop-filter: blur(4px); z-index: 100; display: none; align-items: flex-end; justify-content: center; }
   .modal-backdrop.show { display: flex; animation: fadeIn 0.2s; }
+  /* Confirm/prompt modal always appears above other modals */
+  #modal-confirm { z-index: 150; }
   .modal { background: var(--bg); width: 100%; max-width: 600px; max-height: 92vh; border-radius: 24px 24px 0 0; overflow: hidden; display: flex; flex-direction: column; animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
   .modal-header { padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line-soft); flex-shrink: 0; }
@@ -3038,6 +3040,7 @@ Here is the recipe:
     });
 
     document.getElementById('join-sync').addEventListener('click', async () => {
+      hideModal('modal-settings');
       const code = await showPrompt({
         title: 'Connect with Code',
         message: 'Enter the sync code from your other device (6 letters/digits).',
