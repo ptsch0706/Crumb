@@ -67,10 +67,10 @@
   .tagline { font-size: 11px; color: var(--ink-mute); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
 
   /* Tab bar */
-  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, 1fr); padding: 8px 0 calc(var(--safe-bot) + 8px); z-index: 50; }
-  nav.tabs button { background: none; border: none; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink-mute); font-size: 11px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; }
+  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
+  nav.tabs button { background: none; border: none; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--ink-mute); font-size: 10px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; min-width: 0; }
   nav.tabs button.active { color: var(--crust); }
-  nav.tabs button svg { width: 24px; height: 24px; stroke-width: 1.8; }
+  nav.tabs button svg { width: 20px; height: 20px; stroke-width: 1.8; }
 
   /* Views */
   .view { display: none; padding: 0 20px; max-width: 100%; overflow-x: hidden; }
@@ -350,7 +350,7 @@
   <button data-view="view-active-bakes" id="tab-active" style="position: relative;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2L4 7l8 5 8-5-8-5z"/><path d="M4 17l8 5 8-5"/><path d="M4 12l8 5 8-5"/></svg>
     Active
-    <span id="active-badge" style="display:none; position:absolute; top:4px; right:14px; min-width:18px; height:18px; padding:0 5px; background:var(--crust); color:white; border-radius:100px; font-size:10px; font-weight:700; font-family:Inter,sans-serif; line-height:18px; text-align:center;">0</span>
+    <span id="active-badge" style="display:none; position:absolute; top:2px; right:8px; min-width:16px; height:16px; padding:0 4px; background:var(--crust); color:white; border-radius:100px; font-size:9px; font-weight:700; font-family:Inter,sans-serif; line-height:16px; text-align:center;">0</span>
   </button>
   <button data-view="view-history">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/><path d="M12 7v5l3 2"/></svg>
@@ -1081,31 +1081,8 @@
     }
 
     list.querySelectorAll('.recipe-item').forEach(el => {
-      el.addEventListener('click', async () => {
-        const recipeId = el.dataset.id;
-        const activeForThis = getActiveBakeForRecipe(recipeId);
-        if (activeForThis) {
-          // Recipe is currently baking — offer choice
-          const recipe = state.recipes.find(r => r.id === recipeId);
-          const choice = await showConfirm({
-            title: `${recipe ? recipe.name : 'Recipe'} is currently baking`,
-            message: 'What would you like to do?',
-            buttons: [
-              { label: 'Open Active Bake', style: 'primary', value: 'bake' },
-              { label: 'Edit Recipe', style: 'default', value: 'edit' },
-              { label: 'Cancel', style: 'ghost', value: 'cancel' },
-            ],
-          });
-          if (choice === 'bake') {
-            state.focusedBakeId = activeForThis.id;
-            saveState();
-            openSchedule(recipeId);
-          } else if (choice === 'edit') {
-            openRecipeEditor(state.recipes.find(r => r.id === recipeId));
-          }
-        } else {
-          openSchedule(recipeId);
-        }
+      el.addEventListener('click', () => {
+        openSchedule(el.dataset.id);
       });
     });
     list.querySelectorAll('[data-rename-cat]').forEach(b => {
@@ -1900,24 +1877,7 @@
       showOverdueBadge = msToEnd < 0;
     }
 
-    // Count of other concurrent bakes for switcher
-    const otherBakes = state.activeBakes.filter(b => b.id !== ab.id);
-
     container.innerHTML = `
-      ${otherBakes.length > 0 ? `
-        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; align-items: center;">
-          <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;">Active:</div>
-          ${state.activeBakes.map(b => {
-            const c = getBakeColor(b.color);
-            const r = state.recipes.find(x => x.id === b.recipeId);
-            const active = b.id === ab.id;
-            return `<button data-switch-bake="${b.id}" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 100px; border: 1px solid ${active ? c.hex : 'var(--line)'}; background: ${active ? c.soft : 'var(--bg-elev)'}; color: var(--ink); font-family: inherit; font-size: 12px; font-weight: ${active ? '600' : '500'}; cursor: pointer;">
-              <span style="width: 8px; height: 8px; border-radius: 50%; background: ${c.hex};"></span>
-              ${r ? escapeHtml(r.name) : 'Unknown'}
-            </button>`;
-          }).join('')}
-        </div>
-      ` : ''}
       <div class="bake-banner" style="border-color: ${color.hex}; background: ${color.soft}; color: ${color.hex};">
         <span class="label"><span class="dot" style="background: ${color.hex};"></span>Bake in progress</span>
         <button id="btn-end-bake" style="background: ${color.hex}; color: white; border: none; padding: 6px 14px; border-radius: 100px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;">End Bake</button>
@@ -2021,21 +1981,6 @@
       const skipBtn = e.target.closest('[data-skip-to]');
       const shortcutBtn = e.target.closest('#btn-shortcut-active');
       const editBtn = e.target.closest('[data-edit-stage]');
-      const switchBtn = e.target.closest('[data-switch-bake]');
-
-      if (switchBtn) {
-        const targetId = switchBtn.dataset.switchBake;
-        if (targetId === ab.id) return;
-        state.focusedBakeId = targetId;
-        const targetBake = getActiveBakeById(targetId);
-        if (!targetBake) return;
-        const targetRecipe = state.recipes.find(r => r.id === targetBake.recipeId);
-        if (!targetRecipe) return;
-        state.currentRecipeId = targetRecipe.id;
-        saveState();
-        renderActiveBake(targetRecipe, targetBake);
-        return;
-      }
 
       if (editBtn) {
         stopBakeTicker();
@@ -2135,10 +2080,13 @@
       const scheduleView = document.getElementById('view-schedule');
       const activeView = document.getElementById('view-active-bakes');
       if (scheduleView && scheduleView.classList.contains('active')) {
-        const focused = getFocusedBake();
-        if (focused) {
-          const recipe = state.recipes.find(r => r.id === focused.recipeId);
-          if (recipe) renderActiveBake(recipe, focused);
+        // Only re-render if the currently-viewed recipe has an active bake
+        const currentRecipe = state.recipes.find(r => r.id === state.currentRecipeId);
+        if (currentRecipe) {
+          const bakeForCurrent = getActiveBakeForRecipe(currentRecipe.id);
+          if (bakeForCurrent) {
+            renderActiveBake(currentRecipe, bakeForCurrent);
+          }
         }
       }
       if (activeView && activeView.classList.contains('active')) {
