@@ -138,7 +138,8 @@
   .stage-row input { padding: 8px 10px; font-size: 14px; }
   .stage-row .name-input { flex: 2; }
   .stage-row .dur-input { flex: 1; }
-  .stage-row .delete { background: none; border: none; color: var(--warn); font-size: 18px; cursor: pointer; padding: 4px 8px; }
+  .stage-row .delete { background: none; border: 1px solid var(--line); color: var(--warn); font-size: 20px; cursor: pointer; padding: 8px 12px; border-radius: var(--radius-sm); min-width: 40px; min-height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; line-height: 1; }
+  .stage-row .delete:active { background: rgba(196, 90, 74, 0.1); }
 
   /* Schedule view */
   .schedule-header { background: linear-gradient(135deg, var(--bg-warm), var(--bg)); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 18px 20px; margin-bottom: 16px; }
@@ -225,6 +226,18 @@
   /* Pacing */
   .pacing-summary { background: var(--leaven-soft); border: 1px solid var(--leaven); color: var(--rye); padding: 12px 14px; border-radius: var(--radius); margin-bottom: 14px; }
   .pacing-tag { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border: 1px solid; border-radius: 100px; font-family: 'Inter', sans-serif; }
+
+  /* Baking Mode toggle */
+  .bake-mode-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); margin-top: 8px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .bake-mode-toggle.on { background: var(--leaven-soft); border-color: var(--leaven); }
+  .bake-mode-toggle .label { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--ink); }
+  .bake-mode-toggle .label svg { color: var(--ink-mute); }
+  .bake-mode-toggle.on .label svg { color: var(--leaven); }
+  .bake-mode-toggle .sub { font-size: 11px; color: var(--ink-mute); margin-top: 2px; font-weight: 400; }
+  .switch-pill { width: 44px; height: 26px; background: var(--line); border-radius: 100px; position: relative; transition: background 0.2s; flex-shrink: 0; }
+  .switch-pill::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+  .bake-mode-toggle.on .switch-pill { background: var(--leaven); }
+  .bake-mode-toggle.on .switch-pill::after { transform: translateX(18px); }
 
   /* Icon picker (recipe editor) */
   .icon-picker { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -536,6 +549,29 @@
   </div>
 </div>
 
+<!-- ADJUST BAKE TIMER MODAL -->
+<div class="modal-backdrop" id="modal-adjust-timer">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Adjust Timer</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="help" style="margin-bottom: 14px;">Shift the entire bake timeline by changing when this bake started. Completed stages will keep their done times.</p>
+      <div class="field">
+        <label>Bake started at</label>
+        <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
+          <input type="date" id="at-date" style="width: auto;">
+          <input type="time" id="at-time" style="width: auto;">
+        </div>
+      </div>
+      <div id="at-shift-info" style="background: var(--bg-warm); border-radius: var(--radius); padding: 12px; margin-bottom: 14px; font-size: 13px; color: var(--ink-soft); line-height: 1.5;"></div>
+      <button class="btn btn-primary btn-block" id="at-save">Save</button>
+      <button class="btn btn-block btn-ghost" id="at-cancel" style="margin-top: 8px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- QUICK STAGE EDIT MODAL (during active bake) -->
 <div class="modal-backdrop" id="modal-stage-edit">
   <div class="modal">
@@ -690,6 +726,54 @@
     editingRecipe: null,
     syncCode: null,
   };
+
+  // ============================================================
+  // BAKING MODE — Wake Lock (keeps screen on during active bake)
+  // ============================================================
+  let wakeLockSentinel = null;
+  let bakingModeOn = false;
+
+  function isWakeLockSupported() {
+    return 'wakeLock' in navigator;
+  }
+
+  async function enableBakingMode() {
+    if (!isWakeLockSupported()) {
+      toast('Your browser does not support keeping the screen on');
+      return false;
+    }
+    try {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      bakingModeOn = true;
+      wakeLockSentinel.addEventListener('release', () => {
+        // The OS released the lock (tab backgrounded, etc). We'll try to re-acquire on visibility.
+        wakeLockSentinel = null;
+      });
+      return true;
+    } catch (e) {
+      console.error('wake lock failed', e);
+      toast('Could not enable Baking Mode');
+      bakingModeOn = false;
+      return false;
+    }
+  }
+
+  function disableBakingMode() {
+    bakingModeOn = false;
+    if (wakeLockSentinel) {
+      wakeLockSentinel.release().catch(() => {});
+      wakeLockSentinel = null;
+    }
+  }
+
+  // Re-acquire wake lock when tab becomes visible again (iOS releases on tab switch)
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && bakingModeOn && !wakeLockSentinel) {
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request('screen');
+      } catch (e) { /* ignore */ }
+    }
+  });
 
   // 6 distinct bread-themed colors for simultaneous bakes
   const BAKE_COLORS = [
@@ -1429,13 +1513,37 @@
       scaleFactor: state.scaleFactor || 1,
       color: pickNextBakeColor(),
     };
+
+    // If start time is in the past, auto-complete stages whose planned end has already passed.
+    // For wait stages, mark them auto-complete at the planned end. For hands-on stages, we
+    // can't know if the user did them or not, so we still mark them done at the planned end
+    // (the user can adjust individual stage done-times via the edit button).
+    const now = Date.now();
+    let elapsed = startTime.getTime();
+    for (let i = 0; i < recipe.stages.length; i++) {
+      const stageEnd = elapsed + recipe.stages[i].durMin * 60000;
+      if (stageEnd <= now) {
+        newBake.stageStates[i].done = true;
+        newBake.stageStates[i].doneAt = new Date(stageEnd).toISOString();
+        newBake.stageStates[i].autoAdvanced = true;
+        elapsed = stageEnd;
+      } else {
+        break; // current or future stage — stop here
+      }
+    }
+
     state.activeBakes.push(newBake);
     state.focusedBakeId = newBake.id;
     saveState();
     renderSchedule();
     updateActiveTabBadge();
     startBakeTicker();
-    toast('Bake started');
+    const advanced = newBake.stageStates.filter(s => s.done).length;
+    if (advanced > 0) {
+      toast(`Bake started · ${advanced} past stage${advanced === 1 ? '' : 's'} marked done`);
+    } else {
+      toast('Bake started');
+    }
   }
 
   // Remove an active bake by id; if it was focused, clear focus
@@ -1753,6 +1861,79 @@
   }
 
   // Open the quick stage editor (during active bake) — edits the recipe permanently
+  // Open the adjust-timer modal — lets the user shift the entire bake timeline
+  function openAdjustTimer(recipe, bake) {
+    const startedAt = new Date(bake.startedAt);
+    const dateInput = document.getElementById('at-date');
+    const timeInput = document.getElementById('at-time');
+    const info = document.getElementById('at-shift-info');
+
+    // Helper to format a Date as YYYY-MM-DD in local time
+    const fmtDate = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const fmtTime = (d) => {
+      const h = String(d.getHours()).padStart(2, '0');
+      const m = String(d.getMinutes()).padStart(2, '0');
+      return `${h}:${m}`;
+    };
+
+    dateInput.value = fmtDate(startedAt);
+    timeInput.value = fmtTime(startedAt);
+
+    const updateInfo = () => {
+      const d = dateInput.value;
+      const t = timeInput.value;
+      if (!d || !t) { info.textContent = ''; return; }
+      const newStart = new Date(`${d}T${t}`);
+      if (isNaN(newStart.getTime())) { info.textContent = 'Invalid date/time'; return; }
+      const shiftMin = Math.round((newStart - startedAt) / 60000);
+      if (shiftMin === 0) {
+        info.textContent = 'No change.';
+      } else if (shiftMin < 0) {
+        info.textContent = `Bake will be shifted ${formatDur(Math.abs(shiftMin))} earlier. The current and upcoming stages will adjust accordingly.`;
+      } else {
+        info.textContent = `Bake will be shifted ${formatDur(shiftMin)} later. The current and upcoming stages will adjust accordingly.`;
+      }
+    };
+    updateInfo();
+    dateInput.oninput = updateInfo;
+    timeInput.oninput = updateInfo;
+
+    document.getElementById('at-save').onclick = () => {
+      const d = dateInput.value;
+      const t = timeInput.value;
+      if (!d || !t) { toast('Pick a date and time'); return; }
+      const newStart = new Date(`${d}T${t}`);
+      if (isNaN(newStart.getTime())) { toast('Invalid date/time'); return; }
+      const shiftMs = newStart - startedAt;
+      bake.startedAt = newStart.toISOString();
+      // Shift all done timestamps proportionally so the timeline stays consistent
+      for (const s of bake.stageStates) {
+        if (s.done && s.doneAt) {
+          s.doneAt = new Date(new Date(s.doneAt).getTime() + shiftMs).toISOString();
+        }
+      }
+      // After shift, also auto-advance any wait stages whose new planned end has passed
+      autoAdvanceWaitStages(recipe, bake);
+      saveState();
+      hideModal('modal-adjust-timer');
+      renderActiveBake(recipe, bake);
+      startBakeTicker();
+      toast('Timer adjusted');
+    };
+
+    document.getElementById('at-cancel').onclick = () => {
+      hideModal('modal-adjust-timer');
+      startBakeTicker();
+    };
+
+    showModal('modal-adjust-timer');
+  }
+
   function openStageEditor(recipe, stageIdx, bake) {
     const stage = recipe.stages[stageIdx];
     if (!stage) return;
@@ -1906,10 +2087,39 @@
         Send Remaining to Reminders
       </button>
 
+      <button class="btn btn-block" id="btn-adjust-timer" style="margin-top: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M5 5l-2-2M19 5l2-2"/></svg>
+        Adjust Timer
+      </button>
+
       <button class="btn btn-block" id="btn-edit-recipe-active" style="margin-top: 8px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         Edit Recipe
       </button>
+
+      ${isWakeLockSupported() ? `
+        <div class="bake-mode-toggle ${bakingModeOn ? 'on' : ''}" id="baking-mode-toggle">
+          <div>
+            <div class="label">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="4"/></svg>
+              <span>Baking Mode <span class="sub" style="display: block;">Keep screen on for sticky hands</span></span>
+            </div>
+          </div>
+          <div class="switch-pill"></div>
+        </div>
+      ` : ''}
+
+      ${recipe.ingredients && recipe.ingredients.length > 0 ? `
+        <div class="section-title">Ingredients${ab.scaleFactor && ab.scaleFactor !== 1 ? ` <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-mute);">· scaled ${ab.scaleFactor}×</span>` : ''}</div>
+        <div class="ing-list">
+          ${getScaledIngredients(recipe, ab.scaleFactor || 1).map(ing => `
+            <div class="ing-row">
+              <span class="name">${escapeHtml(ing.name)}</span>
+              <span class="qty">${escapeHtml(ing.qty || '')}</span>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
 
       <div class="section-title">All Stages</div>
       <div class="upcoming-list">
@@ -1986,6 +2196,29 @@
       const shortcutBtn = e.target.closest('#btn-shortcut-active');
       const editBtn = e.target.closest('[data-edit-stage]');
       const editRecipeBtn = e.target.closest('#btn-edit-recipe-active');
+      const adjustTimerBtn = e.target.closest('#btn-adjust-timer');
+      const bakingModeBtn = e.target.closest('#baking-mode-toggle');
+
+      if (bakingModeBtn) {
+        if (bakingModeOn) {
+          disableBakingMode();
+          bakingModeBtn.classList.remove('on');
+          toast('Baking Mode off');
+        } else {
+          const ok = await enableBakingMode();
+          if (ok) {
+            bakingModeBtn.classList.add('on');
+            toast('Baking Mode on · screen will stay awake');
+          }
+        }
+        return;
+      }
+
+      if (adjustTimerBtn) {
+        stopBakeTicker();
+        openAdjustTimer(recipe, ab);
+        return;
+      }
 
       if (editRecipeBtn) {
         stopBakeTicker();
@@ -2677,6 +2910,10 @@ Here is the recipe:
     document.querySelectorAll('nav.tabs button').forEach(b => {
       b.classList.toggle('active', b.dataset.view === tabViewId);
     });
+    // If leaving the schedule view, turn off Baking Mode (it should only be active on the bake screen)
+    if (viewId !== 'view-schedule' && bakingModeOn) {
+      disableBakingMode();
+    }
     if (viewId === 'view-recipes') renderRecipes();
     if (viewId === 'view-schedule') renderSchedule();
     if (viewId === 'view-history') renderHistory();
@@ -2761,7 +2998,7 @@ Here is the recipe:
         showModal('modal-recipe');
       }
       // Resume bake ticker if the user closed an editor mid-bake
-      if ((modal.id === 'modal-stage-edit' || modal.id === 'modal-recipe') && state.activeBakes.length > 0) {
+      if ((modal.id === 'modal-stage-edit' || modal.id === 'modal-recipe' || modal.id === 'modal-adjust-timer') && state.activeBakes.length > 0) {
         if (!bakeTickerInterval) startBakeTicker();
       }
     });
@@ -2774,7 +3011,7 @@ Here is the recipe:
           importAppendMode = false;
           showModal('modal-recipe');
         }
-        if ((m.id === 'modal-stage-edit' || m.id === 'modal-recipe') && state.activeBakes.length > 0) {
+        if ((m.id === 'modal-stage-edit' || m.id === 'modal-recipe' || m.id === 'modal-adjust-timer') && state.activeBakes.length > 0) {
           if (!bakeTickerInterval) startBakeTicker();
         }
       }
