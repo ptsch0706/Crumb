@@ -228,7 +228,7 @@
   .pacing-tag { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border: 1px solid; border-radius: 100px; font-family: 'Inter', sans-serif; }
 
   /* Baking Mode toggle */
-  .bake-mode-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); margin-top: 8px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .bake-mode-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
   .bake-mode-toggle.on { background: var(--leaven-soft); border-color: var(--leaven); }
   .bake-mode-toggle .label { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--ink); }
   .bake-mode-toggle .label svg { color: var(--ink-mute); }
@@ -238,6 +238,20 @@
   .switch-pill::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
   .bake-mode-toggle.on .switch-pill { background: var(--leaven); }
   .bake-mode-toggle.on .switch-pill::after { transform: translateX(18px); }
+
+  /* Bake top bar with back + options */
+  .bake-topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .bake-topbar .options-btn { position: relative; background: var(--bg-elev); border: 1px solid var(--line); color: var(--ink); padding: 6px 14px; border-radius: 100px; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .bake-topbar .options-btn .notif-dot { display: none; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; background: var(--crust); border: 2px solid var(--bg); border-radius: 50%; animation: pulse 1.6s ease-in-out infinite; }
+  .bake-topbar .options-btn.needs-refresh .notif-dot { display: block; }
+
+  /* Option buttons in the bake-options modal */
+  .opt-btn { background: var(--bg-elev); border: 1px solid var(--line); font-family: inherit; font-size: 15px; color: var(--ink); }
+  .opt-btn:active { background: var(--bg-warm); }
+  .opt-btn svg { color: var(--ink-mute); flex-shrink: 0; }
+
+  /* Paused bake banner */
+  .bake-banner.paused { border-color: var(--ink-mute); background: var(--bg-warm); color: var(--ink-soft); }
 
   /* Icon picker (recipe editor) */
   .icon-picker { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -333,10 +347,17 @@
 
 <!-- SCHEDULE VIEW -->
 <section class="view" id="view-schedule">
-  <button class="btn btn-ghost btn-sm" id="back-to-recipes" style="margin-bottom: 8px; padding-left: 0;">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m15 18-6-6 6-6"/></svg>
-    Recipes
-  </button>
+  <div class="bake-topbar" id="schedule-topbar">
+    <button class="btn btn-ghost btn-sm" id="back-to-recipes" style="padding-left: 0;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m15 18-6-6 6-6"/></svg>
+      Recipes
+    </button>
+    <button class="options-btn" id="btn-bake-options" style="display: none;">
+      <span class="notif-dot"></span>
+      Options
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+    </button>
+  </div>
   <div id="schedule-content"></div>
 </section>
 
@@ -547,6 +568,48 @@
       <div id="confirm-title" style="font-family: 'Fraunces', serif; font-size: 20px; font-weight: 500; letter-spacing: -0.02em; margin-bottom: 8px;"></div>
       <div id="confirm-message" style="font-size: 14px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 20px;"></div>
       <div id="confirm-buttons" style="display: flex; flex-direction: column; gap: 8px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BAKE OPTIONS MODAL -->
+<div class="modal-backdrop" id="modal-bake-options">
+  <div class="modal" style="max-width: 380px;">
+    <div class="modal-header">
+      <div class="modal-title">Bake Options</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <button class="btn btn-block opt-btn" id="opt-send-reminders" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span style="flex: 1;">Send Remaining to Reminders</span>
+      </button>
+
+      <button class="btn btn-block opt-btn" id="opt-refresh-reminders" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px; position: relative;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
+        <span style="flex: 1;">Refresh Reminders</span>
+        <span id="opt-refresh-dot" style="display: none; width: 9px; height: 9px; border-radius: 50%; background: var(--crust); animation: pulse 1.6s ease-in-out infinite;"></span>
+      </button>
+
+      <button class="btn btn-block opt-btn" id="opt-adjust-timer" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M5 5l-2-2M19 5l2-2"/></svg>
+        <span style="flex: 1;">Adjust Timer</span>
+      </button>
+
+      <button class="btn btn-block opt-btn" id="opt-pause-bake" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" id="opt-pause-icon"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        <span id="opt-pause-label" style="flex: 1;">Pause Bake</span>
+      </button>
+
+      <button class="btn btn-block opt-btn" id="opt-step-back" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 1 3 6.7L3 16m0 5v-5h5"/></svg>
+        <span style="flex: 1;">Step Back One Stage</span>
+      </button>
+
+      <button class="btn btn-block opt-btn" id="opt-edit-recipe" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span style="flex: 1;">Edit Recipe</span>
+      </button>
     </div>
   </div>
 </div>
@@ -1306,6 +1369,8 @@
   function renderSchedule() {
     const recipe = state.recipes.find(r => r.id === state.currentRecipeId);
     const container = document.getElementById('schedule-content');
+    const optsBtn = document.getElementById('btn-bake-options');
+    if (optsBtn) optsBtn.style.display = 'none'; // hide by default; renderActiveBake shows it
     if (!recipe) {
       container.innerHTML = `<div class="empty"><div class="title">Pick a recipe</div><div class="body">Choose a recipe from the Recipes tab to schedule a bake.</div></div>`;
       return;
@@ -1767,6 +1832,7 @@
   function autoAdvanceWaitStages(recipe, bake) {
     const ab = bake || getFocusedBake();
     if (!ab) return false;
+    if (ab.paused) return false; // no time passes while paused
     let changed = false;
     const now = Date.now();
     // Process sequentially: only auto-complete the current stage if it's a wait stage and overdue
@@ -1811,6 +1877,7 @@
     if (catchupDialogOpen) return;
     const ab = bake || getFocusedBake();
     if (!ab) return;
+    if (ab.paused) return; // no catchup prompts while paused
     const idx = findOverdueHandsOnStage(recipe, ab);
     if (idx === -1) return;
     if (ab.stageStates[idx].catchupDismissedAt) {
@@ -1921,6 +1988,8 @@
       }
       // After shift, also auto-advance any wait stages whose new planned end has passed
       autoAdvanceWaitStages(recipe, bake);
+      // Adjusting the timer always means reminders are stale
+      if (Math.abs(shiftMs) > 60000) bake.needsReminderRefresh = true;
       saveState();
       hideModal('modal-adjust-timer');
       renderActiveBake(recipe, bake);
@@ -2060,52 +2129,13 @@
     }
 
     container.innerHTML = `
-      <div class="bake-banner" style="border-color: ${color.hex}; background: ${color.soft}; color: ${color.hex};">
-        <span class="label"><span class="dot" style="background: ${color.hex};"></span>Bake in progress</span>
-        <button id="btn-end-bake" style="background: ${color.hex}; color: white; border: none; padding: 6px 14px; border-radius: 100px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;">End Bake</button>
+      <div class="bake-banner${ab.paused ? ' paused' : ''}" style="border-color: ${ab.paused ? 'var(--ink-mute)' : color.hex}; background: ${ab.paused ? 'var(--bg-warm)' : color.soft}; color: ${ab.paused ? 'var(--ink-soft)' : color.hex};">
+        <span class="label"><span class="dot" style="background: ${ab.paused ? 'var(--ink-mute)' : color.hex};"></span>${ab.paused ? 'Bake paused' : 'Bake in progress'}</span>
+        <button id="btn-end-bake" style="background: ${ab.paused ? 'var(--ink-mute)' : color.hex}; color: white; border: none; padding: 6px 14px; border-radius: 100px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;">End Bake</button>
       </div>
-
-      <div class="bake-hero ${heroState}" style="--bake-accent: ${color.hex}; --bake-accent-soft: ${color.soft};">
-        ${showOverdueBadge ? '<div class="overdue-badge">Overdue · Don\'t forget to mark done</div>' : ''}
-        <div class="status">${statusText} · Stage ${curIdx + 1} of ${recipe.stages.length}</div>
-        <div class="stage-name">${escapeHtml(curStage.name)}</div>
-        ${curStage.detail ? `<div class="stage-detail">${escapeHtml(curStage.detail)}</div>` : ''}
-        <div class="countdown-box">
-          <div class="countdown-label">${countdownLabel}</div>
-          <div class="countdown-value">${countdownValue}</div>
-          ${countdownWhen ? `<div class="countdown-when">${countdownWhen}</div>` : ''}
-        </div>
-      </div>
-
-      <div class="done-btn">
-        <button class="btn btn-done btn-block" id="btn-mark-done" style="background: ${color.hex};">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
-          Mark Done
-        </button>
-      </div>
-
-      <button class="btn btn-block" id="btn-shortcut-active" style="margin-top: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        Send Remaining to Reminders
-      </button>
-
-      <button class="btn btn-block" id="btn-refresh-reminders" style="margin-top: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
-        Refresh Reminders
-      </button>
-
-      <button class="btn btn-block" id="btn-adjust-timer" style="margin-top: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M5 5l-2-2M19 5l2-2"/></svg>
-        Adjust Timer
-      </button>
-
-      <button class="btn btn-block" id="btn-edit-recipe-active" style="margin-top: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Edit Recipe
-      </button>
 
       ${isWakeLockSupported() ? `
-        <div class="bake-mode-toggle ${bakingModeOn ? 'on' : ''}" id="baking-mode-toggle">
+        <div class="bake-mode-toggle ${bakingModeOn ? 'on' : ''}" id="baking-mode-toggle" style="margin-top: 8px; margin-bottom: 12px;">
           <div>
             <div class="label">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="4"/></svg>
@@ -2115,6 +2145,30 @@
           <div class="switch-pill"></div>
         </div>
       ` : ''}
+
+      <div class="bake-hero ${heroState}${ab.paused ? ' idle' : ''}" style="--bake-accent: ${color.hex}; --bake-accent-soft: ${color.soft};">
+        ${showOverdueBadge && !ab.paused ? '<div class="overdue-badge">Overdue · Don\'t forget to mark done</div>' : ''}
+        <div class="status">${ab.paused ? 'Paused' : statusText} · Stage ${curIdx + 1} of ${recipe.stages.length}</div>
+        <div class="stage-name">${escapeHtml(curStage.name)}</div>
+        ${curStage.detail ? `<div class="stage-detail">${escapeHtml(curStage.detail)}</div>` : ''}
+        <div class="countdown-box">
+          <div class="countdown-label">${ab.paused ? 'Timer paused' : countdownLabel}</div>
+          <div class="countdown-value">${ab.paused ? '—' : countdownValue}</div>
+          ${countdownWhen && !ab.paused ? `<div class="countdown-when">${countdownWhen}</div>` : ''}
+        </div>
+      </div>
+
+      <div class="done-btn">
+        <button class="btn btn-done btn-block" id="btn-mark-done" style="background: ${color.hex};" ${ab.paused ? 'disabled' : ''}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+          Mark Done
+        </button>
+      </div>
+
+      <button class="btn btn-block" id="btn-shortcut-active" style="display: none;"></button>
+      <button class="btn btn-block" id="btn-refresh-reminders" style="display: none;"></button>
+      <button class="btn btn-block" id="btn-adjust-timer" style="display: none;"></button>
+      <button class="btn btn-block" id="btn-edit-recipe-active" style="display: none;"></button>
 
       ${recipe.ingredients && recipe.ingredients.length > 0 ? `
         <div class="section-title">Ingredients${ab.scaleFactor && ab.scaleFactor !== 1 ? ` <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-mute);">· scaled ${ab.scaleFactor}×</span>` : ''}</div>
@@ -2315,7 +2369,14 @@
       }
 
       if (doneBtn) {
+        if (ab.paused) return; // disabled while paused
         stopBakeTicker();
+        // Detect off-schedule completion (>5 min off the planned end)
+        const plannedEnd = new Date(getStageScheduledStart(recipe, curIdx, ab).getTime() + recipe.stages[curIdx].durMin * 60000);
+        const driftMin = Math.abs((Date.now() - plannedEnd.getTime()) / 60000);
+        if (driftMin > 5) {
+          ab.needsReminderRefresh = true;
+        }
         ab.stageStates[curIdx].done = true;
         ab.stageStates[curIdx].doneAt = new Date().toISOString();
         saveState();
@@ -2351,6 +2412,13 @@
       }
     };
     container.addEventListener('click', container._bakeClickHandler);
+
+    // Show Options button on this view (with notif dot if reminders need refresh)
+    const optsBtn = document.getElementById('btn-bake-options');
+    if (optsBtn) {
+      optsBtn.style.display = '';
+      optsBtn.classList.toggle('needs-refresh', !!ab.needsReminderRefresh);
+    }
   }
 
   // Tick the countdown every second when a bake is active
@@ -2871,7 +2939,10 @@ Here is the recipe:
 
       let statusLine = '';
       let countdownLine = '';
-      if (allDone) {
+      if (b.paused) {
+        statusLine = `Stage ${curIdx + 1} of ${totalCount} · ${escapeHtml(recipe.stages[curIdx].name)}`;
+        countdownLine = '<span style="color: var(--ink-mute); font-weight: 600;">⏸ Paused</span>';
+      } else if (allDone) {
         statusLine = 'All stages complete';
         countdownLine = '<span style="color: var(--leaven); font-weight: 600;">Ready to save</span>';
       } else {
@@ -2986,6 +3057,167 @@ Here is the recipe:
     showModal('modal-import');
   });
   document.getElementById('back-to-recipes').addEventListener('click', () => switchView('view-recipes'));
+
+  // Bake Options button + modal wiring
+  document.getElementById('btn-bake-options').addEventListener('click', () => {
+    const ab = state.activeBakes.find(b => b.recipeId === state.currentRecipeId);
+    if (!ab) return;
+    // Update pause/resume label and refresh-notif dot
+    const isPaused = !!ab.paused;
+    document.getElementById('opt-pause-label').textContent = isPaused ? 'Resume Bake' : 'Pause Bake';
+    document.getElementById('opt-pause-icon').innerHTML = isPaused
+      ? '<polygon points="6,4 20,12 6,20" fill="currentColor"/>' // play
+      : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; // pause bars
+    document.getElementById('opt-refresh-dot').style.display = ab.needsReminderRefresh ? '' : 'none';
+    // Disable step-back if at first stage
+    const firstDoneIdx = ab.stageStates.findIndex(s => s.done);
+    const anyDone = ab.stageStates.some(s => s.done);
+    document.getElementById('opt-step-back').disabled = !anyDone;
+    document.getElementById('opt-step-back').style.opacity = anyDone ? '1' : '0.4';
+    showModal('modal-bake-options');
+  });
+
+  // Helper: get the current bake from state
+  function getCurrentBake() {
+    return state.activeBakes.find(b => b.recipeId === state.currentRecipeId) || null;
+  }
+  function getCurrentRecipe() {
+    return state.recipes.find(r => r.id === state.currentRecipeId) || null;
+  }
+
+  document.getElementById('opt-send-reminders').addEventListener('click', () => {
+    hideModal('modal-bake-options');
+    const ab = getCurrentBake(); const recipe = getCurrentRecipe();
+    if (!ab || !recipe) return;
+    const timeline = buildRemainingTimeline(recipe, ab);
+    if (timeline.length === 0) { toast('No remaining stages to send'); return; }
+    openShortcutModal(recipe, timeline);
+  });
+
+  document.getElementById('opt-refresh-reminders').addEventListener('click', () => {
+    hideModal('modal-bake-options');
+    const ab = getCurrentBake(); const recipe = getCurrentRecipe();
+    if (!ab || !recipe) return;
+    const timeline = buildRemainingTimeline(recipe, ab);
+    if (timeline.length === 0) { toast('No remaining stages — nothing to refresh'); return; }
+    // Clear the needs-refresh flag once user actually refreshes
+    ab.needsReminderRefresh = false;
+    saveState();
+    openShortcutModal(recipe, timeline, { replaceExisting: true });
+  });
+
+  document.getElementById('opt-adjust-timer').addEventListener('click', () => {
+    hideModal('modal-bake-options');
+    const ab = getCurrentBake(); const recipe = getCurrentRecipe();
+    if (!ab || !recipe) return;
+    stopBakeTicker();
+    openAdjustTimer(recipe, ab);
+  });
+
+  document.getElementById('opt-pause-bake').addEventListener('click', () => {
+    hideModal('modal-bake-options');
+    const ab = getCurrentBake(); const recipe = getCurrentRecipe();
+    if (!ab || !recipe) return;
+    togglePause(recipe, ab);
+  });
+
+  document.getElementById('opt-step-back').addEventListener('click', async () => {
+    hideModal('modal-bake-options');
+    const ab = getCurrentBake(); const recipe = getCurrentRecipe();
+    if (!ab || !recipe) return;
+    await stepBackStage(recipe, ab);
+  });
+
+  document.getElementById('opt-edit-recipe').addEventListener('click', () => {
+    hideModal('modal-bake-options');
+    const recipe = getCurrentRecipe();
+    if (!recipe) return;
+    stopBakeTicker();
+    openRecipeEditor(recipe);
+  });
+
+  // Helper: build the timeline of remaining stages (used by Send/Refresh Reminders)
+  function buildRemainingTimeline(recipe, ab) {
+    const out = [];
+    for (let i = 0; i < recipe.stages.length; i++) {
+      if (ab.stageStates[i].done) continue;
+      const stage = recipe.stages[i];
+      const start = getStageScheduledStart(recipe, i, ab);
+      const end = new Date(start.getTime() + stage.durMin * 60000);
+      out.push({
+        idx: i,
+        name: stage.name,
+        detail: stage.detail || '',
+        isWait: !!stage.isWait,
+        startAt: start,
+        endAt: end,
+        durMin: stage.durMin,
+      });
+    }
+    return out;
+  }
+
+  // Toggle pause/resume on the bake
+  function togglePause(recipe, bake) {
+    if (bake.paused) {
+      // Resume: shift startedAt forward by the pause duration so countdowns pick up
+      const pauseStart = new Date(bake.pausedAt);
+      const pauseMs = Date.now() - pauseStart.getTime();
+      bake.startedAt = new Date(new Date(bake.startedAt).getTime() + pauseMs).toISOString();
+      // Also shift all done timestamps proportionally so the timeline stays consistent
+      for (const s of bake.stageStates) {
+        if (s.done && s.doneAt) {
+          s.doneAt = new Date(new Date(s.doneAt).getTime() + pauseMs).toISOString();
+        }
+      }
+      bake.paused = false;
+      bake.pausedAt = null;
+      bake.needsReminderRefresh = true; // timeline shifted, reminders are stale
+      saveState();
+      startBakeTicker();
+      renderActiveBake(recipe, bake);
+      toast('Bake resumed');
+    } else {
+      bake.paused = true;
+      bake.pausedAt = new Date().toISOString();
+      saveState();
+      stopBakeTicker(); // no ticker while paused
+      renderActiveBake(recipe, bake);
+      toast('Bake paused');
+    }
+  }
+
+  // Step back one stage — undoes the most recently completed stage
+  async function stepBackStage(recipe, bake) {
+    // Find the latest done stage
+    let lastDoneIdx = -1;
+    for (let i = bake.stageStates.length - 1; i >= 0; i--) {
+      if (bake.stageStates[i].done) { lastDoneIdx = i; break; }
+    }
+    if (lastDoneIdx === -1) {
+      toast('No completed stages to step back');
+      return;
+    }
+    const stage = recipe.stages[lastDoneIdx];
+    const choice = await showConfirm({
+      title: `Step back to "${stage.name}"?`,
+      message: 'This will mark this stage as not done and reactivate it.',
+      buttons: [
+        { label: 'Step Back', style: 'primary', value: 'yes' },
+        { label: 'Cancel', style: 'ghost', value: 'no' },
+      ],
+    });
+    if (choice !== 'yes') return;
+    bake.stageStates[lastDoneIdx].done = false;
+    bake.stageStates[lastDoneIdx].doneAt = null;
+    bake.stageStates[lastDoneIdx].autoAdvanced = false;
+    bake.stageStates[lastDoneIdx].skipped = false;
+    bake.stageStates[lastDoneIdx].catchupDismissedAt = null;
+    bake.needsReminderRefresh = true;
+    saveState();
+    renderActiveBake(recipe, bake);
+    toast('Stepped back one stage');
+  }
   document.getElementById('add-stage').addEventListener('click', () => {
     state.editingRecipe.stages.push({ name: '', durMin: 30, detail: '', isWait: false });
     renderStageEditor();
