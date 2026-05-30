@@ -2711,10 +2711,7 @@ Here is the recipe:
         toast('Clipboard copy failed — check browser permissions');
         return;
       }
-      // x-callback-url lets us specify a return URL — after the Shortcut finishes,
-      // iOS routes back to the x-success URL (or x-error if it failed)
-      const successUrl = encodeURIComponent(window.location.href);
-      const url = `shortcuts://x-callback-url/run-shortcut?name=Crumb%20Timers&x-success=${successUrl}`;
+      const url = `shortcuts://run-shortcut?name=Crumb%20Timers`;
       window.location.href = url;
       setTimeout(() => toast(isRefresh ? 'Refreshing reminders…' : 'Schedule sent to Shortcuts'), 400);
     };
