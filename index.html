@@ -323,25 +323,29 @@
 
 <header>
   <div class="logo">Crumb<span class="ear">.</span></div>
-  <div style="display: flex; align-items: center; gap: 12px;">
-    <div class="tagline">Bread Workflows</div>
-    <button id="btn-settings" aria-label="Settings" style="background: none; border: none; padding: 4px; cursor: pointer; color: var(--ink-mute); display: flex; align-items: center;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
-    </button>
-  </div>
+  <div class="tagline">Bread Workflows</div>
 </header>
 
 <!-- RECIPES VIEW -->
 <section class="view active" id="view-recipes">
   <div style="display: flex; align-items: center; justify-content: space-between; margin: 24px 0 10px; padding: 0 4px;">
     <div class="section-title" style="margin: 0;">My Recipes</div>
-    <button class="btn btn-primary btn-sm" id="btn-new-recipe" style="padding: 6px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 14px; height: 14px;"><path d="M12 5v14m-7-7h14"/></svg>
-      New Recipe
-    </button>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <button class="btn btn-primary btn-sm" id="btn-new-recipe" style="padding: 6px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 14px; height: 14px;"><path d="M12 5v14m-7-7h14"/></svg>
+        New Recipe
+      </button>
+      <button id="btn-open-settings" aria-label="Settings" style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft); padding: 0;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div id="recipe-filter-bar" style="display: none; margin-bottom: 12px;">
+    <div style="position: relative; margin-bottom: 8px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ink-mute); pointer-events: none;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="recipe-search" placeholder="Search recipes" style="width: 100%; padding: 8px 12px 8px 36px; border-radius: 100px; border: 1px solid var(--line); background: var(--bg-elev); font-family: inherit; font-size: 14px;">
+    </div>
+    <div id="recipe-category-chips" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;"></div>
   </div>
   <div id="recipe-list"></div>
   <div class="wheat-deco">·  ·  ·</div>
@@ -572,6 +576,20 @@
   </div>
 </div>
 
+<!-- HISTORY DETAIL MODAL -->
+<div class="modal-backdrop" id="modal-history-detail">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="hd-title">Bake</div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button class="btn btn-sm" id="hd-edit" style="padding: 6px 14px; font-size: 13px;">Edit</button>
+        <button class="modal-close" data-close>✕</button>
+      </div>
+    </div>
+    <div class="modal-body" id="hd-body"></div>
+  </div>
+</div>
+
 <!-- BAKE OPTIONS MODAL -->
 <div class="modal-backdrop" id="modal-bake-options">
   <div class="modal" style="max-width: 380px;">
@@ -717,6 +735,41 @@
       <div class="wheat-deco">·  ·  ·</div>
 
       <p class="help">Crumb syncs through Firebase. Data is stored under your sync code only — no account or sign-in needed. Anyone with your sync code can read and write your data, so treat it like a password.</p>
+
+      <div class="wheat-deco">·  ·  ·</div>
+
+      <div class="section-title">Alerts</div>
+      <div class="bake-mode-toggle" id="alerts-toggle">
+        <div>
+          <div class="label">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span>Sound &amp; Vibration <span class="sub" style="display: block;">Beep and vibrate when stages complete</span></span>
+          </div>
+        </div>
+        <div class="switch-pill"></div>
+      </div>
+
+      <div class="wheat-deco">·  ·  ·</div>
+
+      <div class="section-title">Data</div>
+      <button class="btn btn-block" id="export-data" style="margin-bottom: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Export All Data (JSON)
+      </button>
+      <button class="btn btn-block" id="import-data">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        Import Data (JSON)
+      </button>
+      <input type="file" id="import-data-file" accept="application/json,.json" style="display: none;">
+      <p class="help" style="margin-top: 8px;">Export gives you a JSON backup file. Import merges into your current data. Use this to back up to iCloud Drive or migrate between devices without sync.</p>
+
+      <div class="wheat-deco">·  ·  ·</div>
+
+      <div class="section-title">About</div>
+      <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.6;">
+        <div><strong>Crumb</strong> · Bread baking workflow</div>
+        <div style="margin-top: 4px; color: var(--ink-mute);">Version 1.0 · <span id="recipe-count-stat">0</span> recipes · <span id="bake-count-stat">0</span> bakes logged</div>
+      </div>
     </div>
   </div>
 </div>
@@ -793,7 +846,58 @@
     focusedBakeId: null, // which active bake is currently shown in the schedule view
     editingRecipe: null,
     syncCode: null,
+    alertsEnabled: true, // beep + vibrate when stages complete
+    recipeFilter: { text: '', categoryId: null }, // recipe list filter
   };
+
+  // ============================================================
+  // ALERTS — Audio + Haptic feedback for stage events
+  // ============================================================
+  let audioCtx = null;
+  // Init lazily on first user interaction (iOS requires user gesture)
+  function initAudio() {
+    if (audioCtx) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    } catch (e) { /* ignore */ }
+  }
+  // A pleasant two-tone chime (rising fifth) — short, audible without being jarring
+  function playStageCompleteSound() {
+    if (!state.alertsEnabled) return;
+    initAudio();
+    if (!audioCtx) return;
+    try {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const now = audioCtx.currentTime;
+      const tones = [
+        { freq: 587.33, start: 0,    dur: 0.18 }, // D5
+        { freq: 880.00, start: 0.18, dur: 0.28 }, // A5
+      ];
+      tones.forEach(t => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = t.freq;
+        gain.gain.setValueAtTime(0, now + t.start);
+        gain.gain.linearRampToValueAtTime(0.18, now + t.start + 0.02);
+        gain.gain.linearRampToValueAtTime(0, now + t.start + t.dur);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(now + t.start);
+        osc.stop(now + t.start + t.dur + 0.05);
+      });
+    } catch (e) { /* ignore */ }
+  }
+  function vibrate(pattern) {
+    if (!state.alertsEnabled) return;
+    if (navigator.vibrate) navigator.vibrate(pattern);
+  }
+  function alertStageComplete() {
+    playStageCompleteSound();
+    vibrate([200, 100, 200]);
+  }
+  // First click anywhere in the bake view warms up the audio context
+  document.addEventListener('click', initAudio, { once: true });
 
   // ============================================================
   // BAKING MODE — Wake Lock (keeps screen on during active bake)
@@ -902,6 +1006,8 @@
       if (typeof state.scaleFactor !== 'number' || !state.scaleFactor) state.scaleFactor = 1;
       if (state.scheduleMode !== 'finish' && state.scheduleMode !== 'now') state.scheduleMode = 'now';
       if (!Array.isArray(state.activeBakes)) state.activeBakes = [];
+      if (typeof state.alertsEnabled !== 'boolean') state.alertsEnabled = true;
+      if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null };
 
       // Migrate legacy single activeBake to activeBakes array
       if (state.activeBake && typeof state.activeBake === 'object' && state.activeBake.recipeId) {
@@ -919,22 +1025,44 @@
     } catch (e) { console.error('load failed', e); }
   }
 
+  // Track when we've shown the quota-exceeded warning so we don't spam toasts
+  let _quotaWarned = false;
   function saveState() {
+    const payload = {
+      recipes: state.recipes,
+      bakes: state.bakes,
+      categories: state.categories,
+      currentRecipeId: state.currentRecipeId,
+      scheduleMode: state.scheduleMode,
+      scheduleStart: state.scheduleStart,
+      scheduleFinish: state.scheduleFinish,
+      scaleFactor: state.scaleFactor,
+      activeBakes: state.activeBakes,
+      focusedBakeId: state.focusedBakeId,
+      syncCode: state.syncCode,
+      alertsEnabled: state.alertsEnabled,
+      recipeFilter: state.recipeFilter,
+    };
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({
-        recipes: state.recipes,
-        bakes: state.bakes,
-        categories: state.categories,
-        currentRecipeId: state.currentRecipeId,
-        scheduleMode: state.scheduleMode,
-        scheduleStart: state.scheduleStart,
-        scheduleFinish: state.scheduleFinish,
-        scaleFactor: state.scaleFactor,
-        activeBakes: state.activeBakes,
-        focusedBakeId: state.focusedBakeId,
-        syncCode: state.syncCode,
-      }));
-    } catch (e) { console.error('save failed', e); }
+      localStorage.setItem(LS_KEY, JSON.stringify(payload));
+      _quotaWarned = false;
+    } catch (e) {
+      console.error('save failed', e);
+      // QuotaExceededError most commonly — photos pushed us over the ~5MB localStorage limit
+      if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+        if (!_quotaWarned) {
+          _quotaWarned = true;
+          // Try saving without photos as a fallback so the user doesn't lose other changes
+          try {
+            const slim = { ...payload, bakes: (payload.bakes || []).map(b => ({ ...b, photos: b.photos && b.photos.length > 0 ? ['__omitted_quota__'] : [] })) };
+            localStorage.setItem(LS_KEY, JSON.stringify(slim));
+            if (typeof toast === 'function') toast('Storage full — photos may not save. Export a backup, then delete old bakes.');
+          } catch (e2) {
+            if (typeof toast === 'function') toast('Storage full — can\'t save. Delete old bakes or export to free space.');
+          }
+        }
+      }
+    }
     // Push shared data to Firestore if sync is enabled
     if (state.syncCode) {
       pushToFirestore();
@@ -1170,6 +1298,24 @@
   // ============================================================
   // RENDERING
   // ============================================================
+  function renderRecipeFilterBar() {
+    const f = state.recipeFilter || { text: '', categoryId: null };
+    const searchInput = document.getElementById('recipe-search');
+    if (searchInput && document.activeElement !== searchInput) {
+      searchInput.value = f.text || '';
+    }
+    const chipsContainer = document.getElementById('recipe-category-chips');
+    if (!chipsContainer) return;
+    // Build chips: "All" + each category that has recipes
+    const usedCategories = new Set();
+    state.recipes.forEach(r => { if (r.categoryId) usedCategories.add(r.categoryId); });
+    const chips = [{ id: null, name: 'All' }, ...state.categories.filter(c => usedCategories.has(c.id))];
+    chipsContainer.innerHTML = chips.map(c => {
+      const active = (f.categoryId || null) === (c.id || null);
+      return `<button class="cat-chip${active ? ' active' : ''}" data-chip-cat="${c.id || ''}" style="flex-shrink: 0; padding: 6px 12px; border-radius: 100px; border: 1px solid ${active ? 'var(--crust)' : 'var(--line)'}; background: ${active ? 'var(--bg-warm)' : 'var(--bg-elev)'}; color: ${active ? 'var(--crust-deep)' : 'var(--ink-soft)'}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;">${escapeHtml(c.name)}</button>`;
+    }).join('');
+  }
+
   function renderRecipes() {
     const list = document.getElementById('recipe-list');
     if (state.recipes.length === 0) {
@@ -1179,13 +1325,45 @@
           <div class="title">No recipes yet</div>
           <div class="body">Add a recipe to start scheduling bakes. You can import from a photo or type it in.</div>
         </div>`;
+      // Hide filter bar when no recipes
+      const fb = document.getElementById('recipe-filter-bar');
+      if (fb) fb.style.display = 'none';
+      return;
+    }
+    // Show the filter bar
+    const filterBar = document.getElementById('recipe-filter-bar');
+    if (filterBar) filterBar.style.display = '';
+    renderRecipeFilterBar();
+
+    // Apply filters
+    const f = state.recipeFilter || { text: '', categoryId: null };
+    const searchText = (f.text || '').toLowerCase().trim();
+    const categoryFilter = f.categoryId;
+    let filtered = state.recipes;
+    if (searchText) {
+      filtered = filtered.filter(r => {
+        if ((r.name || '').toLowerCase().includes(searchText)) return true;
+        const cat = state.categories.find(c => c.id === r.categoryId);
+        if (cat && cat.name.toLowerCase().includes(searchText)) return true;
+        return false;
+      });
+    }
+    if (categoryFilter) {
+      filtered = filtered.filter(r => r.categoryId === categoryFilter);
+    }
+
+    if (filtered.length === 0) {
+      list.innerHTML = `
+        <div class="empty" style="padding: 32px 16px;">
+          <div class="title">No matches</div>
+          <div class="body">Try a different search term or category.</div>
+        </div>`;
       return;
     }
 
     // Group recipes by category
     const groups = new Map();
-    // Initialize with declared categories so empty ones don't appear
-    state.recipes.forEach(r => {
+    filtered.forEach(r => {
       const key = r.categoryId || 'uncategorized';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(r);
@@ -1241,6 +1419,21 @@
         openCategoryActions(b.dataset.renameCat);
       });
     });
+
+    // Wire filter chip clicks (each render re-creates the chips)
+    document.querySelectorAll('#recipe-category-chips [data-chip-cat]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const id = chip.dataset.chipCat || null;
+        // Toggle: tapping the active chip clears the filter
+        if ((state.recipeFilter.categoryId || null) === (id || null)) {
+          state.recipeFilter.categoryId = null;
+        } else {
+          state.recipeFilter.categoryId = id;
+        }
+        saveState();
+        renderRecipes();
+      });
+    });
   }
 
   async function openCategoryActions(catId) {
@@ -1290,7 +1483,8 @@
       return;
     }
     list.innerHTML = state.bakes.slice().reverse().map(b => {
-      const r = state.recipes.find(x => x.id === b.recipeId);
+      // Prefer the frozen snapshot from when the bake ended; fall back to current recipe
+      const r = b.recipeSnapshot || state.recipes.find(x => x.id === b.recipeId);
       const start = new Date(b.startedAt);
       const end = new Date(b.completedAt || b.startedAt);
       const elapsedHrs = Math.round((end - start) / 3600000 * 10) / 10;
@@ -1336,11 +1530,11 @@
         </div>`;
     }).join('');
 
-    // Wire tap-to-edit and photo viewer
+    // Wire tap-to-view and photo viewer
     list.querySelectorAll('[data-hist-bake]').forEach(card => {
       card.addEventListener('click', (e) => {
         if (e.target.closest('[data-hist-photo]')) return; // photo clicks handled separately
-        openBakeNotes(card.dataset.histBake);
+        openHistoryDetail(card.dataset.histBake);
       });
     });
     list.querySelectorAll('[data-hist-photo]').forEach(img => {
@@ -1349,6 +1543,148 @@
         openPhotoViewer(img.src);
       });
     });
+  }
+
+  // ============================================================
+  // HISTORY DETAIL — full timeline view for a past bake
+  // ============================================================
+  function openHistoryDetail(bakeId) {
+    const bake = (state.bakes || []).find(b => b.id === bakeId);
+    if (!bake) return;
+    const recipe = bake.recipeSnapshot || state.recipes.find(r => r.id === bake.recipeId);
+    if (!recipe) {
+      toast('Recipe data missing for this bake');
+      return;
+    }
+    const title = document.getElementById('hd-title');
+    const body = document.getElementById('hd-body');
+    title.textContent = `${recipe.icon || DEFAULT_ICON} ${recipe.name}`;
+
+    const start = new Date(bake.startedAt);
+    const end = new Date(bake.completedAt || bake.startedAt);
+    const elapsedMin = Math.round((end - start) / 60000);
+    const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+
+    // Header info: date, score, temp, scale, elapsed
+    const score = bake.score || 0;
+    const scoreEl = score > 0
+      ? `<div style="display: flex; gap: 3px; align-items: center;"><span style="font-size: 11px; color: var(--ink-mute); margin-right: 4px;">SCORE</span>${[1,2,3,4,5].map(n => `<span style="color: ${n <= score ? 'var(--crust)' : 'var(--line)'}; font-size: 16px;">●</span>`).join('')}</div>`
+      : '';
+    const pills = [];
+    if (bake.kitchenTemp) pills.push(`<span class="pacing-tag" style="border-color: var(--line); color: var(--ink-soft); background: var(--bg-elev);">${escapeHtml(bake.kitchenTemp)}°</span>`);
+    if (bake.scaleFactor && bake.scaleFactor !== 1) pills.push(`<span class="pacing-tag" style="border-color: var(--line); color: var(--ink-soft); background: var(--bg-elev);">${bake.scaleFactor}× scaled</span>`);
+    if (bake.recipeSnapshot) pills.push(`<span class="pacing-tag" style="border-color: var(--leaven); color: var(--rye); background: var(--leaven-soft);">Snapshot</span>`);
+
+    // Build planned vs actual timeline
+    const stageStates = bake.stageStates || [];
+    const plannedTimes = [];
+    let t = start;
+    for (let i = 0; i < recipe.stages.length; i++) {
+      const stageStart = new Date(t);
+      const dur = (stageStates[i] && typeof stageStates[i].durMinOverride === 'number')
+        ? stageStates[i].durMinOverride
+        : recipe.stages[i].durMin;
+      const stageEnd = new Date(t.getTime() + dur * 60000);
+      plannedTimes.push({ start: stageStart, end: stageEnd, dur });
+      t = stageEnd;
+    }
+    const timelineHtml = recipe.stages.map((s, i) => {
+      const st = stageStates[i] || {};
+      const planned = plannedTimes[i];
+      const actualDoneAt = st.doneAt ? new Date(st.doneAt) : null;
+      const driftMin = actualDoneAt ? Math.round((actualDoneAt - planned.end) / 60000) : null;
+      const driftLabel = driftMin === null
+        ? '<span style="color: var(--ink-mute);">—</span>'
+        : (driftMin === 0
+          ? '<span style="color: var(--leaven); font-size: 11px;">on time</span>'
+          : (driftMin > 0
+            ? `<span style="color: var(--warn); font-size: 11px;">+${formatDur(driftMin)} late</span>`
+            : `<span style="color: var(--leaven); font-size: 11px;">−${formatDur(Math.abs(driftMin))} early</span>`));
+      const skipped = st.skipped;
+      const autoAdv = st.autoAdvanced;
+      const overrideTag = (typeof st.durMinOverride === 'number')
+        ? `<span style="font-size: 10px; color: var(--crust); margin-left: 6px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">adjusted</span>`
+        : '';
+      return `
+        <div style="padding: 12px 0; border-bottom: 1px solid var(--line-soft);">
+          <div style="display: flex; gap: 8px; align-items: flex-start; margin-bottom: 4px;">
+            <div style="width: 22px; height: 22px; border-radius: 50%; background: ${st.done ? 'var(--leaven)' : 'var(--bg-warm)'}; color: ${st.done ? 'white' : 'var(--ink-mute)'}; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">${i + 1}</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 14px; color: var(--ink); font-weight: 500;">${escapeHtml(s.name)}${overrideTag}${s.isWait ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· wait</span>' : ''}${skipped ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· skipped</span>' : ''}${autoAdv ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· auto</span>' : ''}</div>
+              ${s.detail ? `<div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">${escapeHtml(s.detail)}</div>` : ''}
+            </div>
+          </div>
+          <div style="display: flex; gap: 14px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-soft); margin-left: 30px;">
+            <div>Planned: ${formatTime(planned.start)}→${formatTime(planned.end)}</div>
+            ${actualDoneAt ? `<div>Done: ${formatTime(actualDoneAt)}</div>` : ''}
+            <div>${driftLabel}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Notes
+    const notesParts = [];
+    if (bake.worked) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--leaven); text-transform: uppercase; letter-spacing: 0.06em;">Worked</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px;">${escapeHtml(bake.worked)}</div></div>`);
+    if (bake.changeNext) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--warn); text-transform: uppercase; letter-spacing: 0.06em;">Change Next Time</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px;">${escapeHtml(bake.changeNext)}</div></div>`);
+    if (bake.notes) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em;">Notes</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px;">${escapeHtml(bake.notes)}</div></div>`);
+
+    // Photos
+    const photoGrid = bake.photos && bake.photos.length > 0
+      ? `<div class="section-title" style="margin-top: 16px;">Photos</div>
+         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px;">
+           ${bake.photos.map(src => `<img src="${src}" data-hd-photo="${escapeAttr(src)}" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer; border: 1px solid var(--line);" alt="Bake photo">`).join('')}
+         </div>`
+      : '';
+
+    body.innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <div style="font-size: 13px; color: var(--ink-soft); margin-bottom: 6px;">${dateStr}</div>
+        <div style="font-size: 12px; color: var(--ink-mute); margin-bottom: 10px;">Total elapsed: ${formatDur(elapsedMin)}</div>
+        ${scoreEl ? `<div style="margin-bottom: 8px;">${scoreEl}</div>` : ''}
+        ${pills.length > 0 ? `<div style="display: flex; gap: 6px; flex-wrap: wrap;">${pills.join('')}</div>` : ''}
+      </div>
+
+      <div class="section-title" style="margin-top: 0;">Timeline</div>
+      <div>${timelineHtml}</div>
+
+      ${notesParts.length > 0 ? `<div class="section-title" style="margin-top: 16px;">Notes</div>${notesParts.join('')}` : ''}
+
+      ${photoGrid}
+
+      <button class="btn btn-ghost btn-block" id="hd-delete" style="color: var(--warn); margin-top: 24px;">Delete This Bake</button>
+    `;
+
+    document.getElementById('hd-edit').onclick = () => {
+      hideModal('modal-history-detail');
+      openBakeNotes(bakeId);
+    };
+
+    document.getElementById('hd-delete').onclick = async () => {
+      const choice = await showConfirm({
+        title: 'Delete this bake?',
+        message: 'This removes it permanently from your history. It can\'t be undone.',
+        buttons: [
+          { label: 'Delete', style: 'danger', value: 'yes' },
+          { label: 'Cancel', style: 'ghost', value: 'no' },
+        ],
+      });
+      if (choice !== 'yes') return;
+      state.bakes = state.bakes.filter(b => b.id !== bakeId);
+      saveState();
+      hideModal('modal-history-detail');
+      renderHistory();
+      toast('Bake deleted');
+    };
+
+    body.querySelectorAll('[data-hd-photo]').forEach(img => {
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPhotoViewer(img.dataset.hdPhoto);
+      });
+    });
+
+    showModal('modal-history-detail');
   }
 
   function openSchedule(recipeId) {
@@ -1633,25 +1969,48 @@
     if (state.focusedBakeId === bakeId) {
       state.focusedBakeId = state.activeBakes.length > 0 ? state.activeBakes[0].id : null;
     }
+    if (typeof clearAlertsForBake === 'function') clearAlertsForBake(bakeId);
   }
 
   function endBake(bakeOrId, save = true) {
     const bake = typeof bakeOrId === 'string' ? getActiveBakeById(bakeOrId) : bakeOrId;
     if (!bake) return;
-    if (save) {
-      // Open the notes modal — bake reference is stashed so finalizeBakeSave knows which bake
-      openBakeNotes(null, bake);
-    } else {
-      removeActiveBake(bake.id);
-      saveState();
-      const stillBaking = state.activeBakes.length > 0;
-      if (!stillBaking) stopBakeTicker();
-      renderRecipes();
-      renderSchedule();
-      if (document.getElementById('view-active-bakes').classList.contains('active')) renderActiveBakes();
-      updateActiveTabBadge();
-      toast('Bake discarded');
+
+    // If reminders were sent for this bake, offer to clear them from iOS Reminders
+    const cleanupAndContinue = () => {
+      if (save) {
+        openBakeNotes(null, bake);
+      } else {
+        removeActiveBake(bake.id);
+        saveState();
+        const stillBaking = state.activeBakes.length > 0;
+        if (!stillBaking) stopBakeTicker();
+        renderRecipes();
+        renderSchedule();
+        if (document.getElementById('view-active-bakes').classList.contains('active')) renderActiveBakes();
+        updateActiveTabBadge();
+        toast('Bake discarded');
+      }
+    };
+
+    if (bake.remindersSent) {
+      const recipe = state.recipes.find(r => r.id === bake.recipeId);
+      if (recipe) {
+        // Send a cleanup payload to the Shortcut: replaceExisting=true with no milestones.
+        // The Shortcut deletes existing reminders for this recipe, adds nothing new.
+        const payload = JSON.stringify({
+          recipe: recipe.name,
+          milestones: [],
+          replaceExisting: true,
+        });
+        navigator.clipboard.writeText(payload).then(() => {
+          window.location.href = 'shortcuts://run-shortcut?name=Crumb%20Timers';
+          setTimeout(cleanupAndContinue, 600);
+        }).catch(cleanupAndContinue);
+        return;
+      }
     }
+    cleanupAndContinue();
   }
 
   // Finalize the save after notes modal closes
@@ -1678,6 +2037,7 @@
       ? getActiveBakeById(notesData._activeBakeId)
       : (state.activeBakes.length === 1 ? state.activeBakes[0] : null);
     if (!activeBake) return;
+    const recipe = state.recipes.find(r => r.id === activeBake.recipeId);
     state.bakes = state.bakes || [];
     state.bakes.push({
       id: uid(),
@@ -1692,6 +2052,9 @@
       changeNext: notesData.changeNext,
       notes: notesData.notes,
       photos: notesData.photos,
+      // Snapshot the recipe as it was at the end of this bake — preserves history accuracy
+      // even if the recipe is edited later.
+      recipeSnapshot: recipe ? JSON.parse(JSON.stringify(recipe)) : null,
     });
     removeActiveBake(activeBake.id);
     saveState();
@@ -1866,7 +2229,12 @@
         break;
       }
     }
-    if (changed) saveState();
+    if (changed) {
+      // Single beep at the end of the sequence — avoids cascading alerts if multiple
+      // wait stages auto-advance in rapid succession (e.g., on page reload after a long pause)
+      alertStageComplete();
+      saveState();
+    }
     return changed;
   }
 
@@ -2128,21 +2496,29 @@
     if (msToStart > 0) {
       heroState = 'waiting';
       statusText = 'Up next';
-      countdownLabel = 'Starts in';
-      countdownValue = formatCountdown(msToStart);
-      countdownWhen = `at ${formatTime(scheduledStart)}`;
+      countdownLabel = 'Starts';
+      const f = formatLongCountdown(msToStart, scheduledStart);
+      countdownValue = f.value;
+      countdownWhen = f.when;
     } else if (curStage.isWait) {
       heroState = 'waiting';
       statusText = 'Now resting';
-      countdownLabel = 'Ready in';
-      countdownValue = formatCountdown(Math.abs(msToEnd));
-      countdownWhen = `at ${formatTime(scheduledEnd)}`;
+      countdownLabel = 'Ready';
+      const f = formatLongCountdown(Math.abs(msToEnd), scheduledEnd);
+      countdownValue = f.value;
+      countdownWhen = f.when;
     } else {
       heroState = msToEnd < 0 ? 'overdue' : '';
       statusText = msToEnd < 0 ? 'Past scheduled end' : 'Now doing';
-      countdownLabel = msToEnd < 0 ? 'Overdue by' : 'Should be done in';
-      countdownValue = formatCountdown(Math.abs(msToEnd));
-      countdownWhen = msToEnd < 0 ? '' : `at ${formatTime(scheduledEnd)}`;
+      countdownLabel = msToEnd < 0 ? 'Overdue by' : 'Done by';
+      if (msToEnd < 0) {
+        countdownValue = formatCountdown(Math.abs(msToEnd));
+        countdownWhen = '';
+      } else {
+        const f = formatLongCountdown(msToEnd, scheduledEnd);
+        countdownValue = f.value;
+        countdownWhen = f.when;
+      }
       showOverdueBadge = msToEnd < 0;
     }
 
@@ -2441,9 +2817,40 @@
 
   // Tick the countdown every second when a bake is active
   let bakeTickerInterval = null;
+  // Track which bake stages we've already alerted for, so we don't beep every second.
+  // Key format: `bakeId:stageIdx`. Cleared when the stage is un-done (step back) or bake ends.
+  const alertedStageEnds = new Set();
+  function clearAlertsForBake(bakeId) {
+    for (const key of Array.from(alertedStageEnds)) {
+      if (key.startsWith(bakeId + ':')) alertedStageEnds.delete(key);
+    }
+  }
+  function clearAlertForStage(bakeId, stageIdx) {
+    alertedStageEnds.delete(`${bakeId}:${stageIdx}`);
+  }
   function startBakeTicker() {
     stopBakeTicker();
     bakeTickerInterval = setInterval(() => {
+      // Beep when any hands-on stage's countdown reaches zero (transitions to overdue)
+      for (const ab of state.activeBakes) {
+        if (ab.paused) continue;
+        const recipe = state.recipes.find(r => r.id === ab.recipeId);
+        if (!recipe) continue;
+        const curIdx = getCurrentStageIdx(recipe, ab);
+        if (curIdx === -1) continue;
+        const stage = recipe.stages[curIdx];
+        if (stage.isWait) continue; // wait stages alert via autoAdvanceWaitStages
+        const scheduledEnd = getStageScheduledStart(recipe, curIdx, ab).getTime() + getStageDur(recipe, curIdx, ab) * 60000;
+        const msToEnd = scheduledEnd - Date.now();
+        const alertKey = `${ab.id}:${curIdx}`;
+        // Trigger when first ticking past the end. Generous window (up to 60s overdue)
+        // so a brief page background/foreground cycle won't cause us to miss it.
+        if (msToEnd <= 0 && msToEnd > -60000 && !alertedStageEnds.has(alertKey)) {
+          alertedStageEnds.add(alertKey);
+          alertStageComplete();
+        }
+      }
+
       const scheduleView = document.getElementById('view-schedule');
       const activeView = document.getElementById('view-active-bakes');
       if (scheduleView && scheduleView.classList.contains('active')) {
@@ -2473,6 +2880,33 @@
     const s = totalSec % 60;
     if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  // For long durations (>8h or crossing midnight), show clock time instead of countdown.
+  // Returns { value, when }: value is the headline number, when is a contextual second line.
+  // Falls back to short countdown for under-8h same-day cases.
+  function formatLongCountdown(ms, targetDate) {
+    const eightHours = 8 * 3600 * 1000;
+    const now = new Date();
+    const target = targetDate instanceof Date ? targetDate : new Date(now.getTime() + ms);
+    const sameDay = now.toDateString() === target.toDateString();
+    const longSpan = ms > eightHours;
+    if (longSpan || !sameDay) {
+      const time = formatTime(target);
+      const dayLabel = sameDay
+        ? 'today'
+        : (new Date(now.getTime() + 24 * 3600 * 1000).toDateString() === target.toDateString())
+          ? 'tomorrow'
+          : target.toLocaleDateString(undefined, { weekday: 'long' });
+      return {
+        value: time,
+        when: `${dayLabel} · ${formatCountdown(ms)} away`,
+      };
+    }
+    return {
+      value: formatCountdown(ms),
+      when: `at ${formatTime(target)}`,
+    };
   }
 
   // ============================================================
@@ -2976,7 +3410,60 @@ Here is the recipe:
       return;
     }
 
-    list.innerHTML = bakes.map(b => {
+    // "What's next" banner — finds the soonest upcoming action across all active bakes
+    const nextAction = (() => {
+      let best = null;
+      for (const b of bakes) {
+        if (b.paused) continue;
+        const recipe = state.recipes.find(r => r.id === b.recipeId);
+        if (!recipe) continue;
+        const idx = getCurrentStageIdx(recipe, b);
+        if (idx === -1) continue;
+        const stage = recipe.stages[idx];
+        const start = getStageScheduledStart(recipe, idx, b);
+        const end = new Date(start.getTime() + getStageDur(recipe, idx, b) * 60000);
+        const now = new Date();
+        // For wait stages we care about when they end (so user can do next action)
+        // For hands-on we care about when they start (or now if it's already begun)
+        const target = stage.isWait ? end : (start > now ? start : end);
+        const msAway = target - now;
+        const nextStage = !stage.isWait ? stage : (idx + 1 < recipe.stages.length ? recipe.stages[idx + 1] : null);
+        const actionName = stage.isWait
+          ? (nextStage ? nextStage.name : 'End of bake')
+          : stage.name;
+        const candidate = {
+          recipe,
+          bake: b,
+          actionName,
+          target,
+          msAway,
+          color: getBakeColor(b.color),
+        };
+        if (!best || msAway < best.msAway) best = candidate;
+      }
+      return best;
+    })();
+
+    const nextBanner = nextAction ? (() => {
+      const ms = nextAction.msAway;
+      const overdue = ms < 0;
+      const label = overdue ? 'Action overdue' : 'Next action';
+      const timing = overdue
+        ? `${formatCountdown(Math.abs(ms))} ago`
+        : (() => {
+            const f = formatLongCountdown(ms, nextAction.target);
+            return ms > 8 * 3600 * 1000 ? `at ${f.value} (${f.when})` : `in ${f.value}`;
+          })();
+      return `
+        <div style="background: ${overdue ? 'rgba(196, 90, 74, 0.1)' : nextAction.color.soft}; border: 1px solid ${overdue ? 'var(--warn)' : nextAction.color.hex}; border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: ${overdue ? 'var(--warn)' : nextAction.color.hex}; margin-bottom: 4px;">${label}</div>
+          <div style="font-family: 'Fraunces', serif; font-size: 17px; color: var(--ink); line-height: 1.25;">${escapeHtml(nextAction.actionName)}</div>
+          <div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">${escapeHtml(nextAction.recipe.name)} · ${timing}</div>
+        </div>
+      `;
+    })() : '';
+
+    list.innerHTML = nextBanner + bakes.map(b => {
       const recipe = state.recipes.find(r => r.id === b.recipeId);
       if (!recipe) return '';
       const color = getBakeColor(b.color);
@@ -3150,6 +3637,8 @@ Here is the recipe:
     if (!ab || !recipe) return;
     const timeline = buildRemainingTimeline(recipe, ab);
     if (timeline.length === 0) { toast('No remaining stages to send'); return; }
+    ab.remindersSent = true;
+    saveState();
     openShortcutModal(recipe, timeline);
   });
 
@@ -3161,6 +3650,7 @@ Here is the recipe:
     if (timeline.length === 0) { toast('No remaining stages — nothing to refresh'); return; }
     // Clear the needs-refresh flag once user actually refreshes
     ab.needsReminderRefresh = false;
+    ab.remindersSent = true;
     saveState();
     openShortcutModal(recipe, timeline, { replaceExisting: true });
   });
@@ -3273,6 +3763,7 @@ Here is the recipe:
     bake.stageStates[lastDoneIdx].skipped = false;
     bake.stageStates[lastDoneIdx].catchupDismissedAt = null;
     bake.needsReminderRefresh = true;
+    clearAlertForStage(bake.id, lastDoneIdx); // re-allow beep if this stage expires again
     saveState();
     renderActiveBake(recipe, bake);
     toast('Stepped back one stage');
@@ -3294,24 +3785,45 @@ Here is the recipe:
     const existing = state.recipes.findIndex(x => x.id === r.id);
     if (existing >= 0) state.recipes[existing] = r;
     else state.recipes.push(r);
+    // If a bake is running for this recipe, reconcile its stageStates array so it matches
+    // the new stage count. Preserves existing done state by index; appends defaults for new
+    // stages; trims removed ones (but only trailing — done states for kept stages stay).
+    const activeForThis = getActiveBakeForRecipe(r.id);
+    if (activeForThis) {
+      const oldStates = activeForThis.stageStates || [];
+      const newStates = [];
+      for (let i = 0; i < r.stages.length; i++) {
+        newStates.push(oldStates[i] || { done: false, doneAt: null });
+      }
+      activeForThis.stageStates = newStates;
+    }
     saveState();
     hideModal('modal-recipe');
     renderRecipes();
     if (state.currentRecipeId === r.id) renderSchedule();
     // If a bake is in progress for this recipe, restart the ticker so countdowns continue
-    if (getActiveBakeForRecipe(r.id) && !bakeTickerInterval) startBakeTicker();
+    if (activeForThis && !bakeTickerInterval) startBakeTicker();
     toast('Recipe saved');
   });
   document.getElementById('delete-recipe').addEventListener('click', async () => {
+    const activeForThis = state.editingRecipe ? getActiveBakeForRecipe(state.editingRecipe.id) : null;
+    const message = activeForThis
+      ? 'A bake is in progress for this recipe. Deleting will also end the bake (without saving to history). This can\'t be undone.'
+      : 'This can\'t be undone.';
     const choice = await showConfirm({
       title: 'Delete this recipe?',
-      message: 'This can\'t be undone.',
+      message,
       buttons: [
         { label: 'Delete', style: 'danger', value: 'yes' },
         { label: 'Cancel', style: 'ghost', value: 'no' },
       ],
     });
     if (choice !== 'yes') return;
+    if (activeForThis) {
+      removeActiveBake(activeForThis.id);
+      if (state.activeBakes.length === 0) stopBakeTicker();
+      updateActiveTabBadge();
+    }
     state.recipes = state.recipes.filter(x => x.id !== state.editingRecipe.id);
     saveState();
     hideModal('modal-recipe');
@@ -3617,12 +4129,130 @@ Here is the recipe:
     }
   }
 
+  function renderAlertsToggle() {
+    const t = document.getElementById('alerts-toggle');
+    if (!t) return;
+    t.classList.toggle('on', !!state.alertsEnabled);
+  }
+
+  function renderSettingsStats() {
+    const r = document.getElementById('recipe-count-stat');
+    const b = document.getElementById('bake-count-stat');
+    if (r) r.textContent = (state.recipes || []).length;
+    if (b) b.textContent = (state.bakes || []).length;
+  }
+
   // Wire up settings + sync controls
   function wireSyncControls() {
-    document.getElementById('btn-settings').addEventListener('click', () => {
+    const openSettings = () => {
       renderSyncStatus();
+      renderAlertsToggle();
+      renderSettingsStats();
       showModal('modal-settings');
-    });
+    };
+    const oldGear = document.getElementById('btn-settings');
+    if (oldGear) oldGear.addEventListener('click', openSettings);
+    const newGear = document.getElementById('btn-open-settings');
+    if (newGear) newGear.addEventListener('click', openSettings);
+
+    // Alerts toggle
+    const alertsToggle = document.getElementById('alerts-toggle');
+    if (alertsToggle) {
+      alertsToggle.addEventListener('click', () => {
+        state.alertsEnabled = !state.alertsEnabled;
+        saveState();
+        renderAlertsToggle();
+        if (state.alertsEnabled) {
+          // Quick test chime so user knows it works
+          alertStageComplete();
+        }
+      });
+    }
+
+    // Export all data as JSON file download
+    const exportBtn = document.getElementById('export-data');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        const payload = {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          recipes: state.recipes,
+          bakes: state.bakes,
+          categories: state.categories,
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const date = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `crumb-backup-${date}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast('Backup downloaded');
+      });
+    }
+
+    // Import data — file picker, merges into current state
+    const importBtn = document.getElementById('import-data');
+    const importInput = document.getElementById('import-data-file');
+    if (importBtn && importInput) {
+      importBtn.addEventListener('click', () => importInput.click());
+      importInput.addEventListener('change', async () => {
+        const file = importInput.files && importInput.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          if (!parsed || typeof parsed !== 'object') throw new Error('Invalid file');
+          const confirm = await showConfirm({
+            title: 'Import this backup?',
+            message: `This will add ${(parsed.recipes || []).length} recipes, ${(parsed.bakes || []).length} bakes, and ${(parsed.categories || []).length} categories to your current data. Duplicates will be skipped by ID.`,
+            buttons: [
+              { label: 'Import', style: 'primary', value: 'yes' },
+              { label: 'Cancel', style: 'ghost', value: 'no' },
+            ],
+          });
+          if (confirm !== 'yes') { importInput.value = ''; return; }
+          let added = { recipes: 0, bakes: 0, categories: 0 };
+          if (Array.isArray(parsed.categories)) {
+            for (const c of parsed.categories) {
+              if (!c || !c.id || !c.name) continue;
+              if (state.categories.find(x => x.id === c.id)) continue;
+              state.categories.push(c);
+              added.categories++;
+            }
+          }
+          if (Array.isArray(parsed.recipes)) {
+            for (const r of parsed.recipes) {
+              if (!r || !r.id) continue;
+              if (state.recipes.find(x => x.id === r.id)) continue;
+              state.recipes.push(r);
+              added.recipes++;
+            }
+          }
+          if (Array.isArray(parsed.bakes)) {
+            for (const b of parsed.bakes) {
+              if (!b || !b.id) continue;
+              if (state.bakes.find(x => x.id === b.id)) continue;
+              state.bakes.push(b);
+              added.bakes++;
+            }
+          }
+          saveState();
+          renderRecipes();
+          renderHistory();
+          renderSettingsStats();
+          toast(`Added ${added.recipes} recipes, ${added.bakes} bakes, ${added.categories} categories`);
+        } catch (e) {
+          console.error(e);
+          toast('Could not read the file — make sure it\'s a valid Crumb backup');
+        } finally {
+          importInput.value = '';
+        }
+      });
+    }
 
     document.getElementById('enable-sync').addEventListener('click', async () => {
       const code = generateSyncCode();
@@ -3681,8 +4311,36 @@ Here is the recipe:
   seedIfEmpty();
   renderRecipes();
   updateActiveTabBadge();
-  if (state.activeBakes.length > 0) startBakeTicker();
+  if (state.activeBakes.length > 0) {
+    // Pre-populate alertedStageEnds so we don't beep for stages that became overdue
+    // while the app was closed. The first alert should be for NEW transitions only.
+    for (const ab of state.activeBakes) {
+      const recipe = state.recipes.find(r => r.id === ab.recipeId);
+      if (!recipe) continue;
+      const curIdx = getCurrentStageIdx(recipe, ab);
+      if (curIdx === -1) continue;
+      const stage = recipe.stages[curIdx];
+      if (stage.isWait) continue;
+      const scheduledEnd = getStageScheduledStart(recipe, curIdx, ab).getTime() + getStageDur(recipe, curIdx, ab) * 60000;
+      if (Date.now() >= scheduledEnd) {
+        alertedStageEnds.add(`${ab.id}:${curIdx}`);
+      }
+    }
+    startBakeTicker();
+  }
   wireSyncControls();
+
+  // Wire recipe search input (debounced)
+  let _recipeSearchTimer = null;
+  const recipeSearchInput = document.getElementById('recipe-search');
+  if (recipeSearchInput) {
+    recipeSearchInput.addEventListener('input', () => {
+      state.recipeFilter.text = recipeSearchInput.value || '';
+      saveState();
+      clearTimeout(_recipeSearchTimer);
+      _recipeSearchTimer = setTimeout(() => renderRecipes(), 150);
+    });
+  }
 
   // Connect to Firebase once SDK is loaded
   function tryAutoConnect() {
