@@ -1109,10 +1109,13 @@
   // ============================================================
   function seedIfEmpty() {
     if (state.categories.length === 0) {
+      // Use deterministic ids so multiple devices seeding independently produce the SAME ids,
+      // which lets the sync merge consolidate them into one entry per category instead of
+      // creating duplicates with random uid()s.
       state.categories = [
-        { id: uid(), name: 'Breads' },
-        { id: uid(), name: 'Pizzas' },
-        { id: uid(), name: 'Pastries' },
+        { id: 'cat-breads', name: 'Breads' },
+        { id: 'cat-pizzas', name: 'Pizzas' },
+        { id: 'cat-pastries', name: 'Pastries' },
       ];
       saveState();
     }
@@ -4282,6 +4285,48 @@ Here is the recipe:
     return item;
   }
 
+  // Consolidate categories with duplicate names (case-insensitive). Keeps the oldest entry
+  // (or the one with the lowest id alphabetically as tiebreaker) and reassigns recipes
+  // from the dropped duplicates to it. Returns true if anything changed.
+  // Run this at boot and after sync merges to clean up duplicates from older bugs.
+  function dedupeCategories() {
+    if (!Array.isArray(state.categories) || state.categories.length < 2) return false;
+    const byName = new Map(); // normalized name → keeper category
+    const idRedirect = new Map(); // dropped id → kept id
+    for (const c of state.categories) {
+      if (!c || !c.name || !c.id) continue;
+      const key = c.name.trim().toLowerCase();
+      const existing = byName.get(key);
+      if (!existing) {
+        byName.set(key, c);
+        continue;
+      }
+      // Pick a winner: prefer the one with the older _updatedAt, otherwise lower id alphabetically.
+      // Deterministic-id categories like 'cat-breads' will tend to win over uid-generated ones.
+      const existingTs = typeof existing._updatedAt === 'number' ? existing._updatedAt : Infinity;
+      const newTs = typeof c._updatedAt === 'number' ? c._updatedAt : Infinity;
+      let winner = existing, loser = c;
+      if (newTs < existingTs || (newTs === existingTs && c.id < existing.id)) {
+        winner = c; loser = existing;
+        byName.set(key, c);
+      }
+      idRedirect.set(loser.id, winner.id);
+    }
+    if (idRedirect.size === 0) return false;
+    // Drop the losers
+    state.categories = state.categories.filter(c => !idRedirect.has(c.id));
+    // Reassign recipes pointing at dropped category ids
+    for (const r of state.recipes || []) {
+      if (r && r.categoryId && idRedirect.has(r.categoryId)) {
+        r.categoryId = idRedirect.get(r.categoryId);
+        touchUpdated(r);
+      }
+    }
+    // Touch the surviving categories so sync prefers them
+    for (const c of state.categories) touchUpdated(c);
+    return true;
+  }
+
   function pushToFirestore({ immediate = false } = {}) {
     if (!state.syncCode || !firestoreDb) return Promise.resolve();
     clearTimeout(pushDebounceTimer);
@@ -4353,6 +4398,8 @@ Here is the recipe:
           // Backward-compat: remote might be using old single-bake schema
           state.activeBakes = data.activeBake ? [data.activeBake] : [];
         }
+        // Clean up any duplicate categories that merged in from the remote
+        dedupeCategories();
         lastSyncAt = Date.now(); // remote pull also counts as a sync
         // Persist the merged result locally
         try {
@@ -4747,6 +4794,8 @@ Here is the recipe:
             }
           }
           saveState();
+          // Consolidate any categories that ended up duplicated by name
+          if (dedupeCategories()) saveState();
           renderRecipes();
           renderHistory();
           renderSettingsStats();
@@ -4858,6 +4907,10 @@ Here is the recipe:
   })();
   if (!state.syncCode && !_urlHasSync) {
     seedIfEmpty();
+  }
+  // Clean up any duplicate categories left over from earlier seed/sync bugs
+  if (dedupeCategories()) {
+    saveState();
   }
   renderRecipes();
   updateActiveTabBadge();
