@@ -464,8 +464,12 @@
           <label>Notes / Source</label>
           <input type="text" id="r-notes" placeholder="Book, page, etc.">
         </div>
+        <div class="field">
+          <label>Yield</label>
+          <input type="text" id="r-yield" placeholder="e.g. 2 loaves, 12 rolls">
+        </div>
 
-        <div class="section-title" style="margin-top: 8px;">Ingredients</div>
+        <div class="section-title" style="margin-top: 8px;">Ingredients <span id="ing-hydration-hint" style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-mute); font-size: 11px;"></span></div>
         <div id="ing-editor"></div>
         <button class="btn btn-sm btn-block" id="add-ing">+ Add Ingredient</button>
 
@@ -1028,6 +1032,14 @@
   // Track when we've shown the quota-exceeded warning so we don't spam toasts
   let _quotaWarned = false;
   function saveState() {
+    // Touch active bakes (they change frequently — mark-done, pause, adjust timer, etc.)
+    // so the per-object merge logic picks our version on conflict.
+    const now = Date.now();
+    if (Array.isArray(state.activeBakes)) {
+      for (const b of state.activeBakes) {
+        if (b && typeof b === 'object') b._updatedAt = now;
+      }
+    }
     const payload = {
       recipes: state.recipes,
       bakes: state.bakes,
@@ -1652,12 +1664,56 @@
 
       ${photoGrid}
 
-      <button class="btn btn-ghost btn-block" id="hd-delete" style="color: var(--warn); margin-top: 24px;">Delete This Bake</button>
+      <button class="btn btn-primary btn-block" id="hd-restart" style="margin-top: 24px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+        Bake Again
+      </button>
+      <button class="btn btn-ghost btn-block" id="hd-delete" style="color: var(--warn); margin-top: 8px;">Delete This Bake</button>
     `;
 
     document.getElementById('hd-edit').onclick = () => {
       hideModal('modal-history-detail');
       openBakeNotes(bakeId);
+    };
+
+    document.getElementById('hd-restart').onclick = async () => {
+      // Find the current recipe — prefer the live recipe (in case it was edited and improved),
+      // fall back to the snapshot if the recipe was deleted.
+      const liveRecipe = state.recipes.find(r => r.id === bake.recipeId);
+      const useRecipe = liveRecipe || bake.recipeSnapshot;
+      if (!useRecipe) { toast('Recipe no longer exists'); return; }
+      // If recipe was deleted, restore the snapshot so we can bake against it
+      if (!liveRecipe && bake.recipeSnapshot) {
+        const choice = await showConfirm({
+          title: 'Recipe deleted',
+          message: 'This bake\'s recipe was deleted. Restore it from the snapshot so you can bake again?',
+          buttons: [
+            { label: 'Restore Recipe', style: 'primary', value: 'yes' },
+            { label: 'Cancel', style: 'ghost', value: 'no' },
+          ],
+        });
+        if (choice !== 'yes') return;
+        state.recipes.push(JSON.parse(JSON.stringify(bake.recipeSnapshot)));
+        saveState();
+      }
+      // Check if another bake is already running for this recipe
+      const existing = getActiveBakeForRecipe(useRecipe.id);
+      if (existing) {
+        toast('A bake is already running for this recipe');
+        hideModal('modal-history-detail');
+        state.currentRecipeId = useRecipe.id;
+        saveState();
+        switchView('view-schedule');
+        return;
+      }
+      // Apply the past bake's scale factor so the new bake matches
+      if (bake.scaleFactor && bake.scaleFactor !== 1) {
+        state.scaleFactor = bake.scaleFactor;
+      }
+      hideModal('modal-history-detail');
+      // Start the new bake right now
+      await startBake(useRecipe, new Date());
+      toast(`Started ${useRecipe.name}${bake.scaleFactor !== 1 ? ` at ${bake.scaleFactor}× scale` : ''}`);
     };
 
     document.getElementById('hd-delete').onclick = async () => {
@@ -1743,6 +1799,13 @@
       <div class="schedule-header">
         <div class="schedule-title">${escapeHtml(recipe.name)}</div>
         <div class="schedule-meta">${recipe.stages.length} stages · ${formatDur(totalMinutes(recipe))} total · finishes ${formatRelativeDay(finishTime)}</div>
+        ${(() => {
+          const yieldText = recipe.yield ? escapeHtml(recipe.yield) : '';
+          const h = computeHydration(recipe.ingredients);
+          const hydText = h !== null ? `${h}% hydration` : '';
+          const parts = [yieldText, hydText].filter(Boolean);
+          return parts.length > 0 ? `<div class="schedule-meta" style="margin-top: 2px;">${parts.join(' · ')}</div>` : '';
+        })()}
         ${recipe.notes ? `<div class="schedule-meta" style="margin-top: 4px;">${escapeHtml(recipe.notes)}</div>` : ''}
       </div>
 
@@ -1929,6 +1992,7 @@
       stageStates: recipe.stages.map(() => ({ done: false, doneAt: null })),
       scaleFactor: state.scaleFactor || 1,
       color: pickNextBakeColor(),
+      _updatedAt: Date.now(),
     };
 
     // If start time is in the past, auto-complete stages whose planned end has already passed.
@@ -2027,6 +2091,7 @@
         notes: notesData.notes,
         photos: notesData.photos,
       });
+      touchUpdated(b);
       saveState();
       renderHistory();
       toast('Bake updated');
@@ -2055,6 +2120,7 @@
       // Snapshot the recipe as it was at the end of this bake — preserves history accuracy
       // even if the recipe is edited later.
       recipeSnapshot: recipe ? JSON.parse(JSON.stringify(recipe)) : null,
+      _updatedAt: Date.now(),
     });
     removeActiveBake(activeBake.id);
     saveState();
@@ -2951,7 +3017,7 @@
             defaultValue: '',
           });
           if (name && name.trim()) {
-            const newCat = { id: uid(), name: name.trim() };
+            const newCat = { id: uid(), name: name.trim(), _updatedAt: Date.now() };
             state.categories.push(newCat);
             state.editingRecipe.categoryId = newCat.id;
             saveState();
@@ -2980,6 +3046,7 @@
     document.getElementById('modal-recipe-title').textContent = isExisting ? 'Edit Recipe' : 'New Recipe';
     document.getElementById('r-name').value = state.editingRecipe.name;
     document.getElementById('r-notes').value = state.editingRecipe.notes || '';
+    document.getElementById('r-yield').value = state.editingRecipe.yield || '';
     document.getElementById('delete-recipe').style.display = isExisting ? 'inline-flex' : 'none';
     renderIconPicker();
     renderCatPicker();
@@ -2995,6 +3062,50 @@
     showModal('modal-recipe');
   }
 
+  // Parse a quantity string like "500g", "1 cup", "350 g", "2 tbsp" → returns grams or null
+  function parseGrams(qty) {
+    if (!qty || typeof qty !== 'string') return null;
+    // Match a number followed by optional space + "g" / "gram" / "grams" (case-insensitive)
+    const m = qty.match(/^\s*([\d.]+)\s*(g|gram|grams)\b/i);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    return isNaN(n) ? null : n;
+  }
+
+  // Classify an ingredient as flour / water / other for hydration math.
+  // Heuristic — looks for "flour" or "water" in the ingredient name.
+  function classifyIngredient(name) {
+    if (!name) return 'other';
+    const n = name.toLowerCase();
+    if (n.includes('water')) return 'water';
+    if (n.includes('flour') || n.includes('semolina') || n.includes('rye') || n.includes('whole wheat') || n.includes('all-purpose') || n.includes('all purpose') || n.includes('bread flour')) {
+      return 'flour';
+    }
+    return 'other';
+  }
+
+  // Calculate hydration % (water grams / flour grams * 100). Returns null if we can't tell.
+  function computeHydration(ingredients) {
+    if (!ingredients || ingredients.length === 0) return null;
+    let flour = 0, water = 0;
+    for (const ing of ingredients) {
+      const g = parseGrams(ing.qty);
+      if (g === null) continue;
+      const kind = classifyIngredient(ing.name);
+      if (kind === 'flour') flour += g;
+      else if (kind === 'water') water += g;
+    }
+    if (flour === 0) return null;
+    return Math.round((water / flour) * 100);
+  }
+
+  function updateHydrationHint() {
+    const hint = document.getElementById('ing-hydration-hint');
+    if (!hint || !state.editingRecipe) return;
+    const h = computeHydration(state.editingRecipe.ingredients);
+    hint.textContent = h !== null ? ` · ${h}% hydration` : '';
+  }
+
   function renderIngEditor() {
     const c = document.getElementById('ing-editor');
     c.innerHTML = state.editingRecipe.ingredients.map((ing, i) => `
@@ -3008,14 +3119,17 @@
       inp.addEventListener('input', (e) => {
         const i = +e.target.dataset.i, k = e.target.dataset.k;
         state.editingRecipe.ingredients[i][k] = e.target.value;
+        updateHydrationHint();
       });
     });
     c.querySelectorAll('[data-del-ing]').forEach(b => {
       b.addEventListener('click', () => {
         state.editingRecipe.ingredients.splice(+b.dataset.delIng, 1);
         renderIngEditor();
+        updateHydrationHint();
       });
     });
+    updateHydrationHint();
   }
 
   function renderStageEditor() {
@@ -3081,6 +3195,7 @@ Rules:
 - The detail field should briefly describe what's happening including any embedded rest periods so the baker knows what to expect.
 - Ingredient quantities should preserve gram weights when shown
 - If the recipe came from a URL, include the URL in the "notes" field
+- For "yield", include what the recipe produces (e.g. "2 loaves", "12 rolls", "1 boule") — null if unknown
 - For "icon", pick the most fitting emoji from this list: 🍞 🥖 🥐 🥯 🫓 🥨 🌾 🍕 🧈 🥞 🥧 🍪
 - For "category", pick a short broad category like "Breads", "Pizzas", "Pastries", "Flatbreads", "Desserts" — whichever fits best
 
@@ -3090,6 +3205,7 @@ Format:
   "icon": "one emoji from the list above",
   "category": "string (broad category)",
   "notes": "source/URL/notes string",
+  "yield": "string like '2 loaves' or null",
   "ingredients": [{"name": "string", "qty": "string with grams"}],
   "stages": [{"name": "short imperative", "durMin": number, "detail": "string", "isWait": boolean}]
 }
@@ -3151,6 +3267,7 @@ Here is the recipe:
       icon: (parsed.icon && RECIPE_ICONS.includes(parsed.icon)) ? parsed.icon : DEFAULT_ICON,
       categoryId,
       notes: parsed.notes || '',
+      yield: parsed.yield || '',
       ingredients: Array.isArray(parsed.ingredients) ? parsed.ingredients : [],
       stages: Array.isArray(parsed.stages) ? parsed.stages.map(s => ({
         name: s.name || 'Stage',
@@ -3186,6 +3303,7 @@ Here is the recipe:
       document.getElementById('modal-recipe-title').textContent = 'New Recipe';
       document.getElementById('r-name').value = newRecipe.name;
       document.getElementById('r-notes').value = newRecipe.notes || '';
+      document.getElementById('r-yield').value = newRecipe.yield || '';
       document.getElementById('delete-recipe').style.display = 'none';
       renderIconPicker();
       renderCatPicker();
@@ -3778,10 +3896,12 @@ Here is the recipe:
   });
   document.getElementById('r-name').addEventListener('input', e => state.editingRecipe.name = e.target.value);
   document.getElementById('r-notes').addEventListener('input', e => state.editingRecipe.notes = e.target.value);
+  document.getElementById('r-yield').addEventListener('input', e => state.editingRecipe.yield = e.target.value);
   document.getElementById('save-recipe').addEventListener('click', () => {
     const r = state.editingRecipe;
     if (!r.name.trim()) { toast('Add a name first'); return; }
     if (r.stages.length === 0) { toast('Add at least one stage'); return; }
+    touchUpdated(r); // mark as just-modified for sync
     const existing = state.recipes.findIndex(x => x.id === r.id);
     if (existing >= 0) state.recipes[existing] = r;
     else state.recipes.push(r);
@@ -3983,18 +4103,73 @@ Here is the recipe:
   }
 
   // Push the shared portion of state to Firestore (debounced)
+  // Stamp every recipe/bake/category with an _updatedAt timestamp on push.
+  // We only stamp items that don't already have one OR that have changed since last push.
+  // The receive side prefers the version with the newer _updatedAt.
+  function stampForSync(items, baselineTs) {
+    if (!Array.isArray(items)) return items;
+    return items.map(item => {
+      if (!item || typeof item !== 'object') return item;
+      // If item has no timestamp yet, give it one. Existing timestamps are preserved on push
+      // (they reflect when the item was last meaningfully changed).
+      if (typeof item._updatedAt !== 'number') {
+        return { ...item, _updatedAt: baselineTs };
+      }
+      return item;
+    });
+  }
+
+  // Merge two arrays of items by id, preferring whichever has the newer _updatedAt.
+  // Items present on only one side are kept.
+  // NOTE on deletes: if one device deletes an item, the merge will re-add it from the other
+  // device's copy (since the merge can't tell "deleted" apart from "never existed"). To force
+  // a delete to propagate, delete on both devices. For a personal app this is an acceptable
+  // trade-off vs. tracking tombstone records.
+  function mergeById(local, remote) {
+    const localArr = Array.isArray(local) ? local : [];
+    const remoteArr = Array.isArray(remote) ? remote : [];
+    const byId = new Map();
+    for (const item of localArr) {
+      if (item && item.id) byId.set(item.id, item);
+    }
+    for (const remoteItem of remoteArr) {
+      if (!remoteItem || !remoteItem.id) continue;
+      const localItem = byId.get(remoteItem.id);
+      if (!localItem) {
+        byId.set(remoteItem.id, remoteItem);
+        continue;
+      }
+      // Both sides have this item — use the newer timestamp
+      const localTs = typeof localItem._updatedAt === 'number' ? localItem._updatedAt : 0;
+      const remoteTs = typeof remoteItem._updatedAt === 'number' ? remoteItem._updatedAt : 0;
+      if (remoteTs > localTs) {
+        byId.set(remoteItem.id, remoteItem);
+      }
+      // Otherwise keep local (it's newer or equal)
+    }
+    return Array.from(byId.values());
+  }
+
+  // Touch an object's _updatedAt to "now". Called whenever we mutate a recipe/bake/category.
+  function touchUpdated(item) {
+    if (item && typeof item === 'object') item._updatedAt = Date.now();
+    return item;
+  }
+
   function pushToFirestore() {
     if (!state.syncCode || !firestoreDb) return;
     clearTimeout(pushDebounceTimer);
     pushDebounceTimer = setTimeout(async () => {
       try {
         const { doc, setDoc } = window.__firebase;
+        const now = Date.now();
         const payload = {
-          recipes: state.recipes,
-          bakes: state.bakes,
-          categories: state.categories,
-          activeBakes: state.activeBakes || [],
-          updatedAt: Date.now(),
+          recipes: stampForSync(state.recipes, now),
+          bakes: stampForSync(state.bakes, now),
+          categories: stampForSync(state.categories, now),
+          activeBakes: stampForSync(state.activeBakes || [], now),
+          updatedAt: now,
+          schemaVersion: 2, // bump so we know this push uses per-object _updatedAt
         };
         suppressNextRemote = true;
         lastPushAt = Date.now();
@@ -4021,11 +4196,20 @@ Here is the recipe:
           return;
         }
         const data = snapshot.data();
-        // Defensive: only merge if remote data looks valid
-        if (Array.isArray(data.recipes)) state.recipes = data.recipes;
-        if (Array.isArray(data.bakes)) state.bakes = data.bakes;
-        if (Array.isArray(data.categories)) state.categories = data.categories;
-        if (Array.isArray(data.activeBakes)) state.activeBakes = data.activeBakes;
+        // Per-object merge if remote uses schema v2+; otherwise fall back to whole-array replace
+        const useMerge = data.schemaVersion >= 2;
+        if (Array.isArray(data.recipes)) {
+          state.recipes = useMerge ? mergeById(state.recipes, data.recipes) : data.recipes;
+        }
+        if (Array.isArray(data.bakes)) {
+          state.bakes = useMerge ? mergeById(state.bakes, data.bakes) : data.bakes;
+        }
+        if (Array.isArray(data.categories)) {
+          state.categories = useMerge ? mergeById(state.categories, data.categories) : data.categories;
+        }
+        if (Array.isArray(data.activeBakes)) {
+          state.activeBakes = useMerge ? mergeById(state.activeBakes, data.activeBakes) : data.activeBakes;
+        }
         else if (data.activeBake !== undefined) {
           // Backward-compat: remote might be using old single-bake schema
           state.activeBakes = data.activeBake ? [data.activeBake] : [];
@@ -4344,6 +4528,37 @@ Here is the recipe:
 
   // Connect to Firebase once SDK is loaded
   function tryAutoConnect() {
+    // Check if the URL has a ?sync=XYZ parameter — used by the Scriptable widget and shared links
+    // to deep-link directly into a synced household without manual setup.
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlSync = params.get('sync');
+      if (urlSync) {
+        const clean = urlSync.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (clean.length === 6 && clean !== state.syncCode) {
+          // Auto-connect to the sync code from the URL. If we already have a different code,
+          // this replaces it — the user explicitly clicked a link with this code, so honor it.
+          if (isFirebaseConfigured()) {
+            enableSync(clean).then(ok => {
+              if (ok) toast(`Connected to sync code ${clean}`);
+            });
+          }
+          // Strip the param from the URL so reloading doesn't keep re-connecting
+          // (also keeps the URL clean in case the user bookmarks it)
+          try {
+            const cleanUrl = window.location.pathname + window.location.hash;
+            window.history.replaceState({}, '', cleanUrl);
+          } catch (e) { /* ignore */ }
+          return;
+        }
+        // URL code matches the existing one — just strip the param, normal auto-connect
+        try {
+          const cleanUrl = window.location.pathname + window.location.hash;
+          window.history.replaceState({}, '', cleanUrl);
+        } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* ignore URL parsing errors */ }
+
     if (state.syncCode && isFirebaseConfigured()) {
       if (ensureFirebaseInit()) {
         startSyncListener();
