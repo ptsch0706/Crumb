@@ -1754,6 +1754,16 @@
     saveState();
     switchView('view-schedule');
     renderSchedule();
+    // Force scroll to top — the recipe view should always open at the recipe name,
+    // not wherever the user happened to have scrolled the previous view.
+    // Use requestAnimationFrame so the new view is rendered before we scroll.
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      const scheduleView = document.getElementById('view-schedule');
+      if (scheduleView) scheduleView.scrollTop = 0;
+      const scheduleContent = document.getElementById('schedule-content');
+      if (scheduleContent) scheduleContent.scrollTop = 0;
+    });
   }
 
   function renderSchedule() {
