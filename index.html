@@ -172,7 +172,7 @@
   .timeline-dur { font-size: 11px; color: var(--ink-mute); margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
 
   /* Toast */
-  .toast { position: fixed; bottom: calc(var(--safe-bot) + 92px); left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: white; padding: 12px 20px; border-radius: 100px; font-size: 14px; font-weight: 500; box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transition: all 0.3s; z-index: 200; }
+  .toast { position: fixed; bottom: calc(var(--safe-bot) + 92px); left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: white; padding: 12px 22px; border-radius: 100px; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.12); border: 1px solid rgba(255,255,255,0.08); opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); z-index: 200; max-width: calc(100vw - 32px); text-align: center; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
   /* Pill row */
@@ -733,6 +733,11 @@
           </div>
           <p class="help" style="margin-top: 8px;">Enter this code on another device to connect.</p>
         </div>
+        <button class="btn btn-primary btn-block" id="sync-now" style="margin-top: 12px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5"/></svg>
+          Sync Now
+        </button>
+        <div id="sync-last-info" style="font-size: 11px; color: var(--ink-mute); margin-top: 6px; text-align: center;"></div>
         <button class="btn btn-block btn-ghost" id="disable-sync" style="color: var(--warn); margin-top: 16px;">Disconnect Sync</button>
       </div>
 
@@ -794,7 +799,11 @@
       <div class="field">
         <label>How was it? (1–5)</label>
         <div class="score-row" id="bn-score-row">
-          ${[1, 2, 3, 4, 5].map(n => `<button class="score-btn" data-score="${n}">${n}</button>`).join('')}
+          <button class="score-btn" data-score="1">1</button>
+          <button class="score-btn" data-score="2">2</button>
+          <button class="score-btn" data-score="3">3</button>
+          <button class="score-btn" data-score="4">4</button>
+          <button class="score-btn" data-score="5">5</button>
         </div>
       </div>
 
@@ -1243,7 +1252,7 @@
   }
 
   function totalMinutes(recipe) {
-    return recipe.stages.reduce((s, x) => s + (x.durMin || 0), 0);
+    return recipe.stages.reduce((s, x) => s + (x.durMin || 0) + (x.needsStart ? (x.prepBufferMin || 0) : 0), 0);
   }
 
   // ============================================================
@@ -2272,18 +2281,6 @@
   // #1 — Auto-advance WAIT stages once their planned end passes.
   // Wait stages are time-based (ferments, proofs) so no manual tap is needed.
   // Returns true if anything changed.
-  // Some wait stages need user confirmation (like preheating an oven) even when their
-  // scheduled time has passed — auto-completing them could give a false sense of readiness.
-  // Detect by name keywords.
-  function requiresManualConfirm(stage) {
-    if (!stage || !stage.name) return false;
-    const n = stage.name.toLowerCase();
-    return n.includes('preheat')
-      || n.includes('heat oven')
-      || n.includes('heat the oven')
-      || n.includes('oven on');
-  }
-
   function autoAdvanceWaitStages(recipe, bake) {
     const ab = bake || getFocusedBake();
     if (!ab) return false;
@@ -2297,7 +2294,8 @@
       if (idx === -1) break;
       const stage = recipe.stages[idx];
       if (!stage.isWait) break; // hands-on stage — stop, needs manual tap
-      if (requiresManualConfirm(stage)) break; // preheat-like — needs user confirmation
+      // needsStart stage that hasn't been started yet — wait for user to tap Start
+      if (stage.needsStart && !ab.stageStates[idx].startedAt) break;
       const end = getStageScheduledStart(recipe, idx, ab).getTime() + getStageDur(recipe, idx, ab) * 60000;
       if (now >= end) {
         ab.stageStates[idx].done = true;
@@ -2384,18 +2382,38 @@
     return recipe.stages[stageIdx].durMin;
   }
 
+  // For `needsStart` stages: how long the user is expected to spend prepping before starting the timer.
+  // This affects scheduling estimates but not the actual countdown.
+  function getStagePrep(recipe, stageIdx) {
+    const s = recipe.stages[stageIdx];
+    if (!s || !s.needsStart) return 0;
+    return typeof s.prepBufferMin === 'number' ? s.prepBufferMin : 5;
+  }
+
   function getStageScheduledStart(recipe, stageIdx, bake) {
-    // Use actual done-times when available, fall back to planned durations from previous done stage
+    // Use actual done-times when available, fall back to planned durations from previous done stage.
+    // For `needsStart` stages, if the user has already tapped Start, use that exact moment.
     const ab = bake || getFocusedBake();
     if (!ab) return new Date();
+    // Per-stage explicit start time wins (set when user taps "Start Stage" on a needsStart stage)
+    const myState = ab.stageStates[stageIdx];
+    if (myState && myState.startedAt) {
+      return new Date(myState.startedAt);
+    }
     const baseStart = new Date(ab.startedAt);
     let t = baseStart;
     for (let i = 0; i < stageIdx; i++) {
-      if (ab.stageStates[i].done && ab.stageStates[i].doneAt) {
-        t = new Date(ab.stageStates[i].doneAt);
+      const st = ab.stageStates[i];
+      if (st.done && st.doneAt) {
+        t = new Date(st.doneAt);
       } else {
         t = new Date(t.getTime() + getStageDur(recipe, i, ab) * 60000);
       }
+    }
+    // If THIS stage needs a prep buffer, add it to the previous stage's end time.
+    // This shifts planning estimates without actually delaying the stage.
+    if (recipe.stages[stageIdx] && recipe.stages[stageIdx].needsStart) {
+      t = new Date(t.getTime() + getStagePrep(recipe, stageIdx) * 60000);
     }
     return t;
   }
@@ -2559,11 +2577,14 @@
     }
 
     const curStage = recipe.stages[curIdx];
+    const curState = ab.stageStates[curIdx];
     const scheduledStart = getStageScheduledStart(recipe, curIdx, ab);
     const scheduledEnd = new Date(scheduledStart.getTime() + getStageDur(recipe, curIdx, ab) * 60000);
     const now = new Date();
     const msToEnd = scheduledEnd - now;
     const msToStart = scheduledStart - now;
+    // A needsStart stage is "awaiting start" until the user taps the Start button
+    const isAwaitingStart = !!(curStage.needsStart && !curState.startedAt);
 
     let heroState = '';
     let statusText = '';
@@ -2572,7 +2593,13 @@
     let countdownWhen = '';
     let showOverdueBadge = false;
 
-    if (msToStart > 0) {
+    if (isAwaitingStart) {
+      heroState = 'waiting';
+      statusText = 'Ready when you are';
+      countdownLabel = 'Tap Start when ready';
+      countdownValue = '—';
+      countdownWhen = `Prep buffer: ${getStagePrep(recipe, curIdx)} min · stage runs ${getStageDur(recipe, curIdx, ab)} min`;
+    } else if (msToStart > 0) {
       heroState = 'waiting';
       statusText = 'Up next';
       countdownLabel = 'Starts';
@@ -2632,10 +2659,17 @@
       </div>
 
       <div class="done-btn">
-        <button class="btn btn-done btn-block" id="btn-mark-done" style="background: ${color.hex};" ${ab.paused ? 'disabled' : ''}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
-          Mark Done
-        </button>
+        ${isAwaitingStart ? `
+          <button class="btn btn-done btn-block" id="btn-start-stage" style="background: ${color.hex};" ${ab.paused ? 'disabled' : ''}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 3l14 9-14 9V3z"/></svg>
+            Start Stage
+          </button>
+        ` : `
+          <button class="btn btn-done btn-block" id="btn-mark-done" style="background: ${color.hex};" ${ab.paused ? 'disabled' : ''}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+            Mark Done
+          </button>
+        `}
       </div>
 
       <button class="btn btn-block" id="btn-shortcut-active" style="display: none;"></button>
@@ -2726,6 +2760,7 @@
     container._bakeClickHandler = async (e) => {
       const endBtn = e.target.closest('#btn-end-bake');
       const doneBtn = e.target.closest('#btn-mark-done');
+      const startBtn = e.target.closest('#btn-start-stage');
       const skipBtn = e.target.closest('[data-skip-to]');
       const shortcutBtn = e.target.closest('#btn-shortcut-active');
       const refreshRemindersBtn = e.target.closest('#btn-refresh-reminders');
@@ -2733,6 +2768,19 @@
       const editRecipeBtn = e.target.closest('#btn-edit-recipe-active');
       const adjustTimerBtn = e.target.closest('#btn-adjust-timer');
       const bakingModeBtn = e.target.closest('#baking-mode-toggle');
+
+      if (startBtn) {
+        if (ab.paused) return;
+        stopBakeTicker();
+        // Record the actual moment the user is starting this stage. The countdown for it
+        // (and the start times for all subsequent stages) cascade from here.
+        ab.stageStates[curIdx].startedAt = new Date().toISOString();
+        ab.needsReminderRefresh = true; // upcoming stage times have shifted
+        saveState();
+        renderActiveBake(recipe, ab);
+        startBakeTicker();
+        return;
+      }
 
       if (bakingModeBtn) {
         if (bakingModeOn) {
@@ -2919,6 +2967,8 @@
         if (curIdx === -1) continue;
         const stage = recipe.stages[curIdx];
         if (stage.isWait) continue; // wait stages alert via autoAdvanceWaitStages
+        // Skip needsStart stages that the user hasn't yet started — no countdown is running
+        if (stage.needsStart && !ab.stageStates[curIdx].startedAt) continue;
         const scheduledEnd = getStageScheduledStart(recipe, curIdx, ab).getTime() + getStageDur(recipe, curIdx, ab) * 60000;
         const msToEnd = scheduledEnd - Date.now();
         const alertKey = `${ab.id}:${curIdx}`;
@@ -3155,18 +3205,35 @@
           <button class="delete" data-del-stage="${i}">×</button>
         </div>
         <input type="text" placeholder="Detail (optional)" value="${escapeAttr(s.detail || '')}" data-i="${i}" data-k="detail" style="font-size: 13px;">
-        <div style="margin-top: 8px;">
+        <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
           <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
             <input type="checkbox" ${s.isWait ? 'checked' : ''} data-i="${i}" data-k="isWait" style="width: auto;"> Mark as wait/rest period
           </label>
+          <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" ${s.needsStart ? 'checked' : ''} data-i="${i}" data-k="needsStart" style="width: auto;"> Needs prep before timer starts
+          </label>
+          ${s.needsStart ? `
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; padding-left: 20px;">
+              <span style="color: var(--ink-soft);">Prep buffer:</span>
+              <input type="text" inputmode="numeric" value="${s.prepBufferMin != null ? s.prepBufferMin : 5}" data-i="${i}" data-k="prepBufferMin" style="width: 50px; font-size: 11px; padding: 3px 6px;">
+              <span style="color: var(--ink-mute);">min</span>
+            </div>
+          ` : ''}
         </div>
       </div>
     `).join('');
     c.querySelectorAll('input').forEach(inp => {
       inp.addEventListener('input', (e) => {
         const i = +e.target.dataset.i, k = e.target.dataset.k;
-        if (k === 'durMin') state.editingRecipe.stages[i][k] = parseInt(e.target.value) || 0;
-        else if (k === 'isWait') state.editingRecipe.stages[i][k] = e.target.checked;
+        if (k === 'durMin' || k === 'prepBufferMin') state.editingRecipe.stages[i][k] = parseInt(e.target.value) || 0;
+        else if (k === 'isWait' || k === 'needsStart') {
+          state.editingRecipe.stages[i][k] = e.target.checked;
+          // When toggling needsStart, set a default prep buffer if not present
+          if (k === 'needsStart' && e.target.checked && state.editingRecipe.stages[i].prepBufferMin == null) {
+            state.editingRecipe.stages[i].prepBufferMin = 5;
+          }
+          renderStageEditor(); // re-render to show/hide the prep buffer input
+        }
         else state.editingRecipe.stages[i][k] = e.target.value;
       });
     });
@@ -3211,6 +3278,8 @@ Rules:
 - For "yield", include what the recipe produces (e.g. "2 loaves", "12 rolls", "1 boule") — null if unknown
 - For "icon", pick the most fitting emoji from this list: 🍞 🥖 🥐 🥯 🫓 🥨 🌾 🍕 🧈 🥞 🥧 🍪
 - For "category", pick a short broad category like "Breads", "Pizzas", "Pastries", "Flatbreads", "Desserts" — whichever fits best
+- **"needsStart" flag**: Set this to true for any stage where the user needs prep time before the timer should start. Most commonly the BAKE stage that comes after a preheat (the baker has to score the dough, transfer to the oven, etc. before the bake timer should run). Other examples: a stage that requires gathering tools or transferring dough to a different container. The app will wait for the user to tap a "Start Stage" button before counting down. Default to false for stages that follow immediately from the previous one (no prep needed).
+- **"prepBufferMin" field**: When needsStart is true, estimate how many minutes of prep the user will need before they can tap Start. Default 5 min if you're unsure. This is added to the recipe's total time estimate. For the bake-after-preheat case, 5 min is usually right (score + slash + transfer + close oven).
 
 Format:
 {
@@ -3220,7 +3289,7 @@ Format:
   "notes": "source/URL/notes string",
   "yield": "string like '2 loaves' or null",
   "ingredients": [{"name": "string", "qty": "string with grams"}],
-  "stages": [{"name": "short imperative", "durMin": number, "detail": "string", "isWait": boolean}]
+  "stages": [{"name": "short imperative", "durMin": number, "detail": "string", "isWait": boolean, "needsStart": boolean, "prepBufferMin": number}]
 }
 
 Here is the recipe:
@@ -3287,6 +3356,8 @@ Here is the recipe:
         durMin: parseInt(s.durMin) || 0,
         detail: s.detail || '',
         isWait: !!s.isWait,
+        needsStart: !!s.needsStart,
+        prepBufferMin: s.needsStart ? (parseInt(s.prepBufferMin) || 5) : 0,
       })) : [],
     };
 
@@ -3442,9 +3513,43 @@ Here is the recipe:
   }
 
   let toastTimer;
+  // Title-case a string with standard English style rules:
+  // - First and last word always capitalized
+  // - Major words capitalized
+  // - Articles, conjunctions, and short prepositions stay lowercase EXCEPT "on" and "off",
+  //   which are state words in this app (Baking Mode On, Sync Off, etc.) and should capitalize
+  // - All-caps tokens stay all-caps (sync codes like ABC234)
+  // - Numbers, units, and punctuation unaffected
+  const TC_LOWER = new Set([
+    'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'if', 'in', 'into',
+    'nor', 'of', 'or', 'per', 'so', 'the', 'to', 'up', 'via', 'vs', 'with', 'yet'
+  ]);
+  function toTitleCase(str) {
+    if (!str || typeof str !== 'string') return str;
+    // Split on whitespace but preserve the original separators (including ·, ─, etc.)
+    const tokens = str.split(/(\s+)/);
+    const isWord = (t) => /[a-zA-Z]/.test(t);
+    let wordIndex = 0;
+    const wordCount = tokens.filter(isWord).length;
+    return tokens.map((tok) => {
+      if (!isWord(tok)) return tok;
+      const i = wordIndex++;
+      // If the token is already all-caps and >1 letter, preserve it (e.g. sync codes, acronyms)
+      const lettersOnly = tok.replace(/[^a-zA-Z]/g, '');
+      if (lettersOnly.length > 1 && lettersOnly === lettersOnly.toUpperCase()) return tok;
+      const lower = tok.toLowerCase();
+      // Always capitalize first and last words; lowercase small words otherwise
+      if (i !== 0 && i !== wordCount - 1 && TC_LOWER.has(lower.replace(/[^a-z]/g, ''))) {
+        return lower;
+      }
+      // Capitalize the first letter of the token, preserving internal characters
+      return lower.replace(/^([a-z])/, (m) => m.toUpperCase());
+    }).join('');
+  }
+
   function toast(msg) {
     const t = document.getElementById('toast');
-    t.textContent = msg;
+    t.textContent = toTitleCase(msg);
     t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
@@ -3895,6 +4000,10 @@ Here is the recipe:
     bake.stageStates[lastDoneIdx].autoAdvanced = false;
     bake.stageStates[lastDoneIdx].skipped = false;
     bake.stageStates[lastDoneIdx].catchupDismissedAt = null;
+    // If this is a needsStart stage, also clear its startedAt so it goes back to "awaiting start"
+    if (recipe.stages[lastDoneIdx].needsStart) {
+      bake.stageStates[lastDoneIdx].startedAt = null;
+    }
 
     // If we stepped back to a wait stage whose planned end is already in the past,
     // it would immediately auto-complete again. Shift the bake forward so the un-done
@@ -4100,6 +4209,7 @@ Here is the recipe:
   let suppressNextRemote = false; // when true, ignore the next remote update (we just wrote it)
   let pushDebounceTimer = null;
   let lastPushAt = 0;
+  let lastSyncAt = 0; // wall-clock time of the last successful push or pull (for UI display)
 
   function isFirebaseConfigured() {
     return FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('REPLACE_WITH');
@@ -4192,29 +4302,40 @@ Here is the recipe:
     return item;
   }
 
-  function pushToFirestore() {
-    if (!state.syncCode || !firestoreDb) return;
+  function pushToFirestore({ immediate = false } = {}) {
+    if (!state.syncCode || !firestoreDb) return Promise.resolve();
     clearTimeout(pushDebounceTimer);
-    pushDebounceTimer = setTimeout(async () => {
-      try {
-        const { doc, setDoc } = window.__firebase;
-        const now = Date.now();
-        const payload = {
-          recipes: stampForSync(state.recipes, now),
-          bakes: stampForSync(state.bakes, now),
-          categories: stampForSync(state.categories, now),
-          activeBakes: stampForSync(state.activeBakes || [], now),
-          updatedAt: now,
-          schemaVersion: 2, // bump so we know this push uses per-object _updatedAt
-        };
-        suppressNextRemote = true;
-        lastPushAt = Date.now();
-        await setDoc(doc(firestoreDb, 'crumb_households', state.syncCode), payload);
-      } catch (e) {
-        console.error('Firestore push failed:', e);
-        suppressNextRemote = false;
+    return new Promise((resolve) => {
+      const doPush = async () => {
+        try {
+          const { doc, setDoc } = window.__firebase;
+          const now = Date.now();
+          const payload = {
+            recipes: stampForSync(state.recipes, now),
+            bakes: stampForSync(state.bakes, now),
+            categories: stampForSync(state.categories, now),
+            activeBakes: stampForSync(state.activeBakes || [], now),
+            updatedAt: now,
+            schemaVersion: 2, // bump so we know this push uses per-object _updatedAt
+          };
+          suppressNextRemote = true;
+          lastPushAt = Date.now();
+          await setDoc(doc(firestoreDb, 'crumb_households', state.syncCode), payload);
+          lastSyncAt = Date.now();
+          resolve(true);
+        } catch (e) {
+          console.error('Firestore push failed:', e);
+          suppressNextRemote = false;
+          resolve(false);
+        }
+      };
+      if (immediate) {
+        doPush();
+      } else {
+        // Reduced from 800ms to 400ms for snappier cross-device sync
+        pushDebounceTimer = setTimeout(doPush, 400);
       }
-    }, 800);
+    });
   }
 
   // Subscribe to remote changes
@@ -4250,6 +4371,7 @@ Here is the recipe:
           // Backward-compat: remote might be using old single-bake schema
           state.activeBakes = data.activeBake ? [data.activeBake] : [];
         }
+        lastSyncAt = Date.now(); // remote pull also counts as a sync
         // Persist the merged result locally
         try {
           localStorage.setItem(LS_KEY, JSON.stringify({
@@ -4278,6 +4400,11 @@ Here is the recipe:
         if (hasAnyActive && !bakeTickerInterval) startBakeTicker();
         else if (!hasAnyActive && bakeTickerInterval) stopBakeTicker();
         updateActiveTabBadge();
+        // If the settings modal is visible, refresh the "last synced" indicator
+        const settingsModal = document.getElementById('modal-settings');
+        if (settingsModal && settingsModal.classList.contains('show')) {
+          renderSyncStatus();
+        }
       },
       (err) => {
         console.error('Firestore listener error:', err);
@@ -4340,6 +4467,21 @@ Here is the recipe:
       offPane.style.display = 'none';
       onPane.style.display = '';
       codeDisplay.textContent = state.syncCode;
+      // Update the last-synced timestamp display
+      const lastInfo = document.getElementById('sync-last-info');
+      if (lastInfo) {
+        if (lastSyncAt) {
+          const seconds = Math.floor((Date.now() - lastSyncAt) / 1000);
+          let when;
+          if (seconds < 5) when = 'just now';
+          else if (seconds < 60) when = `${seconds}s ago`;
+          else if (seconds < 3600) when = `${Math.floor(seconds / 60)}m ago`;
+          else when = new Date(lastSyncAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+          lastInfo.textContent = `Last synced ${when}`;
+        } else {
+          lastInfo.textContent = 'Not yet synced';
+        }
+      }
     } else {
       dot.style.background = 'var(--ink-mute)';
       label.textContent = 'Sync disabled';
@@ -4508,6 +4650,37 @@ Here is the recipe:
       } catch (e) { toast('Copy failed'); }
     });
 
+    // Manual sync trigger — forces an immediate push and re-establishes the listener
+    // (which Firestore will respond to with the latest snapshot)
+    document.getElementById('sync-now').addEventListener('click', async () => {
+      if (!state.syncCode) { toast('Sync isn\'t enabled'); return; }
+      const btn = document.getElementById('sync-now');
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5"/></svg> Syncing…';
+      try {
+        // Force immediate push (bypasses 400ms debounce)
+        await pushToFirestore({ immediate: true });
+        // Re-establish the listener — Firestore will fire a fresh snapshot for us, which pulls
+        // any remote changes made since this device last received an update.
+        if (ensureFirebaseInit()) {
+          startSyncListener();
+        }
+        // Give the listener a moment to fire before reading lastSyncAt for the UI
+        setTimeout(() => {
+          renderSyncStatus();
+          toast('Synced');
+        }, 600);
+      } catch (e) {
+        toast('Sync failed — check connection');
+      } finally {
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }, 800);
+      }
+    });
+
     document.getElementById('disable-sync').addEventListener('click', async () => {
       const choice = await showConfirm({
         title: 'Disconnect sync?',
@@ -4606,6 +4779,22 @@ Here is the recipe:
   } else {
     window.addEventListener('firebase-ready', tryAutoConnect);
   }
+
+  // When the PWA is returning from background, re-establish the sync listener so we get
+  // any updates that happened while suspended. iOS suspends PWA tabs aggressively and the
+  // Firestore listener can go stale; restarting it forces a fresh snapshot.
+  let _lastResyncAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!state.syncCode || !firestoreDb) return;
+    // Throttle: only resync at most once every 10 seconds to avoid hammering on rapid tab switches
+    const now = Date.now();
+    if (now - _lastResyncAt < 10000) return;
+    _lastResyncAt = now;
+    if (ensureFirebaseInit()) {
+      startSyncListener();
+    }
+  });
 </script>
 </body>
 </html>
