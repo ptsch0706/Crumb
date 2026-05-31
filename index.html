@@ -18,8 +18,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
-  import { getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
-  window.__firebase = { initializeApp, getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence };
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
+  window.__firebase = { initializeApp, getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence };
   window.dispatchEvent(new Event('firebase-ready'));
 </script>
 <style>
@@ -4533,9 +4533,8 @@ Here is the recipe:
       toast('Sync engine failed to start');
       return false;
     }
-    // Safety: stash a backup of the current local state BEFORE sync changes anything.
-    // If a connect goes sideways (remote has stale/empty data and clobbers local), we keep
-    // a recovery copy that can be restored from Settings.
+    // Safety: stash a backup of current local state BEFORE sync changes anything.
+    // If a merge goes sideways, the user can restore from Settings.
     try {
       const backup = {
         savedAt: new Date().toISOString(),
@@ -4547,14 +4546,43 @@ Here is the recipe:
       localStorage.setItem('crumb-pre-sync-backup', JSON.stringify(backup));
     } catch (e) { console.warn('Could not save pre-sync backup', e); }
 
+    // CRITICAL: fetch the existing remote document FIRST before pushing anything.
+    // If we push first (even debounced), we'd overwrite an existing household's data
+    // with our local state. Fetch → merge into local → then push the merged result.
+    try {
+      const { doc, getDoc } = window.__firebase;
+      const snapshot = await getDoc(doc(firestoreDb, 'crumb_households', code));
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        // Merge remote into local using the same id-based merge as the live listener
+        if (Array.isArray(data.recipes)) state.recipes = mergeById(state.recipes, data.recipes);
+        if (Array.isArray(data.bakes)) state.bakes = mergeById(state.bakes, data.bakes);
+        if (Array.isArray(data.categories)) state.categories = mergeById(state.categories, data.categories);
+        if (Array.isArray(data.activeBakes)) {
+          state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
+        } else if (data.activeBake !== undefined) {
+          state.activeBakes = data.activeBake ? [data.activeBake] : [];
+        }
+        // Clean up any duplicate categories that came in
+        dedupeCategories();
+      }
+      // Even if the document didn't exist, that's fine — we'll create it on push.
+    } catch (e) {
+      console.error('Failed to fetch remote sync data:', e);
+      toast('Could not reach sync — check connection');
+      return false;
+    }
+
+    // Now it's safe to flip on sync. Save merged state locally, push to remote, start listener.
     state.syncCode = code;
     saveState();
-    // Force an immediate push BEFORE starting the listener. This ensures the remote document
-    // reflects this device's current state, so when the listener fires with the latest snapshot
-    // it's merging with our own data (not stale data from a previous session).
     await pushToFirestore({ immediate: true });
     startSyncListener();
     renderSyncStatus();
+    // Re-render views so the freshly merged recipes appear
+    renderRecipes();
+    renderHistory();
+    updateActiveTabBadge();
     return true;
   }
 
