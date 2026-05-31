@@ -2272,6 +2272,18 @@
   // #1 — Auto-advance WAIT stages once their planned end passes.
   // Wait stages are time-based (ferments, proofs) so no manual tap is needed.
   // Returns true if anything changed.
+  // Some wait stages need user confirmation (like preheating an oven) even when their
+  // scheduled time has passed — auto-completing them could give a false sense of readiness.
+  // Detect by name keywords.
+  function requiresManualConfirm(stage) {
+    if (!stage || !stage.name) return false;
+    const n = stage.name.toLowerCase();
+    return n.includes('preheat')
+      || n.includes('heat oven')
+      || n.includes('heat the oven')
+      || n.includes('oven on');
+  }
+
   function autoAdvanceWaitStages(recipe, bake) {
     const ab = bake || getFocusedBake();
     if (!ab) return false;
@@ -2285,6 +2297,7 @@
       if (idx === -1) break;
       const stage = recipe.stages[idx];
       if (!stage.isWait) break; // hands-on stage — stop, needs manual tap
+      if (requiresManualConfirm(stage)) break; // preheat-like — needs user confirmation
       const end = getStageScheduledStart(recipe, idx, ab).getTime() + getStageDur(recipe, idx, ab) * 60000;
       if (now >= end) {
         ab.stageStates[idx].done = true;
@@ -3875,11 +3888,34 @@ Here is the recipe:
       ],
     });
     if (choice !== 'yes') return;
+
+    // Un-mark the stage as done
     bake.stageStates[lastDoneIdx].done = false;
     bake.stageStates[lastDoneIdx].doneAt = null;
     bake.stageStates[lastDoneIdx].autoAdvanced = false;
     bake.stageStates[lastDoneIdx].skipped = false;
     bake.stageStates[lastDoneIdx].catchupDismissedAt = null;
+
+    // If we stepped back to a wait stage whose planned end is already in the past,
+    // it would immediately auto-complete again. Shift the bake forward so the un-done
+    // stage's countdown restarts from its full duration.
+    const stageDur = getStageDur(recipe, lastDoneIdx, bake);
+    const stageEnd = getStageScheduledStart(recipe, lastDoneIdx, bake).getTime() + stageDur * 60000;
+    const now = Date.now();
+    if (stageEnd <= now) {
+      // We need stage's end to be in the future. Calculate how far to shift everything forward.
+      // Target: stage end at "now + full stage duration" — gives the user the full time again.
+      const shiftMs = (now + stageDur * 60000) - stageEnd;
+      bake.startedAt = new Date(new Date(bake.startedAt).getTime() + shiftMs).toISOString();
+      // Shift all earlier done timestamps too so the timeline stays consistent
+      for (let i = 0; i < lastDoneIdx; i++) {
+        const s = bake.stageStates[i];
+        if (s.done && s.doneAt) {
+          s.doneAt = new Date(new Date(s.doneAt).getTime() + shiftMs).toISOString();
+        }
+      }
+    }
+
     bake.needsReminderRefresh = true;
     clearAlertForStage(bake.id, lastDoneIdx); // re-allow beep if this stage expires again
     saveState();
