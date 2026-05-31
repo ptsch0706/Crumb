@@ -772,6 +772,20 @@
       <input type="file" id="import-data-file" accept="application/json,.json" style="display: none;">
       <p class="help" style="margin-top: 8px;">Export gives you a JSON backup file. Import merges into your current data. Use this to back up to iCloud Drive or migrate between devices without sync.</p>
 
+      <div id="restore-backup-wrap" style="display: none; margin-top: 12px; padding: 10px 12px; background: var(--bg-warm); border-radius: var(--radius-sm); border: 1px solid var(--crust-soft);">
+        <div style="font-size: 12px; color: var(--ink-soft); margin-bottom: 8px;">
+          <strong>Recovery available.</strong> A snapshot of your data was saved before connecting to sync. If recipes went missing, you can restore it.
+        </div>
+        <div id="restore-backup-info" style="font-size: 11px; color: var(--ink-mute); margin-bottom: 8px;"></div>
+        <button class="btn btn-sm btn-block" id="restore-backup">Restore Pre-Sync Snapshot</button>
+      </div>
+
+      <div style="margin-top: 16px; padding: 12px; background: rgba(184, 92, 42, 0.06); border-radius: var(--radius-sm); border: 1px solid var(--warn);">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--warn); margin-bottom: 6px;">Danger Zone</div>
+        <button class="btn btn-sm btn-block" id="wipe-all-data" style="color: var(--warn); background: transparent; border: 1px solid var(--warn);">Wipe All Data</button>
+        <p class="help" style="margin-top: 6px;">Deletes all recipes, bakes, categories, and active bakes — locally AND on Firebase if sync is enabled. Cannot be undone. Other connected devices may push their data back if they're still online — disconnect them first for a clean wipe.</p>
+      </div>
+
       <div class="wheat-deco">·  ·  ·</div>
 
       <div class="section-title">About</div>
@@ -1100,43 +1114,9 @@
         { id: uid(), name: 'Pizzas' },
         { id: uid(), name: 'Pastries' },
       ];
+      saveState();
     }
-    if (state.recipes.length > 0) return;
-    const breadsId = state.categories.find(c => c.name === 'Breads')?.id || null;
-    state.recipes.push({
-      id: uid(),
-      name: 'Country Loaf',
-      icon: '🍞',
-      categoryId: breadsId,
-      notes: 'Tartine-style sourdough, Dutch oven, ~2 lb. Summer timings.',
-      ingredients: [
-        { name: 'White bread flour', qty: '295 g', pct: '79%' },
-        { name: 'Whole-wheat flour', qty: '80 g', pct: '16%' },
-        { name: 'Whole or dark rye flour', qty: '25 g', pct: '5%' },
-        { name: 'Water (90–95°F)', qty: '300 g', pct: '80%' },
-        { name: 'Fine sea salt', qty: '11 g', pct: '2.2%' },
-        { name: 'Starter (mature)', qty: '200 g', pct: '20%' },
-        { name: 'Roasted walnuts (optional)', qty: '115 g', pct: '23%' },
-      ],
-      stages: [
-        { name: 'Mix starter (Day 1, morning)', durMin: 5, detail: 'Combine levain, 100g white bread flour, 100g water (75–80°F summer / 85°F winter). Let sit out.' },
-        { name: 'Wait — first starter ferment', durMin: 600, detail: '8–12 hours.', isWait: true },
-        { name: 'Second starter mix (Day 1, evening)', durMin: 5, detail: 'Use all morning starter + 100g white flour + 100g water (70°F summer / 85°F winter). Let sit out.' },
-        { name: 'Wait — overnight starter ferment', durMin: 660, detail: '10–12 hours.', isWait: true },
-        { name: 'Third starter mix (Day 2, morning)', durMin: 5, detail: 'Use 50–60g starter (75g winter) + 100g white flour + 100g water (90–95°F). Let sit out.' },
-        { name: 'Wait — final starter ferment', durMin: 450, detail: '7–8 hours (6h works at 80–85°F).', isWait: true },
-        { name: 'Final dough mix (Day 2, afternoon)', durMin: 20, detail: 'Mix flours + water + 200g starter + salt. Rest before folding.' },
-        { name: 'Fold 1', durMin: 30, detail: 'Stretch and fold in bowl.' },
-        { name: 'Fold 2', durMin: 30, detail: 'Stretch and fold.' },
-        { name: 'Fold 3', durMin: 30, detail: 'Final stretch and fold.' },
-        { name: 'Bulk fermentation', durMin: 150, detail: 'Rest undisturbed (~4h total summer, ~5h winter from final mix).', isWait: true },
-        { name: 'Shape loaf (Day 2, evening)', durMin: 15, detail: 'Remove from tub, shape, place in banneton.' },
-        { name: 'Cold proof', durMin: 720, detail: 'Overnight in refrigerator.', isWait: true },
-        { name: 'Preheat Dutch oven (Day 3)', durMin: 45, detail: 'Oven to 475°F / 245°C, Dutch oven inside.' },
-        { name: 'Bake', durMin: 50, detail: '50 minutes at 475°F / 245°C. Lid on first 20–25 min, then off to color.' },
-      ],
-    });
-    saveState();
+    // No default recipe — users add their own via the New Recipe button or JSON import.
   }
 
   function uid() {
@@ -4353,19 +4333,21 @@ Here is the recipe:
           return;
         }
         const data = snapshot.data();
-        // Per-object merge if remote uses schema v2+; otherwise fall back to whole-array replace
-        const useMerge = data.schemaVersion >= 2;
+        // ALWAYS merge by id. Replace mode was dangerous — if remote was stale or empty
+        // it would clobber local recipes. Merging by _updatedAt timestamp preserves both
+        // sides' data and lets newer-timestamped versions win. Items missing a timestamp
+        // are treated as ancient (timestamp 0) so locally-touched items take precedence.
         if (Array.isArray(data.recipes)) {
-          state.recipes = useMerge ? mergeById(state.recipes, data.recipes) : data.recipes;
+          state.recipes = mergeById(state.recipes, data.recipes);
         }
         if (Array.isArray(data.bakes)) {
-          state.bakes = useMerge ? mergeById(state.bakes, data.bakes) : data.bakes;
+          state.bakes = mergeById(state.bakes, data.bakes);
         }
         if (Array.isArray(data.categories)) {
-          state.categories = useMerge ? mergeById(state.categories, data.categories) : data.categories;
+          state.categories = mergeById(state.categories, data.categories);
         }
         if (Array.isArray(data.activeBakes)) {
-          state.activeBakes = useMerge ? mergeById(state.activeBakes, data.activeBakes) : data.activeBakes;
+          state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
         }
         else if (data.activeBake !== undefined) {
           // Backward-compat: remote might be using old single-bake schema
@@ -4429,8 +4411,26 @@ Here is the recipe:
       toast('Sync engine failed to start');
       return false;
     }
+    // Safety: stash a backup of the current local state BEFORE sync changes anything.
+    // If a connect goes sideways (remote has stale/empty data and clobbers local), we keep
+    // a recovery copy that can be restored from Settings.
+    try {
+      const backup = {
+        savedAt: new Date().toISOString(),
+        recipes: state.recipes,
+        bakes: state.bakes,
+        categories: state.categories,
+        activeBakes: state.activeBakes,
+      };
+      localStorage.setItem('crumb-pre-sync-backup', JSON.stringify(backup));
+    } catch (e) { console.warn('Could not save pre-sync backup', e); }
+
     state.syncCode = code;
-    saveState(); // saves locally + pushes initial state
+    saveState();
+    // Force an immediate push BEFORE starting the listener. This ensures the remote document
+    // reflects this device's current state, so when the listener fires with the latest snapshot
+    // it's merging with our own data (not stale data from a previous session).
+    await pushToFirestore({ immediate: true });
     startSyncListener();
     renderSyncStatus();
     return true;
@@ -4504,18 +4504,162 @@ Here is the recipe:
     if (b) b.textContent = (state.bakes || []).length;
   }
 
+  // Show the recovery card if a pre-sync backup exists
+  function renderRestoreBackup() {
+    const wrap = document.getElementById('restore-backup-wrap');
+    const info = document.getElementById('restore-backup-info');
+    if (!wrap) return;
+    let backup = null;
+    try {
+      const raw = localStorage.getItem('crumb-pre-sync-backup');
+      if (raw) backup = JSON.parse(raw);
+    } catch (e) { /* corrupted backup, ignore */ }
+    if (!backup) {
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = '';
+    if (info) {
+      const when = backup.savedAt ? new Date(backup.savedAt).toLocaleString() : 'unknown time';
+      const rCount = (backup.recipes || []).length;
+      const bCount = (backup.bakes || []).length;
+      info.textContent = `Saved ${when} · ${rCount} recipes, ${bCount} bakes`;
+    }
+  }
+
   // Wire up settings + sync controls
   function wireSyncControls() {
     const openSettings = () => {
       renderSyncStatus();
       renderAlertsToggle();
       renderSettingsStats();
+      renderRestoreBackup();
       showModal('modal-settings');
     };
     const oldGear = document.getElementById('btn-settings');
     if (oldGear) oldGear.addEventListener('click', openSettings);
     const newGear = document.getElementById('btn-open-settings');
     if (newGear) newGear.addEventListener('click', openSettings);
+
+    // Restore pre-sync backup
+    const restoreBtn = document.getElementById('restore-backup');
+    if (restoreBtn) {
+      restoreBtn.addEventListener('click', async () => {
+        let backup = null;
+        try {
+          const raw = localStorage.getItem('crumb-pre-sync-backup');
+          if (raw) backup = JSON.parse(raw);
+        } catch (e) { toast('Backup file is corrupted'); return; }
+        if (!backup) { toast('No backup found'); return; }
+        const rCount = (backup.recipes || []).length;
+        const bCount = (backup.bakes || []).length;
+        const choice = await showConfirm({
+          title: 'Restore from backup?',
+          message: `This will merge ${rCount} recipes and ${bCount} bakes from before sync was last connected. Duplicates skipped by ID. Sync stays enabled and will push the restored data.`,
+          buttons: [
+            { label: 'Restore', style: 'primary', value: 'yes' },
+            { label: 'Cancel', style: 'ghost', value: 'no' },
+          ],
+        });
+        if (choice !== 'yes') return;
+        // Merge using same id-based merge as sync — preserves newer items of either side
+        if (Array.isArray(backup.recipes)) state.recipes = mergeById(state.recipes, backup.recipes);
+        if (Array.isArray(backup.bakes)) state.bakes = mergeById(state.bakes, backup.bakes);
+        if (Array.isArray(backup.categories)) state.categories = mergeById(state.categories, backup.categories);
+        // Touch all so the restored versions win the sync merge against any stale remote
+        const now = Date.now();
+        for (const r of state.recipes) r._updatedAt = now;
+        for (const b of state.bakes) b._updatedAt = now;
+        for (const c of state.categories) c._updatedAt = now;
+        saveState();
+        renderRecipes();
+        renderHistory();
+        renderSettingsStats();
+        toast(`Restored ${rCount} Recipes, ${bCount} Bakes`);
+      });
+    }
+
+    // Wipe all data — local + remote (if synced). Requires two confirmations.
+    const wipeBtn = document.getElementById('wipe-all-data');
+    if (wipeBtn) {
+      wipeBtn.addEventListener('click', async () => {
+        const rCount = (state.recipes || []).length;
+        const bCount = (state.bakes || []).length;
+        const aCount = (state.activeBakes || []).length;
+        // First confirmation
+        const c1 = await showConfirm({
+          title: 'Wipe all data?',
+          message: `This deletes ${rCount} recipes, ${bCount} bakes, and ${aCount} active bakes. ${state.syncCode ? `It will also wipe the Firebase data for sync code ${state.syncCode}.` : ''} This cannot be undone.`,
+          buttons: [
+            { label: 'Continue', style: 'danger', value: 'yes' },
+            { label: 'Cancel', style: 'ghost', value: 'no' },
+          ],
+        });
+        if (c1 !== 'yes') return;
+        // Second confirmation — typed
+        const typed = await showPrompt({
+          title: 'Type DELETE to confirm',
+          message: 'This is your last chance to back out. Type the word DELETE in all caps to proceed.',
+          placeholder: 'DELETE',
+          defaultValue: '',
+          inputMode: 'text',
+          autocapitalize: 'characters',
+          autocomplete: 'off',
+        });
+        if (typed !== 'DELETE') {
+          toast('Wipe Cancelled');
+          return;
+        }
+        // Clear local state
+        state.recipes = [];
+        state.bakes = [];
+        state.categories = [];
+        state.activeBakes = [];
+        state.focusedBakeId = null;
+        state.currentRecipeId = null;
+        stopBakeTicker();
+        // Clear the pre-sync backup too — no point keeping it after a deliberate wipe
+        try { localStorage.removeItem('crumb-pre-sync-backup'); } catch (e) {}
+        // If sync is on, push the empty state immediately to wipe Firebase too
+        if (state.syncCode && firestoreDb) {
+          try {
+            const { doc, setDoc } = window.__firebase;
+            const now = Date.now();
+            suppressNextRemote = true;
+            await setDoc(doc(firestoreDb, 'crumb_households', state.syncCode), {
+              recipes: [],
+              bakes: [],
+              categories: [],
+              activeBakes: [],
+              updatedAt: now,
+              schemaVersion: 2,
+            });
+            lastSyncAt = Date.now();
+          } catch (e) {
+            console.error('Remote wipe failed:', e);
+            suppressNextRemote = false;
+            toast('Local Wiped · Remote Failed');
+            saveState();
+            hideModal('modal-settings');
+            renderRecipes();
+            renderHistory();
+            return;
+          }
+        }
+        // Save the now-empty local state (this also re-pushes empty to Firebase via saveState's hook)
+        saveState();
+        // Reset the recipe filter so the empty state shows cleanly
+        state.recipeFilter = { text: '', categoryId: null };
+        // Re-seed default categories so the user has something to start with
+        seedIfEmpty();
+        saveState();
+        hideModal('modal-settings');
+        renderRecipes();
+        renderHistory();
+        updateActiveTabBadge();
+        toast('All Data Wiped');
+      });
+    }
 
     // Alerts toggle
     const alertsToggle = document.getElementById('alerts-toggle');
@@ -4701,7 +4845,20 @@ Here is the recipe:
   // BOOT
   // ============================================================
   loadState();
-  seedIfEmpty();
+  // Skip seeding if sync is coming online — the remote snapshot will populate recipes
+  // shortly and we don't want to inject duplicates. We detect "sync incoming" via either:
+  //   - existing sync code in state (re-opening a connected device)
+  //   - a sync code in the URL (?sync=XYZ from widget tap or shared link)
+  const _urlHasSync = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const s = p.get('sync');
+      return s && s.trim().length === 6;
+    } catch (e) { return false; }
+  })();
+  if (!state.syncCode && !_urlHasSync) {
+    seedIfEmpty();
+  }
   renderRecipes();
   updateActiveTabBadge();
   if (state.activeBakes.length > 0) {
@@ -4778,6 +4935,18 @@ Here is the recipe:
     tryAutoConnect();
   } else {
     window.addEventListener('firebase-ready', tryAutoConnect);
+  }
+
+  // Safety net: if we deferred seeding because sync was expected, but no recipes ever arrived
+  // (offline, bad sync code, Firestore unreachable), seed after 8 seconds so we don't trap
+  // the user looking at an empty app.
+  if ((state.syncCode || _urlHasSync) && state.recipes.length === 0) {
+    setTimeout(() => {
+      if (state.recipes.length === 0) {
+        seedIfEmpty();
+        renderRecipes();
+      }
+    }, 8000);
   }
 
   // When the PWA is returning from background, re-establish the sync listener so we get
