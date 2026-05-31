@@ -472,11 +472,6 @@
 
         <div class="wheat-deco">·  ·  ·</div>
 
-        <button class="btn btn-block" id="append-from-photo" style="margin-bottom: 8px;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 3v4a1 1 0 0 0 1 1h4M5 12V5a2 2 0 0 1 2-2h8l4 4v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-4m4-3 3 3-3 3m3-3H3"/></svg>
-          Append from JSON
-        </button>
-
         <button class="btn btn-ghost btn-block" id="delete-recipe" style="color: var(--warn); display: none;">Delete Recipe</button>
       </div>
 
@@ -627,12 +622,15 @@
       <button class="modal-close" data-close>✕</button>
     </div>
     <div class="modal-body">
-      <p class="help" style="margin-bottom: 14px;">Shift the entire bake timeline by changing when this bake started. Completed stages will keep their done times.</p>
+      <p class="help" style="margin-bottom: 14px;">Change how much time is left in the current stage. All upcoming stages will shift to match.</p>
+      <div id="at-stage-name" style="font-family: 'Fraunces', serif; font-size: 18px; color: var(--ink); margin-bottom: 4px; text-align: center;"></div>
+      <div id="at-current-remaining" style="font-size: 12px; color: var(--ink-mute); margin-bottom: 16px; text-align: center;"></div>
       <div class="field">
-        <label>Bake started at</label>
-        <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
-          <input type="date" id="at-date" style="width: auto;">
-          <input type="time" id="at-time" style="width: auto;">
+        <label style="text-align: center; display: block;">New time remaining (minutes)</label>
+        <div style="display: flex; align-items: center; gap: 12px; justify-content: center;">
+          <button class="btn btn-sm" id="at-minus" style="width: 44px; height: 44px; font-size: 22px; padding: 0; flex-shrink: 0;">−</button>
+          <input type="number" id="at-minutes" min="0" max="1440" step="1" style="width: 100px; text-align: center; font-size: 22px; font-weight: 600; font-family: 'JetBrains Mono', monospace; padding: 8px;">
+          <button class="btn btn-sm" id="at-plus" style="width: 44px; height: 44px; font-size: 22px; padding: 0; flex-shrink: 0;">+</button>
         </div>
       </div>
       <div id="at-shift-info" style="background: var(--bg-warm); border-radius: var(--radius); padding: 12px; margin-bottom: 14px; font-size: 13px; color: var(--ink-soft); line-height: 1.5;"></div>
@@ -1425,9 +1423,8 @@
 
       <div class="field">
         <label id="time-label">${state.scheduleMode === 'finish' ? 'Bread ready at' : 'Start at'}</label>
-        <div style="display: flex; gap: 8px; justify-content: center; align-items: center;">
-          <input type="date" id="time-input-date" value="${state.scheduleMode === 'finish' ? finishVal.slice(0, 10) : startVal.slice(0, 10)}" style="width: auto;">
-          <input type="time" id="time-input-time" value="${state.scheduleMode === 'finish' ? finishVal.slice(11, 16) : startVal.slice(11, 16)}" style="width: auto;">
+        <div style="display: flex; justify-content: center;">
+          <input type="datetime-local" id="time-input-dt" value="${(state.scheduleMode === 'finish' ? finishVal : startVal).slice(0, 16)}" style="width: auto; min-width: 220px;">
         </div>
       </div>
 
@@ -1507,24 +1504,36 @@
         renderSchedule();
       });
     });
+    // The native picker dismisses if we replace its DOM, so we only update state
+    // on change and defer the full re-render to blur (when the picker has closed).
+    let _timeChanged = false;
     const onTimeChange = () => {
-      const dateVal = document.getElementById('time-input-date').value;
-      const timeVal = document.getElementById('time-input-time').value;
-      if (!dateVal || !timeVal) return;
-      const d = new Date(`${dateVal}T${timeVal}`);
+      const val = document.getElementById('time-input-dt').value;
+      if (!val) return;
+      const d = new Date(val);
       if (isNaN(d.getTime())) return;
       if (state.scheduleMode === 'finish') state.scheduleFinish = d;
       else state.scheduleStart = d;
       saveState();
-      renderSchedule();
+      _timeChanged = true;
     };
-    document.getElementById('time-input-date').addEventListener('change', onTimeChange);
-    document.getElementById('time-input-time').addEventListener('change', onTimeChange);
+    const onTimeBlur = () => {
+      if (_timeChanged) {
+        _timeChanged = false;
+        renderSchedule();
+      }
+    };
+    document.getElementById('time-input-dt').addEventListener('change', onTimeChange);
+    document.getElementById('time-input-dt').addEventListener('blur', onTimeBlur);
     document.getElementById('btn-edit-recipe').addEventListener('click', () => {
       openRecipeEditor(recipe);
     });
     document.getElementById('btn-shortcut').addEventListener('click', () => openShortcutModal(recipe, timeline));
-    document.getElementById('btn-start-bake').addEventListener('click', () => startBake(recipe, startTime));
+    document.getElementById('btn-start-bake').addEventListener('click', () => {
+      // If user changed the time but didn't blur, pick up the latest value
+      if (_timeChanged) onTimeChange();
+      startBake(recipe, startTime);
+    });
 
     // Scale option clicks
     container.querySelectorAll('.scale-opt').forEach(b => {
@@ -1847,7 +1856,7 @@
       if (idx === -1) break;
       const stage = recipe.stages[idx];
       if (!stage.isWait) break; // hands-on stage — stop, needs manual tap
-      const end = getStageScheduledStart(recipe, idx, ab).getTime() + stage.durMin * 60000;
+      const end = getStageScheduledStart(recipe, idx, ab).getTime() + getStageDur(recipe, idx, ab) * 60000;
       if (now >= end) {
         ab.stageStates[idx].done = true;
         ab.stageStates[idx].doneAt = new Date(end).toISOString();
@@ -1871,7 +1880,7 @@
     if (idx === -1) return -1;
     const stage = recipe.stages[idx];
     if (stage.isWait) return -1;
-    const end = getStageScheduledStart(recipe, idx, ab).getTime() + stage.durMin * 60000;
+    const end = getStageScheduledStart(recipe, idx, ab).getTime() + getStageDur(recipe, idx, ab) * 60000;
     const overdueMin = (Date.now() - end) / 60000;
     if (overdueMin >= OVERDUE_THRESHOLD_MIN) return idx;
     return -1;
@@ -1918,6 +1927,16 @@
     startBakeTicker();
   }
 
+  // Get the effective duration of a stage for a given bake.
+  // Honors per-bake durMinOverride on stageStates (used by Adjust Timer).
+  function getStageDur(recipe, stageIdx, bake) {
+    const ab = bake || getFocusedBake();
+    if (ab && ab.stageStates[stageIdx] && typeof ab.stageStates[stageIdx].durMinOverride === 'number') {
+      return ab.stageStates[stageIdx].durMinOverride;
+    }
+    return recipe.stages[stageIdx].durMin;
+  }
+
   function getStageScheduledStart(recipe, stageIdx, bake) {
     // Use actual done-times when available, fall back to planned durations from previous done stage
     const ab = bake || getFocusedBake();
@@ -1928,73 +1947,67 @@
       if (ab.stageStates[i].done && ab.stageStates[i].doneAt) {
         t = new Date(ab.stageStates[i].doneAt);
       } else {
-        t = new Date(t.getTime() + recipe.stages[i].durMin * 60000);
+        t = new Date(t.getTime() + getStageDur(recipe, i, ab) * 60000);
       }
     }
     return t;
   }
 
-  // Open the quick stage editor (during active bake) — edits the recipe permanently
-  // Open the adjust-timer modal — lets the user shift the entire bake timeline
+  // Open the adjust-timer modal — lets the user change how much time is left in the current stage.
+  // All upcoming stages shift to match. Doesn't move startedAt or change completed stages.
   function openAdjustTimer(recipe, bake) {
-    const startedAt = new Date(bake.startedAt);
-    const dateInput = document.getElementById('at-date');
-    const timeInput = document.getElementById('at-time');
+    const curIdx = getCurrentStageIdx(recipe, bake);
+    if (curIdx === -1) { toast('Bake is complete — nothing to adjust'); return; }
+    const curStage = recipe.stages[curIdx];
+    const scheduledStart = getStageScheduledStart(recipe, curIdx, bake);
+    const currentDur = getStageDur(recipe, curIdx, bake);
+    const scheduledEnd = new Date(scheduledStart.getTime() + currentDur * 60000);
+    const msRemaining = scheduledEnd - new Date();
+    const minRemaining = Math.max(0, Math.round(msRemaining / 60000));
+
+    document.getElementById('at-stage-name').textContent = curStage.name;
+    document.getElementById('at-current-remaining').textContent = `Currently ${formatDur(minRemaining)} remaining`;
+
+    const minutesInput = document.getElementById('at-minutes');
     const info = document.getElementById('at-shift-info');
-
-    // Helper to format a Date as YYYY-MM-DD in local time
-    const fmtDate = (d) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
-    };
-    const fmtTime = (d) => {
-      const h = String(d.getHours()).padStart(2, '0');
-      const m = String(d.getMinutes()).padStart(2, '0');
-      return `${h}:${m}`;
-    };
-
-    dateInput.value = fmtDate(startedAt);
-    timeInput.value = fmtTime(startedAt);
+    minutesInput.value = String(minRemaining);
 
     const updateInfo = () => {
-      const d = dateInput.value;
-      const t = timeInput.value;
-      if (!d || !t) { info.textContent = ''; return; }
-      const newStart = new Date(`${d}T${t}`);
-      if (isNaN(newStart.getTime())) { info.textContent = 'Invalid date/time'; return; }
-      const shiftMin = Math.round((newStart - startedAt) / 60000);
-      if (shiftMin === 0) {
+      const newRemaining = parseInt(minutesInput.value, 10);
+      if (isNaN(newRemaining) || newRemaining < 0) { info.textContent = 'Enter a number ≥ 0'; return; }
+      const diffMin = newRemaining - minRemaining;
+      if (diffMin === 0) {
         info.textContent = 'No change.';
-      } else if (shiftMin < 0) {
-        info.textContent = `Bake will be shifted ${formatDur(Math.abs(shiftMin))} earlier. The current and upcoming stages will adjust accordingly.`;
+      } else if (diffMin > 0) {
+        info.textContent = `Adds ${formatDur(diffMin)} to this stage. All upcoming stages shift ${formatDur(diffMin)} later.`;
       } else {
-        info.textContent = `Bake will be shifted ${formatDur(shiftMin)} later. The current and upcoming stages will adjust accordingly.`;
+        info.textContent = `Cuts ${formatDur(Math.abs(diffMin))} from this stage. All upcoming stages shift ${formatDur(Math.abs(diffMin))} earlier.`;
       }
     };
     updateInfo();
-    dateInput.oninput = updateInfo;
-    timeInput.oninput = updateInfo;
+    minutesInput.oninput = updateInfo;
+
+    document.getElementById('at-minus').onclick = () => {
+      const cur = parseInt(minutesInput.value, 10) || 0;
+      minutesInput.value = String(Math.max(0, cur - 1));
+      updateInfo();
+    };
+    document.getElementById('at-plus').onclick = () => {
+      const cur = parseInt(minutesInput.value, 10) || 0;
+      minutesInput.value = String(cur + 1);
+      updateInfo();
+    };
 
     document.getElementById('at-save').onclick = () => {
-      const d = dateInput.value;
-      const t = timeInput.value;
-      if (!d || !t) { toast('Pick a date and time'); return; }
-      const newStart = new Date(`${d}T${t}`);
-      if (isNaN(newStart.getTime())) { toast('Invalid date/time'); return; }
-      const shiftMs = newStart - startedAt;
-      bake.startedAt = newStart.toISOString();
-      // Shift all done timestamps proportionally so the timeline stays consistent
-      for (const s of bake.stageStates) {
-        if (s.done && s.doneAt) {
-          s.doneAt = new Date(new Date(s.doneAt).getTime() + shiftMs).toISOString();
-        }
-      }
-      // After shift, also auto-advance any wait stages whose new planned end has passed
-      autoAdvanceWaitStages(recipe, bake);
-      // Adjusting the timer always means reminders are stale
-      if (Math.abs(shiftMs) > 60000) bake.needsReminderRefresh = true;
+      const newRemaining = parseInt(minutesInput.value, 10);
+      if (isNaN(newRemaining) || newRemaining < 0) { toast('Enter a valid number'); return; }
+      const diffMin = newRemaining - minRemaining;
+      if (diffMin === 0) { hideModal('modal-adjust-timer'); startBakeTicker(); return; }
+      // Adjust the current stage's effective duration on this bake
+      const newDur = Math.max(0, currentDur + diffMin);
+      bake.stageStates[curIdx].durMinOverride = newDur;
+      // Don't auto-advance current stage even if it would be "complete" — let the user mark done
+      if (Math.abs(diffMin) > 1) bake.needsReminderRefresh = true;
       saveState();
       hideModal('modal-adjust-timer');
       renderActiveBake(recipe, bake);
@@ -2100,7 +2113,7 @@
 
     const curStage = recipe.stages[curIdx];
     const scheduledStart = getStageScheduledStart(recipe, curIdx, ab);
-    const scheduledEnd = new Date(scheduledStart.getTime() + curStage.durMin * 60000);
+    const scheduledEnd = new Date(scheduledStart.getTime() + getStageDur(recipe, curIdx, ab) * 60000);
     const now = new Date();
     const msToEnd = scheduledEnd - now;
     const msToStart = scheduledStart - now;
@@ -2195,7 +2208,7 @@
           let t = originalStart;
           for (let i = 0; i < recipe.stages.length; i++) {
             const stageStart = new Date(t);
-            const stageEnd = new Date(t.getTime() + recipe.stages[i].durMin * 60000);
+            const stageEnd = new Date(t.getTime() + getStageDur(recipe, i, ab) * 60000);
             plannedTimes.push({ start: stageStart, end: stageEnd });
             t = stageEnd;
           }
@@ -2377,7 +2390,7 @@
         if (ab.paused) return; // disabled while paused
         stopBakeTicker();
         // Detect off-schedule completion (>5 min off the planned end)
-        const plannedEnd = new Date(getStageScheduledStart(recipe, curIdx, ab).getTime() + recipe.stages[curIdx].durMin * 60000);
+        const plannedEnd = new Date(getStageScheduledStart(recipe, curIdx, ab).getTime() + getStageDur(recipe, curIdx, ab) * 60000);
         const driftMin = Math.abs((Date.now() - plannedEnd.getTime()) / 60000);
         if (driftMin > 5) {
           ab.needsReminderRefresh = true;
@@ -2625,6 +2638,12 @@ Rules:
   - "Add salt, do a fold every 30 min for 3 hours, then rest 1 hour." → durMin should be ~240 (180 min folds + 60 min rest).
   - "Shape, then let rest 30 min seam-side up." → durMin should be ~35 (5 min shape + 30 min rest).
   - If only a rest time is mentioned with no active step, durMin equals the rest time and isWait: true.
+- **CRITICAL — Spans that cover multiple stages**: When a step says something like "after the third fold, let bulk continue for the remaining 4 hours" or "complete bulk ferment is about 5 hours total," the time given is for the WHOLE span (which may include earlier stages you already broke out separately). Do NOT use the full span time for the final stage. Instead:
+  - Calculate the time already used by earlier stages in that span (e.g. folds at 30-min intervals = 30 min each)
+  - Subtract that from the total span time to get the remaining wait/rest after the last action
+  - Example: "Total bulk ferment is 4 hours. Do 3 folds in the first 90 minutes, then leave undisturbed." → Folds: 30 min each (3 folds = 90 min). Final undisturbed wait: 240 - 90 = 150 min (2.5h), isWait: true.
+  - Example: "Bulk for 5 hours, doing folds every 30 min for the first 2 hours." → 4 fold stages × 30 min = 120 min of folds. Final wait stage: 300 - 120 = 180 min, isWait: true.
+  - When the recipe gives "the remainder of the bulk ferment — about X hours," X is usually the TOTAL bulk time, not just the remainder. Look for clues earlier in the recipe to confirm the total bulk duration.
 - The detail field should briefly describe what's happening including any embedded rest periods so the baker knows what to expect.
 - Ingredient quantities should preserve gram weights when shown
 - If the recipe came from a URL, include the URL in the "notes" field
@@ -2978,7 +2997,7 @@ Here is the recipe:
       } else {
         const stage = recipe.stages[curIdx];
         const scheduledStart = getStageScheduledStart(recipe, curIdx, b);
-        const scheduledEnd = new Date(scheduledStart.getTime() + stage.durMin * 60000);
+        const scheduledEnd = new Date(scheduledStart.getTime() + getStageDur(recipe, curIdx, b) * 60000);
         const msToEnd = scheduledEnd - new Date();
         const msToStart = scheduledStart - new Date();
         statusLine = `Stage ${curIdx + 1} of ${totalCount} · ${escapeHtml(stage.name)}`;
@@ -3096,13 +3115,6 @@ Here is the recipe:
   document.getElementById('recipe-mode-json').addEventListener('click', () => setRecipeMode('json'));
   document.getElementById('recipe-mode-manual').addEventListener('click', () => setRecipeMode('manual'));
 
-  document.getElementById('append-from-photo').addEventListener('click', () => {
-    if (!state.editingRecipe) return;
-    importAppendMode = true;
-    // Switch to the JSON tab within the same modal (no separate modal)
-    document.getElementById('recipe-mode-tabs').style.display = '';
-    setRecipeMode('json');
-  });
   document.getElementById('back-to-recipes').addEventListener('click', () => switchView('view-recipes'));
 
   // Bake Options button + modal wiring
