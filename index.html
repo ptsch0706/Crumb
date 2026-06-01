@@ -461,8 +461,12 @@
           <div id="cat-picker" class="cat-picker"></div>
         </div>
         <div class="field">
-          <label>Notes / Source</label>
-          <input type="text" id="r-notes" placeholder="Book, page, etc.">
+          <label>Source</label>
+          <input type="text" id="r-source" placeholder="e.g. King Arthur Baking, Tartine Bread, etc.">
+        </div>
+        <div class="field">
+          <label>Notes</label>
+          <input type="text" id="r-notes" placeholder="Tips, variations, page number, URL...">
         </div>
         <div class="field">
           <label>Yield</label>
@@ -1388,7 +1392,7 @@
       const bake = getActiveBakeForRecipe(r.id);
       const isBaking = !!bake;
       const c = isBaking ? getBakeColor(bake.color) : null;
-      const source = formatSource(r.notes);
+      const source = (r.source && r.source.trim()) ? r.source.trim() : formatSource(r.notes);
       return `
         <div class="recipe-item" data-id="${r.id}"${isBaking ? ` style="border-left: 3px solid ${c.hex};"` : ''}>
           <div class="recipe-thumb">${renderRecipeIcon(r.icon, 40)}</div>
@@ -3173,6 +3177,7 @@
     state.editingRecipe = recipe ? JSON.parse(JSON.stringify(recipe)) : {
       id: uid(),
       name: '',
+      source: '',
       notes: '',
       icon: DEFAULT_ICON,
       categoryId: null,
@@ -3181,9 +3186,17 @@
     };
     if (!state.editingRecipe.icon) state.editingRecipe.icon = DEFAULT_ICON;
     state.editingRecipe.icon = normalizeIconId(state.editingRecipe.icon);
+    // Backward compat: older recipes only had `notes` and used it as a source.
+    // If this recipe has notes that look like a source (URL, or short single-line text)
+    // and no explicit `source` set, infer the source from notes once.
+    if (typeof state.editingRecipe.source !== 'string') {
+      const inferred = formatSource(state.editingRecipe.notes);
+      state.editingRecipe.source = inferred || '';
+    }
     const isExisting = recipe && state.recipes.some(r => r.id === recipe.id);
     document.getElementById('modal-recipe-title').textContent = isExisting ? 'Edit Recipe' : 'New Recipe';
     document.getElementById('r-name').value = state.editingRecipe.name;
+    document.getElementById('r-source').value = state.editingRecipe.source || '';
     document.getElementById('r-notes').value = state.editingRecipe.notes || '';
     document.getElementById('r-yield').value = state.editingRecipe.yield || '';
     document.getElementById('delete-recipe').style.display = isExisting ? 'inline-flex' : 'none';
@@ -3350,8 +3363,8 @@ Rules:
   - When the recipe gives "the remainder of the bulk ferment — about X hours," X is usually the TOTAL bulk time, not just the remainder. Look for clues earlier in the recipe to confirm the total bulk duration.
 - The detail field should briefly describe what's happening including any embedded rest periods so the baker knows what to expect.
 - Ingredient quantities should preserve gram weights when shown
-- If the recipe came from a URL, put the full URL in the "notes" field. The app will automatically extract the site name to display as the source.
-- If the recipe came from a cookbook or other non-URL source where you can clearly identify the book title or author (e.g. "Tartine Bread by Chad Robertson"), put that short name in "notes". Otherwise leave "notes" empty — the user will fill in the source manually.
+- For "source", provide a short site name or cookbook title (e.g. "King Arthur Baking", "Tartine Bread", "America's Test Kitchen"). Leave empty if the source is unclear.
+- For "notes", put any other context worth remembering: the full URL if from a website, page numbers for cookbooks, recipe variations, tips. Leave empty if there's nothing to add.
 - For "yield", include what the recipe produces (e.g. "2 loaves", "12 rolls", "1 boule") — null if unknown
 - For "icon", pick the most fitting id from this list: boule, baguette, sourdough, sandwich, focaccia, pizza, pita, naan, croissant, bagel, pretzel, cinnamonroll, donut
 - For "category", pick a short broad category like "Breads", "Pizzas", "Pastries", "Flatbreads", "Desserts" — whichever fits best
@@ -3363,7 +3376,8 @@ Format:
   "name": "string",
   "icon": "one emoji from the list above",
   "category": "string (broad category)",
-  "notes": "source/URL/notes string",
+  "source": "short site/cookbook name (e.g. 'King Arthur Baking', 'Tartine Bread') or empty string if unknown",
+  "notes": "URL, tips, variations, page numbers — anything else worth remembering",
   "yield": "string like '2 loaves' or null",
   "ingredients": [{"name": "string", "qty": "string with grams"}],
   "stages": [{"name": "short imperative", "durMin": number, "detail": "string", "isWait": boolean, "needsStart": boolean, "prepBufferMin": number}]
@@ -3426,6 +3440,11 @@ Here is the recipe:
       icon: normalizeIconId(parsed.icon),
       categoryId,
       notes: parsed.notes || '',
+      // Auto-derive source from notes (e.g. extract "King Arthur Baking" from a URL)
+      // Claude can also return an explicit "source" field; prefer that if present.
+      source: (parsed.source && typeof parsed.source === 'string' && parsed.source.trim())
+        ? parsed.source.trim()
+        : formatSource(parsed.notes || ''),
       yield: parsed.yield || '',
       ingredients: Array.isArray(parsed.ingredients) ? parsed.ingredients : [],
       stages: Array.isArray(parsed.stages) ? parsed.stages.map(s => ({
@@ -4189,6 +4208,7 @@ Here is the recipe:
   });
   document.getElementById('r-name').addEventListener('input', e => state.editingRecipe.name = e.target.value);
   document.getElementById('r-notes').addEventListener('input', e => state.editingRecipe.notes = e.target.value);
+  document.getElementById('r-source').addEventListener('input', e => state.editingRecipe.source = e.target.value);
   document.getElementById('r-yield').addEventListener('input', e => state.editingRecipe.yield = e.target.value);
   document.getElementById('save-recipe').addEventListener('click', () => {
     const r = state.editingRecipe;
