@@ -1373,6 +1373,12 @@
       groups.get(key).push(r);
     });
 
+    // Sort each group alphabetically by name (case-insensitive, locale-aware so accented
+    // characters and non-English names sort correctly)
+    for (const recipes of groups.values()) {
+      recipes.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+    }
+
     // Determine order: categories in state.categories order, then "Uncategorized" last
     const orderedKeys = [];
     state.categories.forEach(c => { if (groups.has(c.id)) orderedKeys.push(c.id); });
@@ -1382,12 +1388,14 @@
       const bake = getActiveBakeForRecipe(r.id);
       const isBaking = !!bake;
       const c = isBaking ? getBakeColor(bake.color) : null;
+      const source = formatSource(r.notes);
       return `
         <div class="recipe-item" data-id="${r.id}"${isBaking ? ` style="border-left: 3px solid ${c.hex};"` : ''}>
           <div class="recipe-thumb">${renderRecipeIcon(r.icon, 40)}</div>
           <div class="recipe-meta">
             <div class="recipe-name">${escapeHtml(r.name)}${isBaking ? ` <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;background:${c.hex};color:white;padding:2px 8px;border-radius:100px;font-family:Inter;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;vertical-align:middle;margin-left:6px;"><span style="width:5px;height:5px;background:white;border-radius:50%;display:inline-block;animation:pulse 1.6s ease-in-out infinite;"></span>Baking</span>` : ''}</div>
             <div class="recipe-sub">${r.stages.length} stages · ${formatDur(totalMinutes(r))} total</div>
+            ${source ? `<div class="recipe-sub">${escapeHtml(source)}</div>` : ''}
           </div>
           <div class="recipe-chev">›</div>
         </div>`;
@@ -3342,7 +3350,8 @@ Rules:
   - When the recipe gives "the remainder of the bulk ferment — about X hours," X is usually the TOTAL bulk time, not just the remainder. Look for clues earlier in the recipe to confirm the total bulk duration.
 - The detail field should briefly describe what's happening including any embedded rest periods so the baker knows what to expect.
 - Ingredient quantities should preserve gram weights when shown
-- If the recipe came from a URL, include the URL in the "notes" field
+- If the recipe came from a URL, put the full URL in the "notes" field. The app will automatically extract the site name to display as the source.
+- If the recipe came from a cookbook or other non-URL source where you can clearly identify the book title or author (e.g. "Tartine Bread by Chad Robertson"), put that short name in "notes". Otherwise leave "notes" empty — the user will fill in the source manually.
 - For "yield", include what the recipe produces (e.g. "2 loaves", "12 rolls", "1 boule") — null if unknown
 - For "icon", pick the most fitting id from this list: boule, baguette, sourdough, sandwich, focaccia, pizza, pita, naan, croissant, bagel, pretzel, cinnamonroll, donut
 - For "category", pick a short broad category like "Breads", "Pizzas", "Pastries", "Flatbreads", "Desserts" — whichever fits best
@@ -3545,6 +3554,77 @@ Here is the recipe:
   // ============================================================
   function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
   function escapeAttr(s) { return escapeHtml(s); }
+
+  // Hand-curated mapping of common baking-site domains → display name.
+  // Anything not in this map falls back to a generic domain-to-title-case conversion.
+  const SOURCE_DOMAIN_NAMES = {
+    'kingarthurbaking.com': 'King Arthur Baking',
+    'kingarthurflour.com': 'King Arthur Baking', // legacy domain
+    'americastestkitchen.com': "America's Test Kitchen",
+    'cooksillustrated.com': "Cook's Illustrated",
+    'cookscountry.com': "Cook's Country",
+    'theperfectloaf.com': 'The Perfect Loaf',
+    'breadtopia.com': 'Breadtopia',
+    'seriouseats.com': 'Serious Eats',
+    'food52.com': 'Food52',
+    'nytcooking.com': 'NYT Cooking',
+    'cooking.nytimes.com': 'NYT Cooking',
+    'bonappetit.com': 'Bon Appétit',
+    'epicurious.com': 'Epicurious',
+    'allrecipes.com': 'Allrecipes',
+    'youtube.com': 'YouTube',
+    'youtu.be': 'YouTube',
+    'instagram.com': 'Instagram',
+    'tiktok.com': 'TikTok',
+    'reddit.com': 'Reddit',
+    'wildgrainbakery.com': 'Wildgrain',
+    'sourdough.com': 'Sourdough.com',
+    'foodnetwork.com': 'Food Network',
+    'tasteofhome.com': 'Taste of Home',
+    'thespruceeats.com': 'The Spruce Eats',
+    'bbc.co.uk': 'BBC Food',
+    'bbcgoodfood.com': 'BBC Good Food',
+    'jamieoliver.com': 'Jamie Oliver',
+    'simplyrecipes.com': 'Simply Recipes',
+    'breadbymegan.com': 'Bread by Megan',
+    'fullproofbaking.com': 'Full Proof Baking',
+    'maurizio.com': 'The Perfect Loaf', // Maurizio's old domain
+  };
+
+  // Given a recipe's notes string (which may contain a URL, a manual note, or be empty),
+  // return a display-friendly source name. Returns '' if there's nothing usable.
+  function formatSource(notes) {
+    if (!notes || typeof notes !== 'string') return '';
+    const trimmed = notes.trim();
+    if (!trimmed) return '';
+
+    // Try to extract a URL from the notes (works whether notes is just a URL,
+    // or text containing a URL like "from https://example.com/recipe")
+    const urlMatch = trimmed.match(/https?:\/\/[^\s]+/i);
+    if (urlMatch) {
+      try {
+        const url = new URL(urlMatch[0]);
+        // Strip leading "www." and grab the hostname
+        let host = url.hostname.toLowerCase().replace(/^www\./, '');
+        // Look up the curated name first
+        if (SOURCE_DOMAIN_NAMES[host]) return SOURCE_DOMAIN_NAMES[host];
+        // Generic fallback: take the second-level part (e.g. "myblog" from "myblog.com")
+        // and Title Case it. "smittenkitchen.com" → "Smittenkitchen"
+        const parts = host.split('.');
+        const base = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+        return base.charAt(0).toUpperCase() + base.slice(1);
+      } catch (e) {
+        // URL parse failed — fall through to treating as plain text
+      }
+    }
+
+    // No URL detected — treat the notes as a manual source if they're short enough
+    // to plausibly be a source name (not a multi-sentence note). Cap at 40 chars.
+    if (trimmed.length <= 40 && !trimmed.includes('\n')) return trimmed;
+
+    // Long free-form notes: don't try to extract a "source" from them
+    return '';
+  }
 
   function formatDur(min) {
     if (min < 60) return `${min}m`;
