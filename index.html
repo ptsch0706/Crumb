@@ -3482,6 +3482,7 @@ Here is the recipe:
       state.editingRecipe = newRecipe;
       document.getElementById('modal-recipe-title').textContent = 'New Recipe';
       document.getElementById('r-name').value = newRecipe.name;
+      document.getElementById('r-source').value = newRecipe.source || '';
       document.getElementById('r-notes').value = newRecipe.notes || '';
       document.getElementById('r-yield').value = newRecipe.yield || '';
       document.getElementById('delete-recipe').style.display = 'none';
