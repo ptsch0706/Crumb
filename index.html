@@ -843,7 +843,7 @@
       <div class="field">
         <label>Photos</label>
         <div class="photo-grid" id="bn-photo-grid"></div>
-        <input type="file" id="bn-photo-input" accept="image/*" multiple capture="environment" style="display: none;">
+        <input type="file" id="bn-photo-input" accept="image/*" multiple style="display: none;">
       </div>
 
       <button class="btn btn-primary btn-block" id="bn-save">Save Bake</button>
@@ -1112,15 +1112,16 @@
   // SAMPLE RECIPE (Tartine-style Country Loaf)
   // ============================================================
   function seedIfEmpty() {
-    if (state.categories.length === 0) {
+    if (liveItems(state.categories).length === 0) {
       // Use deterministic ids so multiple devices seeding independently produce the SAME ids,
       // which lets the sync merge consolidate them into one entry per category instead of
       // creating duplicates with random uid()s.
-      state.categories = [
-        { id: 'cat-breads', name: 'Breads' },
-        { id: 'cat-pizzas', name: 'Pizzas' },
-        { id: 'cat-pastries', name: 'Pastries' },
-      ];
+      state.categories = state.categories.filter(c => !c._deleted); // drop tombstones before seeding fresh
+      state.categories.push(
+        { id: 'cat-breads', name: 'Breads', _updatedAt: Date.now() },
+        { id: 'cat-pizzas', name: 'Pizzas', _updatedAt: Date.now() },
+        { id: 'cat-pastries', name: 'Pastries', _updatedAt: Date.now() },
+      );
       saveState();
     }
     // No default recipe — users add their own via the New Recipe button or JSON import.
@@ -1314,10 +1315,10 @@
     }
     const chipsContainer = document.getElementById('recipe-category-chips');
     if (!chipsContainer) return;
-    // Build chips: "All" + each category that has recipes
+    // Build chips: "All" + each category that has live recipes
     const usedCategories = new Set();
-    state.recipes.forEach(r => { if (r.categoryId) usedCategories.add(r.categoryId); });
-    const chips = [{ id: null, name: 'All' }, ...state.categories.filter(c => usedCategories.has(c.id))];
+    liveItems(state.recipes).forEach(r => { if (r.categoryId) usedCategories.add(r.categoryId); });
+    const chips = [{ id: null, name: 'All' }, ...liveItems(state.categories).filter(c => usedCategories.has(c.id))];
     chipsContainer.innerHTML = chips.map(c => {
       const active = (f.categoryId || null) === (c.id || null);
       return `<button class="cat-chip${active ? ' active' : ''}" data-chip-cat="${c.id || ''}" style="flex-shrink: 0; padding: 6px 12px; border-radius: 100px; border: 1px solid ${active ? 'var(--crust)' : 'var(--line)'}; background: ${active ? 'var(--bg-warm)' : 'var(--bg-elev)'}; color: ${active ? 'var(--crust-deep)' : 'var(--ink-soft)'}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;">${escapeHtml(c.name)}</button>`;
@@ -1326,7 +1327,9 @@
 
   function renderRecipes() {
     const list = document.getElementById('recipe-list');
-    if (state.recipes.length === 0) {
+    // Filter out tombstones (deleted but kept for sync propagation)
+    const visibleRecipes = liveItems(state.recipes);
+    if (visibleRecipes.length === 0) {
       list.innerHTML = `
         <div class="empty">
           <div class="icon">🌾</div>
@@ -1347,7 +1350,7 @@
     const f = state.recipeFilter || { text: '', categoryId: null };
     const searchText = (f.text || '').toLowerCase().trim();
     const categoryFilter = f.categoryId;
-    let filtered = state.recipes;
+    let filtered = visibleRecipes;
     if (searchText) {
       filtered = filtered.filter(r => {
         if ((r.name || '').toLowerCase().includes(searchText)) return true;
@@ -1479,8 +1482,15 @@
       }
     } else if (action === 'delete') {
       // Move all recipes in this category to uncategorized
-      state.recipes.forEach(r => { if (r.categoryId === catId) r.categoryId = null; });
-      state.categories = state.categories.filter(c => c.id !== catId);
+      state.recipes.forEach(r => {
+        if (r.categoryId === catId) {
+          r.categoryId = null;
+          touchUpdated(r);
+        }
+      });
+      // Tombstone the category rather than splicing it out, so the delete propagates via sync
+      const target = state.categories.find(c => c.id === catId);
+      if (target) tombstone(target);
       saveState();
       renderRecipes();
       toast('Category deleted');
@@ -1489,7 +1499,8 @@
 
   function renderHistory() {
     const list = document.getElementById('history-list');
-    if (!state.bakes || state.bakes.length === 0) {
+    const visibleBakes = liveItems(state.bakes);
+    if (visibleBakes.length === 0) {
       list.innerHTML = `
         <div class="empty">
           <div class="icon">📜</div>
@@ -1498,7 +1509,7 @@
         </div>`;
       return;
     }
-    list.innerHTML = state.bakes.slice().reverse().map(b => {
+    list.innerHTML = visibleBakes.slice().reverse().map(b => {
       // Prefer the frozen snapshot from when the bake ended; fall back to current recipe
       const r = b.recipeSnapshot || state.recipes.find(x => x.id === b.recipeId);
       const start = new Date(b.startedAt);
@@ -1684,23 +1695,30 @@
     };
 
     document.getElementById('hd-restart').onclick = async () => {
-      // Find the current recipe — prefer the live recipe (in case it was edited and improved),
-      // fall back to the snapshot if the recipe was deleted.
-      const liveRecipe = state.recipes.find(r => r.id === bake.recipeId);
+      // Find the current recipe — but if it's tombstoned, treat as deleted for restore flow
+      const existingRow = state.recipes.find(r => r.id === bake.recipeId);
+      const liveRecipe = (existingRow && !existingRow._deleted) ? existingRow : null;
       const useRecipe = liveRecipe || bake.recipeSnapshot;
       if (!useRecipe) { toast('Recipe no longer exists'); return; }
-      // If recipe was deleted, restore the snapshot so we can bake against it
-      if (!liveRecipe && bake.recipeSnapshot) {
+      // If recipe was deleted, restore from snapshot (or un-tombstone existing row)
+      if (!liveRecipe) {
         const choice = await showConfirm({
           title: 'Recipe deleted',
-          message: 'This bake\'s recipe was deleted. Restore it from the snapshot so you can bake again?',
+          message: 'This bake\'s recipe was deleted. Restore it so you can bake again?',
           buttons: [
             { label: 'Restore Recipe', style: 'primary', value: 'yes' },
             { label: 'Cancel', style: 'ghost', value: 'no' },
           ],
         });
         if (choice !== 'yes') return;
-        state.recipes.push(JSON.parse(JSON.stringify(bake.recipeSnapshot)));
+        if (existingRow && existingRow._deleted) {
+          // Un-tombstone in place — keeps the same id so any other references still work
+          existingRow._deleted = false;
+          touchUpdated(existingRow);
+        } else if (bake.recipeSnapshot) {
+          // No tombstone row at all (e.g., wiped) — restore from snapshot copy
+          state.recipes.push({ ...JSON.parse(JSON.stringify(bake.recipeSnapshot)), _updatedAt: Date.now() });
+        }
         saveState();
       }
       // Check if another bake is already running for this recipe
@@ -1733,7 +1751,8 @@
         ],
       });
       if (choice !== 'yes') return;
-      state.bakes = state.bakes.filter(b => b.id !== bakeId);
+      const target = state.bakes.find(b => b.id === bakeId);
+      if (target) tombstone(target);
       saveState();
       hideModal('modal-history-detail');
       renderHistory();
@@ -1780,6 +1799,13 @@
 
   function renderSchedule() {
     const recipe = state.recipes.find(r => r.id === state.currentRecipeId);
+    if (!recipe || recipe._deleted) {
+      // Recipe was deleted (locally or via sync) — return to the recipe list
+      state.currentRecipeId = null;
+      switchView('view-recipes');
+      renderRecipes();
+      return;
+    }
     const container = document.getElementById('schedule-content');
     const optsBtn = document.getElementById('btn-bake-options');
     if (optsBtn) optsBtn.style.display = 'none'; // hide by default; renderActiveBake shows it
@@ -2099,7 +2125,7 @@
     if (notesData._editingBakeId) {
       // Editing an existing bake from history
       const b = state.bakes.find(x => x.id === notesData._editingBakeId);
-      if (!b) return;
+      if (!b || b._deleted) return;
       Object.assign(b, {
         kitchenTemp: notesData.kitchenTemp,
         score: notesData.score,
@@ -2135,8 +2161,14 @@
       notes: notesData.notes,
       photos: notesData.photos,
       // Snapshot the recipe as it was at the end of this bake — preserves history accuracy
-      // even if the recipe is edited later.
-      recipeSnapshot: recipe ? JSON.parse(JSON.stringify(recipe)) : null,
+      // even if the recipe is edited later. Strip _deleted/_updatedAt so the snapshot is
+      // a clean copy (history shouldn't render a tombstoned recipe as deleted).
+      recipeSnapshot: recipe ? (() => {
+        const snap = JSON.parse(JSON.stringify(recipe));
+        delete snap._deleted;
+        delete snap._updatedAt;
+        return snap;
+      })() : null,
       _updatedAt: Date.now(),
     });
     removeActiveBake(activeBake.id);
@@ -2168,7 +2200,7 @@
   function openBakeNotes(existingBakeId, activeBake) {
     if (existingBakeId) {
       const b = state.bakes.find(x => x.id === existingBakeId);
-      if (!b) return;
+      if (!b || b._deleted) return;
       bakeNotesState = {
         editingBakeId: existingBakeId,
         activeBakeId: null,
@@ -2333,6 +2365,9 @@
     if (idx === -1) return -1;
     const stage = recipe.stages[idx];
     if (stage.isWait) return -1;
+    // needsStart stages waiting for user tap aren't "overdue" — the timer hasn't started yet.
+    // Catchup shouldn't ask "did you finish this?" before the user has even started it.
+    if (stage.needsStart && !ab.stageStates[idx].startedAt) return -1;
     const end = getStageScheduledStart(recipe, idx, ab).getTime() + getStageDur(recipe, idx, ab) * 60000;
     const overdueMin = (Date.now() - end) / 60000;
     if (overdueMin >= OVERDUE_THRESHOLD_MIN) return idx;
@@ -2345,6 +2380,8 @@
     const ab = bake || getFocusedBake();
     if (!ab) return;
     if (ab.paused) return; // no catchup prompts while paused
+    // Capture the ids we care about so we can validate the bake still exists after the dialog
+    const bakeId = ab.id;
     const idx = findOverdueHandsOnStage(recipe, ab);
     if (idx === -1) return;
     if (ab.stageStates[idx].catchupDismissedAt) {
@@ -2367,17 +2404,29 @@
       ],
     });
     catchupDialogOpen = false;
+    // Re-resolve the bake — it may have been ended, deleted, or modified via sync while
+    // the dialog was open. Apply the result only if the bake still exists with the same stage state.
+    const currentBake = getActiveBakeById(bakeId);
+    if (!currentBake || !currentBake.stageStates[idx] || currentBake.stageStates[idx].done) {
+      // Bake ended or stage already marked done by another device — discard the choice
+      if (state.activeBakes.length > 0) startBakeTicker();
+      return;
+    }
     if (choice === 'notyet') {
-      ab.stageStates[idx].catchupDismissedAt = new Date().toISOString();
+      currentBake.stageStates[idx].catchupDismissedAt = new Date().toISOString();
       saveState();
-    } else {
-      const minsAgo = choice === 'now' ? 0 : parseInt(choice);
-      ab.stageStates[idx].done = true;
-      ab.stageStates[idx].doneAt = new Date(Date.now() - minsAgo * 60000).toISOString();
+    } else if (choice === 'now' || choice === '15' || choice === '30' || choice === '60') {
+      const minsAgo = choice === 'now' ? 0 : parseInt(choice, 10);
+      currentBake.stageStates[idx].done = true;
+      currentBake.stageStates[idx].doneAt = new Date(Date.now() - minsAgo * 60000).toISOString();
+      currentBake.needsReminderRefresh = true; // subsequent stages have shifted
+      // Clear any leftover dismissal — the stage is now done, dismissal is no longer relevant
+      currentBake.stageStates[idx].catchupDismissedAt = null;
       saveState();
     }
-    renderActiveBake(recipe, ab);
-    startBakeTicker();
+    // Any other choice (null, unexpected) is silently ignored — safer than mutating state
+    if (state.activeBakes.length > 0) startBakeTicker();
+    renderActiveBake(recipe, currentBake);
   }
 
   // Get the effective duration of a stage for a given bake.
@@ -2967,10 +3016,12 @@
     stopBakeTicker();
     bakeTickerInterval = setInterval(() => {
       // Beep when any hands-on stage's countdown reaches zero (transitions to overdue)
+      // (Alert state must continue to update even when the page is hidden, because the user
+      // may have set up audio/vibrate notifications that still want to fire.)
       for (const ab of state.activeBakes) {
         if (ab.paused) continue;
         const recipe = state.recipes.find(r => r.id === ab.recipeId);
-        if (!recipe) continue;
+        if (!recipe || recipe._deleted) continue;
         const curIdx = getCurrentStageIdx(recipe, ab);
         if (curIdx === -1) continue;
         const stage = recipe.stages[curIdx];
@@ -2988,11 +3039,15 @@
         }
       }
 
+      // Skip DOM rendering entirely when the page is hidden. Saves battery on iOS where
+      // backgrounded PWAs keep running JS for a while before iOS suspends them.
+      if (document.hidden) return;
+
       const scheduleView = document.getElementById('view-schedule');
       const activeView = document.getElementById('view-active-bakes');
       if (scheduleView && scheduleView.classList.contains('active')) {
         // Only re-render if the currently-viewed recipe has an active bake
-        const currentRecipe = state.recipes.find(r => r.id === state.currentRecipeId);
+        const currentRecipe = getCurrentRecipe();
         if (currentRecipe) {
           const bakeForCurrent = getActiveBakeForRecipe(currentRecipe.id);
           if (bakeForCurrent) {
@@ -3142,7 +3197,7 @@
     const current = state.editingRecipe.categoryId || null;
     const chips = [
       `<button class="cat-chip ${current === null ? 'active' : ''}" data-cat="">Uncategorized</button>`,
-      ...state.categories.map(cat => `
+      ...liveItems(state.categories).map(cat => `
         <button class="cat-chip ${current === cat.id ? 'active' : ''}" data-cat="${cat.id}">${escapeHtml(cat.name)}</button>
       `),
       `<button class="cat-chip add" data-cat="__new__">+ New</button>`,
@@ -3374,7 +3429,7 @@ Rules:
 Format:
 {
   "name": "string",
-  "icon": "one emoji from the list above",
+  "icon": "one id from the icon list above",
   "category": "string (broad category)",
   "source": "short site/cookbook name (e.g. 'King Arthur Baking', 'Tartine Bread') or empty string if unknown",
   "notes": "URL, tips, variations, page numbers — anything else worth remembering",
@@ -3420,15 +3475,21 @@ Here is the recipe:
       return;
     }
 
-    // Resolve category from name (case-insensitive); create new if doesn't exist
+    // Resolve category from name (case-insensitive); create new if doesn't exist.
+    // If a matching tombstoned category exists, un-tombstone it instead of creating a duplicate.
     let categoryId = null;
     if (parsed.category && typeof parsed.category === 'string' && parsed.category.trim()) {
       const trimmed = parsed.category.trim();
       const existing = state.categories.find(c => c.name.toLowerCase() === trimmed.toLowerCase());
       if (existing) {
+        if (existing._deleted) {
+          // User had this category, deleted it, now we're using it again — restore
+          existing._deleted = false;
+          touchUpdated(existing);
+        }
         categoryId = existing.id;
       } else {
-        const newCat = { id: uid(), name: trimmed };
+        const newCat = { id: uid(), name: trimmed, _updatedAt: Date.now() };
         state.categories.push(newCat);
         categoryId = newCat.id;
       }
@@ -3820,27 +3881,31 @@ Here is the recipe:
       for (const b of bakes) {
         if (b.paused) continue;
         const recipe = state.recipes.find(r => r.id === b.recipeId);
-        if (!recipe) continue;
+        if (!recipe || recipe._deleted) continue;
         const idx = getCurrentStageIdx(recipe, b);
         if (idx === -1) continue;
         const stage = recipe.stages[idx];
+        const curState = b.stageStates[idx];
+        const awaitingStart = stage.needsStart && !curState.startedAt;
         const start = getStageScheduledStart(recipe, idx, b);
         const end = new Date(start.getTime() + getStageDur(recipe, idx, b) * 60000);
         const now = new Date();
         // For wait stages we care about when they end (so user can do next action)
         // For hands-on we care about when they start (or now if it's already begun)
-        const target = stage.isWait ? end : (start > now ? start : end);
+        // For needsStart awaiting confirmation, the "next action" is right now (tap Start)
+        const target = awaitingStart ? now : (stage.isWait ? end : (start > now ? start : end));
         const msAway = target - now;
         const nextStage = !stage.isWait ? stage : (idx + 1 < recipe.stages.length ? recipe.stages[idx + 1] : null);
-        const actionName = stage.isWait
-          ? (nextStage ? nextStage.name : 'End of bake')
-          : stage.name;
+        const actionName = awaitingStart
+          ? `Start: ${stage.name}`
+          : (stage.isWait ? (nextStage ? nextStage.name : 'End of bake') : stage.name);
         const candidate = {
           recipe,
           bake: b,
           actionName,
           target,
           msAway,
+          awaitingStart,
           color: getBakeColor(b.color),
         };
         if (!best || msAway < best.msAway) best = candidate;
@@ -3850,14 +3915,17 @@ Here is the recipe:
 
     const nextBanner = nextAction ? (() => {
       const ms = nextAction.msAway;
-      const overdue = ms < 0;
-      const label = overdue ? 'Action overdue' : 'Next action';
-      const timing = overdue
-        ? `${formatCountdown(Math.abs(ms))} ago`
-        : (() => {
-            const f = formatLongCountdown(ms, nextAction.target);
-            return ms > 8 * 3600 * 1000 ? `at ${f.value} (${f.when})` : `in ${f.value}`;
-          })();
+      const overdue = ms < 0 && !nextAction.awaitingStart;
+      const isReadyNow = nextAction.awaitingStart;
+      const label = overdue ? 'Action overdue' : (isReadyNow ? 'Ready when you are' : 'Next action');
+      const timing = isReadyNow
+        ? 'Tap Start to begin'
+        : (overdue
+          ? `${formatCountdown(Math.abs(ms))} ago`
+          : (() => {
+              const f = formatLongCountdown(ms, nextAction.target);
+              return ms > 8 * 3600 * 1000 ? `at ${f.value} (${f.when})` : `in ${f.value}`;
+            })());
       return `
         <div style="background: ${overdue ? 'rgba(196, 90, 74, 0.1)' : nextAction.color.soft}; border: 1px solid ${overdue ? 'var(--warn)' : nextAction.color.hex}; border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px;">
           <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: ${overdue ? 'var(--warn)' : nextAction.color.hex}; margin-bottom: 4px;">${label}</div>
@@ -3869,7 +3937,7 @@ Here is the recipe:
 
     list.innerHTML = nextBanner + bakes.map(b => {
       const recipe = state.recipes.find(r => r.id === b.recipeId);
-      if (!recipe) return '';
+      if (!recipe || recipe._deleted) return '';
       const color = getBakeColor(b.color);
       const curIdx = getCurrentStageIdx(recipe, b);
       const completedCount = b.stageStates.filter(s => s.done).length;
@@ -3887,12 +3955,16 @@ Here is the recipe:
         countdownLine = '<span style="color: var(--leaven); font-weight: 600;">Ready to save</span>';
       } else {
         const stage = recipe.stages[curIdx];
+        const curState = b.stageStates[curIdx];
+        const awaitingStart = stage.needsStart && !curState.startedAt;
         const scheduledStart = getStageScheduledStart(recipe, curIdx, b);
         const scheduledEnd = new Date(scheduledStart.getTime() + getStageDur(recipe, curIdx, b) * 60000);
         const msToEnd = scheduledEnd - new Date();
         const msToStart = scheduledStart - new Date();
         statusLine = `Stage ${curIdx + 1} of ${totalCount} · ${escapeHtml(stage.name)}`;
-        if (msToStart > 0) {
+        if (awaitingStart) {
+          countdownLine = '<span style="color: var(--crust); font-weight: 600;">Tap Start when ready</span>';
+        } else if (msToStart > 0) {
           countdownLine = `Starts in ${formatCountdown(msToStart)}`;
         } else if (stage.isWait) {
           countdownLine = `Ready in <span class="mono">${formatCountdown(Math.abs(msToEnd))}</span>`;
@@ -4032,7 +4104,8 @@ Here is the recipe:
     return state.activeBakes.find(b => b.recipeId === state.currentRecipeId) || null;
   }
   function getCurrentRecipe() {
-    return state.recipes.find(r => r.id === state.currentRecipeId) || null;
+    const r = state.recipes.find(r => r.id === state.currentRecipeId) || null;
+    return (r && !r._deleted) ? r : null;
   }
 
   document.getElementById('opt-send-reminders').addEventListener('click', () => {
@@ -4215,6 +4288,10 @@ Here is the recipe:
     const r = state.editingRecipe;
     if (!r.name.trim()) { toast('Add a name first'); return; }
     if (r.stages.length === 0) { toast('Add at least one stage'); return; }
+    // Editing un-tombstones — if the user is saving over a previously-deleted row, the act
+    // of saving counts as restoring it. The newer _updatedAt will beat any stale remote
+    // tombstone via merge.
+    delete r._deleted;
     touchUpdated(r); // mark as just-modified for sync
     const existing = state.recipes.findIndex(x => x.id === r.id);
     if (existing >= 0) state.recipes[existing] = r;
@@ -4258,7 +4335,10 @@ Here is the recipe:
       if (state.activeBakes.length === 0) stopBakeTicker();
       updateActiveTabBadge();
     }
-    state.recipes = state.recipes.filter(x => x.id !== state.editingRecipe.id);
+    // Mark as deleted (tombstone) rather than removing — lets the sync propagate the
+    // delete to other devices. Tombstones get pruned after 30 days.
+    const target = state.recipes.find(x => x.id === state.editingRecipe.id);
+    if (target) tombstone(target);
     saveState();
     hideModal('modal-recipe');
     if (state.currentRecipeId === state.editingRecipe.id) {
@@ -4435,11 +4515,9 @@ Here is the recipe:
   }
 
   // Merge two arrays of items by id, preferring whichever has the newer _updatedAt.
-  // Items present on only one side are kept.
-  // NOTE on deletes: if one device deletes an item, the merge will re-add it from the other
-  // device's copy (since the merge can't tell "deleted" apart from "never existed"). To force
-  // a delete to propagate, delete on both devices. For a personal app this is an acceptable
-  // trade-off vs. tracking tombstone records.
+  // Items present on only one side are kept. An item marked `_deleted: true` with the
+  // winning _updatedAt is preserved as a tombstone so the deletion propagates and is
+  // honored by display filters (liveItems) and writes (anyone editing it).
   function mergeById(local, remote) {
     const localArr = Array.isArray(local) ? local : [];
     const remoteArr = Array.isArray(remote) ? remote : [];
@@ -4465,6 +4543,41 @@ Here is the recipe:
     return Array.from(byId.values());
   }
 
+  // Filter out tombstones (items marked _deleted: true) for display purposes.
+  // Tombstones stay in state for sync propagation but shouldn't render in the UI.
+  function liveItems(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(x => x && !x._deleted);
+  }
+
+  // Mark an item as deleted (tombstone) rather than removing from the array.
+  // The tombstone persists for ~30 days so other devices have a chance to receive it,
+  // then gets pruned by pruneOldTombstones() at boot.
+  function tombstone(item) {
+    if (!item || typeof item !== 'object') return;
+    item._deleted = true;
+    item._updatedAt = Date.now();
+  }
+
+  // Prune tombstones older than 30 days. Called at boot to keep the dataset manageable.
+  // 30 days is a generous window — any device that hasn't synced in 30 days should be
+  // treated as "starting fresh" anyway. Returns true if anything was pruned.
+  function pruneOldTombstones() {
+    const cutoff = Date.now() - (30 * 24 * 3600 * 1000);
+    let pruned = false;
+    const prune = (arr) => {
+      if (!Array.isArray(arr)) return arr;
+      const before = arr.length;
+      const filtered = arr.filter(x => !(x && x._deleted && typeof x._updatedAt === 'number' && x._updatedAt < cutoff));
+      if (filtered.length !== before) pruned = true;
+      return filtered;
+    };
+    state.recipes = prune(state.recipes);
+    state.bakes = prune(state.bakes);
+    state.categories = prune(state.categories);
+    return pruned;
+  }
+
   // Touch an object's _updatedAt to "now". Called whenever we mutate a recipe/bake/category.
   function touchUpdated(item) {
     if (item && typeof item === 'object') item._updatedAt = Date.now();
@@ -4481,6 +4594,7 @@ Here is the recipe:
     const idRedirect = new Map(); // dropped id → kept id
     for (const c of state.categories) {
       if (!c || !c.name || !c.id) continue;
+      if (c._deleted) continue; // ignore tombstones when looking for duplicates
       const key = c.name.trim().toLowerCase();
       const existing = byName.get(key);
       if (!existing) {
@@ -4564,10 +4678,49 @@ Here is the recipe:
           return;
         }
         const data = snapshot.data();
+        // Conflict detection: before we merge in remote data, capture what the user might
+        // currently be editing. If a remote update changes an item the user has open in
+        // the editor (recipe modal) OR is actively viewing (current schedule recipe with
+        // a different _updatedAt), warn them so they don't lose their in-progress edits.
+        const conflicts = [];
+        // Only count editingRecipe as a conflict source if the recipe modal is actually
+        // visible. Otherwise editingRecipe is stale (left over from a previous editor close).
+        const recipeModalShown = document.getElementById('modal-recipe').classList.contains('show');
+        if (recipeModalShown && state.editingRecipe && state.editingRecipe.id && Array.isArray(data.recipes)) {
+          // Only detect conflicts for recipes that exist in state.recipes already.
+          // A new (never-saved) recipe being edited has its own freshly-generated id
+          // that won't collide with anything remote — no point comparing.
+          const localExisting = state.recipes.find(r => r && r.id === state.editingRecipe.id);
+          if (localExisting) {
+            const remoteCopy = data.recipes.find(r => r && r.id === state.editingRecipe.id);
+            if (remoteCopy && remoteCopy._updatedAt) {
+              const localTs = typeof state.editingRecipe._updatedAt === 'number' ? state.editingRecipe._updatedAt : 0;
+              if (remoteCopy._updatedAt > localTs) {
+                conflicts.push({ kind: 'recipe', name: remoteCopy.name || 'a recipe', tombstoned: !!remoteCopy._deleted });
+              }
+            }
+          }
+        }
+        // Detect remote deletes of recipes that are currently displayed.
+        // Only relevant if the user is actually on the schedule view (currentRecipeId
+        // persists across tab navigation).
+        const scheduleViewActive = document.getElementById('view-schedule').classList.contains('active');
+        if (scheduleViewActive && state.currentRecipeId && Array.isArray(data.recipes)) {
+          const remoteCopy = data.recipes.find(r => r && r.id === state.currentRecipeId);
+          const localCopy = state.recipes.find(r => r && r.id === state.currentRecipeId);
+          if (remoteCopy && remoteCopy._deleted && localCopy && !localCopy._deleted) {
+            // Only warn if it's not already going to be caught by the editing-recipe check
+            if (!state.editingRecipe || state.editingRecipe.id !== state.currentRecipeId) {
+              conflicts.push({ kind: 'recipe', name: localCopy.name || 'this recipe', tombstoned: true });
+            }
+          }
+        }
+
         // ALWAYS merge by id. Replace mode was dangerous — if remote was stale or empty
         // it would clobber local recipes. Merging by _updatedAt timestamp preserves both
         // sides' data and lets newer-timestamped versions win. Items missing a timestamp
         // are treated as ancient (timestamp 0) so locally-touched items take precedence.
+        // Items with _deleted: true ride along — display filters (liveItems) hide them.
         if (Array.isArray(data.recipes)) {
           state.recipes = mergeById(state.recipes, data.recipes);
         }
@@ -4619,6 +4772,20 @@ Here is the recipe:
         const settingsModal = document.getElementById('modal-settings');
         if (settingsModal && settingsModal.classList.contains('show')) {
           renderSyncStatus();
+        }
+        // Surface conflict notifications — items the user is editing/viewing that just
+        // got changed by another device. Use a deferred toast so it doesn't get drowned
+        // out by other UI updates.
+        if (conflicts.length > 0) {
+          // Coalesce: one toast describing the situation
+          const c = conflicts[0];
+          setTimeout(() => {
+            if (c.tombstoned) {
+              toast(`"${c.name}" Was Deleted on Another Device`);
+            } else {
+              toast(`"${c.name}" Was Updated on Another Device`);
+            }
+          }, 300);
         }
       },
       (err) => {
@@ -4761,8 +4928,8 @@ Here is the recipe:
   function renderSettingsStats() {
     const r = document.getElementById('recipe-count-stat');
     const b = document.getElementById('bake-count-stat');
-    if (r) r.textContent = (state.recipes || []).length;
-    if (b) b.textContent = (state.bakes || []).length;
+    if (r) r.textContent = liveItems(state.recipes).length;
+    if (b) b.textContent = liveItems(state.bakes).length;
   }
 
   // Show the recovery card if a pre-sync backup exists
@@ -4871,26 +5038,29 @@ Here is the recipe:
           toast('Wipe Cancelled');
           return;
         }
-        // Clear local state
-        state.recipes = [];
-        state.bakes = [];
-        state.categories = [];
-        state.activeBakes = [];
+        // Tombstone everything before clearing — this is critical for sync. If we just
+        // emptied the arrays, the next sync push would arrive at other devices as "empty
+        // remote" and the merge logic would keep their local data (re-creating what we
+        // just deleted). Tombstones explicitly say "this id is deleted" and win the merge.
+        const now = Date.now();
+        for (const r of state.recipes) { r._deleted = true; r._updatedAt = now; }
+        for (const b of state.bakes) { b._deleted = true; b._updatedAt = now; }
+        for (const c of state.categories) { c._deleted = true; c._updatedAt = now; }
+        state.activeBakes = []; // active bakes don't need tombstones (they're ephemeral)
         state.focusedBakeId = null;
         state.currentRecipeId = null;
         stopBakeTicker();
         // Clear the pre-sync backup too — no point keeping it after a deliberate wipe
         try { localStorage.removeItem('crumb-pre-sync-backup'); } catch (e) {}
-        // If sync is on, push the empty state immediately to wipe Firebase too
+        // If sync is on, push the tombstoned state immediately so other devices delete too
         if (state.syncCode && firestoreDb) {
           try {
             const { doc, setDoc } = window.__firebase;
-            const now = Date.now();
             suppressNextRemote = true;
             await setDoc(doc(firestoreDb, 'crumb_households', state.syncCode), {
-              recipes: [],
-              bakes: [],
-              categories: [],
+              recipes: state.recipes,
+              bakes: state.bakes,
+              categories: state.categories,
               activeBakes: [],
               updatedAt: now,
               schemaVersion: 2,
@@ -4943,9 +5113,9 @@ Here is the recipe:
         const payload = {
           version: 1,
           exportedAt: new Date().toISOString(),
-          recipes: state.recipes,
-          bakes: state.bakes,
-          categories: state.categories,
+          recipes: liveItems(state.recipes),
+          bakes: liveItems(state.bakes),
+          categories: liveItems(state.categories),
         };
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -4983,27 +5153,51 @@ Here is the recipe:
           });
           if (confirm !== 'yes') { importInput.value = ''; return; }
           let added = { recipes: 0, bakes: 0, categories: 0 };
+          let restored = 0;
+          const now = Date.now();
           if (Array.isArray(parsed.categories)) {
             for (const c of parsed.categories) {
               if (!c || !c.id || !c.name) continue;
-              if (state.categories.find(x => x.id === c.id)) continue;
-              state.categories.push(c);
+              const existing = state.categories.find(x => x.id === c.id);
+              if (existing) {
+                // Restore if tombstoned, otherwise leave existing alone (newer-wins via sync)
+                if (existing._deleted) {
+                  Object.assign(existing, c, { _deleted: false, _updatedAt: now });
+                  restored++;
+                }
+                continue;
+              }
+              state.categories.push({ ...c, _updatedAt: now });
               added.categories++;
             }
           }
           if (Array.isArray(parsed.recipes)) {
             for (const r of parsed.recipes) {
               if (!r || !r.id) continue;
-              if (state.recipes.find(x => x.id === r.id)) continue;
-              state.recipes.push(r);
+              const existing = state.recipes.find(x => x.id === r.id);
+              if (existing) {
+                if (existing._deleted) {
+                  Object.assign(existing, r, { _deleted: false, _updatedAt: now });
+                  restored++;
+                }
+                continue;
+              }
+              state.recipes.push({ ...r, _updatedAt: now });
               added.recipes++;
             }
           }
           if (Array.isArray(parsed.bakes)) {
             for (const b of parsed.bakes) {
               if (!b || !b.id) continue;
-              if (state.bakes.find(x => x.id === b.id)) continue;
-              state.bakes.push(b);
+              const existing = state.bakes.find(x => x.id === b.id);
+              if (existing) {
+                if (existing._deleted) {
+                  Object.assign(existing, b, { _deleted: false, _updatedAt: now });
+                  restored++;
+                }
+                continue;
+              }
+              state.bakes.push({ ...b, _updatedAt: now });
               added.bakes++;
             }
           }
@@ -5013,7 +5207,8 @@ Here is the recipe:
           renderRecipes();
           renderHistory();
           renderSettingsStats();
-          toast(`Added ${added.recipes} recipes, ${added.bakes} bakes, ${added.categories} categories`);
+          const restoredText = restored > 0 ? ` · restored ${restored} previously deleted` : '';
+          toast(`Added ${added.recipes} Recipes, ${added.bakes} Bakes, ${added.categories} Categories${restoredText}`);
         } catch (e) {
           console.error(e);
           toast('Could not read the file — make sure it\'s a valid Crumb backup');
@@ -5122,6 +5317,8 @@ Here is the recipe:
   if (!state.syncCode && !_urlHasSync) {
     seedIfEmpty();
   }
+  // Prune tombstones older than 30 days — anything that old has had plenty of time to sync
+  if (pruneOldTombstones()) saveState();
   // Clean up any duplicate categories left over from earlier seed/sync bugs
   if (dedupeCategories()) {
     saveState();
@@ -5133,7 +5330,7 @@ Here is the recipe:
     // while the app was closed. The first alert should be for NEW transitions only.
     for (const ab of state.activeBakes) {
       const recipe = state.recipes.find(r => r.id === ab.recipeId);
-      if (!recipe) continue;
+      if (!recipe || recipe._deleted) continue;
       const curIdx = getCurrentStageIdx(recipe, ab);
       if (curIdx === -1) continue;
       const stage = recipe.stages[curIdx];
@@ -5222,8 +5419,25 @@ Here is the recipe:
   let _lastResyncAt = 0;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
+
+    // Force-refresh any visible bake countdowns — they're stale since the ticker skipped
+    // re-rendering while we were hidden. Without this, a backgrounded app can show "5m
+    // remaining" for hours after the timer actually hit zero.
+    const scheduleView = document.getElementById('view-schedule');
+    if (scheduleView && scheduleView.classList.contains('active')) {
+      const currentRecipe = getCurrentRecipe();
+      if (currentRecipe) {
+        const bakeForCurrent = getActiveBakeForRecipe(currentRecipe.id);
+        if (bakeForCurrent) renderActiveBake(currentRecipe, bakeForCurrent);
+      }
+    }
+    const activeView = document.getElementById('view-active-bakes');
+    if (activeView && activeView.classList.contains('active')) {
+      renderActiveBakes();
+    }
+
     if (!state.syncCode || !firestoreDb) return;
-    // Throttle: only resync at most once every 10 seconds to avoid hammering on rapid tab switches
+    // Throttle sync resync: only resync at most once every 10 seconds to avoid hammering on rapid tab switches
     const now = Date.now();
     if (now - _lastResyncAt < 10000) return;
     _lastResyncAt = now;
