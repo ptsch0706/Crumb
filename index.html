@@ -410,6 +410,14 @@
 <section class="view" id="view-active-bakes">
   <div class="section-title">Active Bakes</div>
   <div id="active-bakes-list"></div>
+
+  <div style="margin-top: 24px;">
+    <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+      <span>Starter</span>
+      <button class="btn btn-ghost btn-sm" id="starter-edit-btn" style="padding: 4px 10px; font-size: 11px;">Edit Schedule</button>
+    </div>
+    <div id="starter-content"></div>
+  </div>
 </section>
 
 <!-- STATS VIEW -->
@@ -767,6 +775,23 @@
   </div>
 </div>
 
+<!-- STARTER SCHEDULE MODAL -->
+<div class="modal-backdrop" id="modal-starter">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Starter Schedule</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="help" style="margin-bottom: 14px;">Set up to two weekly feedings. Reminders sync to iOS via the Crumb Timers Shortcut.</p>
+      <div id="starter-editor"></div>
+      <div style="margin-top: 16px; display: flex; gap: 8px;">
+        <button class="btn btn-primary btn-block" id="starter-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div class="modal-backdrop" id="modal-settings">
   <div class="modal">
@@ -949,6 +974,15 @@
     alertsEnabled: true, // beep + vibrate when stages complete
     recipeFilter: { text: '', categoryId: null }, // recipe list filter
     recipeSort: 'alpha', // recipe sort mode: 'alpha' | 'recent' | 'mostBaked' | 'duration'
+    // Starter feeding schedule. Up to 2 weekly reminders; each independently enabled.
+    // dayOfWeek: 0=Sun..6=Sat; hour: 0-23; minute: 0-59.
+    starter: {
+      reminders: [
+        { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
+        { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
+      ],
+      remindersSentAt: null,
+    },
   };
 
   // ============================================================
@@ -1096,8 +1130,19 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.4.0';
+  const APP_VERSION = '1.5.1';
   const CHANGELOG = [
+    { version: '1.5.1', date: '2026-06-02', notes: [
+      'Audit fixes: starter schedule now syncs across devices.',
+      'Audit fixes: Wipe All Data resets starter schedule.',
+      'Audit fixes: restoring an older recipe version auto-fills source from notes if missing.',
+    ]},
+    { version: '1.5.0', date: '2026-06-02', notes: [
+      'Starter Management — schedule up to two weekly starter feedings (day + time).',
+      'Send recurring weekly reminders to iOS via the Crumb Timers Shortcut.',
+      'Widget now shows your next starter feeding when there are no active bakes.',
+      'Note: To get recurring reminders (vs. one-shot), update your Shortcut to honor the "recurring" field in milestones.',
+    ]},
     { version: '1.4.0', date: '2026-06-02', notes: [
       'Recipe notes are now multi-line — press Enter for paragraphs and lists.',
       'URLs in notes are automatically clickable (try pasting a recipe link).',
@@ -1153,6 +1198,34 @@
       if (typeof state.alertsEnabled !== 'boolean') state.alertsEnabled = true;
       if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null };
       if (!['alpha', 'recent', 'mostBaked', 'duration'].includes(state.recipeSort)) state.recipeSort = 'alpha';
+      // Starter schema migration: ensure the object and its 2 reminders exist with valid shape.
+      if (!state.starter || typeof state.starter !== 'object') {
+        state.starter = {
+          reminders: [
+            { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
+            { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
+          ],
+          remindersSentAt: null,
+        };
+      }
+      if (!Array.isArray(state.starter.reminders) || state.starter.reminders.length !== 2) {
+        state.starter.reminders = [
+          { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
+          { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
+        ];
+      }
+      // Validate each reminder shape
+      for (let i = 0; i < 2; i++) {
+        const r = state.starter.reminders[i] || {};
+        state.starter.reminders[i] = {
+          id: r.id || `starter-${i + 1}`,
+          enabled: r.enabled === true,
+          name: typeof r.name === 'string' ? r.name : 'Feed starter',
+          dayOfWeek: (typeof r.dayOfWeek === 'number' && r.dayOfWeek >= 0 && r.dayOfWeek <= 6) ? r.dayOfWeek : (i === 0 ? 6 : 3),
+          hour: (typeof r.hour === 'number' && r.hour >= 0 && r.hour <= 23) ? r.hour : 9,
+          minute: (typeof r.minute === 'number' && r.minute >= 0 && r.minute <= 59) ? r.minute : 0,
+        };
+      }
 
       // Migrate legacy single activeBake to activeBakes array
       if (state.activeBake && typeof state.activeBake === 'object' && state.activeBake.recipeId) {
@@ -1202,6 +1275,7 @@
       alertsEnabled: state.alertsEnabled,
       recipeFilter: state.recipeFilter,
       recipeSort: state.recipeSort,
+      starter: state.starter,
     };
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(payload));
@@ -4421,6 +4495,7 @@ Here is the recipe:
           <div class="title">No active bakes</div>
           <div class="body">Start a bake from any recipe to see it here. You can run up to ${MAX_ACTIVE_BAKES} bakes at once.</div>
         </div>`;
+      renderStarter();
       return;
     }
 
@@ -4580,6 +4655,189 @@ Here is the recipe:
         else if (choice === 'discard') endBake(bakeId, false);
       });
     });
+
+    // Render the starter section after the bake list (it sits below)
+    renderStarter();
+  }
+
+  // =========================================================
+  // STARTER MANAGEMENT
+  // =========================================================
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  // Given a starter reminder { dayOfWeek, hour, minute }, return the JS Date of its
+  // next occurrence (>= now). If the day/time already passed this week, returns next week's.
+  function nextStarterDate(reminder) {
+    const now = new Date();
+    const target = new Date(now);
+    const dayDelta = (reminder.dayOfWeek - now.getDay() + 7) % 7;
+    target.setDate(now.getDate() + dayDelta);
+    target.setHours(reminder.hour, reminder.minute, 0, 0);
+    // If today is the target day but the time already passed, push to next week
+    if (target <= now) target.setDate(target.getDate() + 7);
+    return target;
+  }
+
+  // Format a starter reminder as "Saturday · 9:00 AM" for display
+  function fmtStarterSchedule(reminder) {
+    const d = new Date();
+    d.setHours(reminder.hour, reminder.minute, 0, 0);
+    const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return `${DAY_NAMES[reminder.dayOfWeek]} · ${timeStr}`;
+  }
+
+  // Render the starter section into #starter-content
+  function renderStarter() {
+    const c = document.getElementById('starter-content');
+    if (!c) return;
+    const reminders = (state.starter && state.starter.reminders) || [];
+    const enabledReminders = reminders.filter(r => r.enabled);
+    if (enabledReminders.length === 0) {
+      c.innerHTML = `
+        <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px;">
+          <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">No starter reminders set up yet. Tap <strong>Edit Schedule</strong> above to add a weekly feeding routine.</div>
+        </div>`;
+      return;
+    }
+    // Sort by next occurrence so the soonest feeding is on top
+    const items = enabledReminders.map(r => ({
+      reminder: r,
+      next: nextStarterDate(r),
+    })).sort((a, b) => a.next - b.next);
+    const lastSent = state.starter.remindersSentAt
+      ? new Date(state.starter.remindersSentAt).toLocaleDateString([], { month: 'short', day: 'numeric' })
+      : null;
+    c.innerHTML = `
+      ${items.map(item => {
+        const r = item.reminder;
+        const msAway = item.next - new Date();
+        const hoursAway = Math.floor(msAway / 3600000);
+        const daysAway = Math.floor(hoursAway / 24);
+        const awayStr = daysAway >= 1
+          ? `in ${daysAway} day${daysAway === 1 ? '' : 's'}`
+          : `in ${Math.max(1, hoursAway)}h`;
+        return `
+          <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+              <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em;">${escapeHtml(r.name)}</div>
+              <div style="font-size: 12px; color: var(--leaven); font-weight: 600;">${escapeHtml(awayStr)}</div>
+            </div>
+            <div style="font-size: 13px; color: var(--ink-soft); margin-top: 2px;">${escapeHtml(fmtStarterSchedule(r))}</div>
+          </div>
+        `;
+      }).join('')}
+      <div style="display: flex; gap: 8px; margin-top: 4px;">
+        <button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send to iPhone'}</button>
+      </div>
+      ${lastSent ? `<p class="help" style="margin-top: 6px; text-align: center;">Last sent ${escapeHtml(lastSent)}</p>` : '<p class="help" style="margin-top: 6px;">Send to your iPhone Reminders app via the Crumb Timers Shortcut.</p>'}
+    `;
+    // Wire send button
+    const sendBtn = document.getElementById('starter-send-reminders');
+    if (sendBtn) sendBtn.addEventListener('click', sendStarterReminders);
+  }
+
+  // Build and send the starter reminder payload to the Crumb Timers Shortcut.
+  // Includes a `recurring: 'weekly'` flag on each milestone so the Shortcut can
+  // create weekly-repeating reminders (Shortcut update needed on iOS side to honor this).
+  // Existing one-shot Shortcuts will still create the reminders, just not recurring.
+  async function sendStarterReminders() {
+    const reminders = (state.starter && state.starter.reminders || []).filter(r => r.enabled);
+    if (reminders.length === 0) {
+      toast('Enable a Reminder First');
+      return;
+    }
+    const milestones = reminders.map(r => {
+      const d = nextStarterDate(r);
+      return {
+        title: r.name,
+        time: formatForShortcut(d),
+        year: d.getFullYear(),
+        month: d.getMonth() + 1,
+        day: d.getDate(),
+        hour: d.getHours(),
+        minute: d.getMinutes(),
+        note: 'Weekly starter feeding',
+        recurring: 'weekly', // tells the Shortcut to create a recurring reminder
+      };
+    });
+    const payload = {
+      recipe: 'Starter',
+      milestones,
+      replaceExisting: true, // always replace previous starter reminders to avoid duplicates
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload));
+    } catch (e) {
+      toast('Clipboard copy failed');
+      return;
+    }
+    state.starter.remindersSentAt = new Date().toISOString();
+    saveState();
+    // Launch the Shortcut (same mechanism as bake reminders)
+    const url = `shortcuts://run-shortcut?name=${encodeURIComponent('Crumb Timers')}`;
+    window.location.href = url;
+    renderStarter();
+    toast('Reminders sent');
+  }
+
+  // Open the starter schedule editor modal — renders the form, wires events.
+  function openStarterEditor() {
+    const editor = document.getElementById('starter-editor');
+    if (!editor) return;
+    const reminders = (state.starter && state.starter.reminders) || [];
+    editor.innerHTML = reminders.map((r, idx) => `
+      <div style="border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <div style="font-weight: 600; font-size: 14px;">Reminder ${idx + 1}</div>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); cursor: pointer;">
+            <input type="checkbox" data-starter-enabled="${idx}" ${r.enabled ? 'checked' : ''} style="width: auto;">
+            <span>Enabled</span>
+          </label>
+        </div>
+        <div class="field">
+          <label style="font-size: 11px;">Name</label>
+          <input type="text" data-starter-name="${idx}" value="${escapeAttr(r.name || 'Feed starter')}" placeholder="e.g. Feed starter">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div class="field" style="margin-bottom: 0;">
+            <label style="font-size: 11px;">Day</label>
+            <select data-starter-day="${idx}">
+              ${DAY_NAMES.map((name, di) => `<option value="${di}" ${di === r.dayOfWeek ? 'selected' : ''}>${name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="margin-bottom: 0;">
+            <label style="font-size: 11px;">Time</label>
+            <input type="time" data-starter-time="${idx}" value="${String(r.hour).padStart(2, '0')}:${String(r.minute).padStart(2, '0')}">
+          </div>
+        </div>
+      </div>
+    `).join('');
+    showModal('modal-starter');
+  }
+
+  // Read the editor form, write back to state.starter
+  function saveStarterEditor() {
+    const reminders = state.starter.reminders;
+    for (let idx = 0; idx < reminders.length; idx++) {
+      const r = reminders[idx];
+      const enabled = document.querySelector(`[data-starter-enabled="${idx}"]`);
+      const name = document.querySelector(`[data-starter-name="${idx}"]`);
+      const day = document.querySelector(`[data-starter-day="${idx}"]`);
+      const time = document.querySelector(`[data-starter-time="${idx}"]`);
+      if (enabled) r.enabled = enabled.checked;
+      if (name && name.value.trim()) r.name = name.value.trim();
+      if (day) r.dayOfWeek = parseInt(day.value, 10);
+      if (time && time.value) {
+        const [hh, mm] = time.value.split(':');
+        r.hour = parseInt(hh, 10);
+        r.minute = parseInt(mm, 10);
+      }
+    }
+    saveState();
+    hideModal('modal-starter');
+    renderStarter();
+    toast('Starter Schedule Saved');
   }
 
   function switchView(viewId) {
@@ -5235,6 +5493,7 @@ Here is the recipe:
             bakes: stampForSync(state.bakes, now),
             categories: stampForSync(state.categories, now),
             activeBakes: stampForSync(state.activeBakes || [], now),
+            starter: state.starter || null, // sync the starter schedule across devices
             updatedAt: now,
             schemaVersion: 2, // bump so we know this push uses per-object _updatedAt
           };
@@ -5331,6 +5590,18 @@ Here is the recipe:
         else if (data.activeBake !== undefined) {
           // Backward-compat: remote might be using old single-bake schema
           state.activeBakes = data.activeBake ? [data.activeBake] : [];
+        }
+        // Starter schedule: last-write-wins via the document's updatedAt (we don't
+        // version individual reminders since the user controls both fields together)
+        if (data.starter && typeof data.starter === 'object') {
+          state.starter = data.starter;
+          // Defensive re-validation in case remote data is malformed
+          if (!Array.isArray(state.starter.reminders) || state.starter.reminders.length !== 2) {
+            state.starter.reminders = [
+              { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
+              { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
+            ];
+          }
         }
         // Clean up any duplicate categories that merged in from the remote
         dedupeCategories();
@@ -5446,6 +5717,7 @@ Here is the recipe:
           if (Array.isArray(data.categories)) state.categories = data.categories;
           if (Array.isArray(data.activeBakes)) state.activeBakes = data.activeBakes;
           else if (data.activeBake !== undefined) state.activeBakes = data.activeBake ? [data.activeBake] : [];
+          if (data.starter && typeof data.starter === 'object') state.starter = data.starter;
         } else {
           // We have meaningful local data — merge so neither side loses
           if (Array.isArray(data.recipes)) state.recipes = mergeById(state.recipes, data.recipes);
@@ -5455,6 +5727,13 @@ Here is the recipe:
             state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
           } else if (data.activeBake !== undefined) {
             state.activeBakes = data.activeBake ? [data.activeBake] : [];
+          }
+          // For non-fresh loads, prefer remote starter only if local has none enabled.
+          // This avoids clobbering an active local schedule with empty remote data.
+          if (data.starter && typeof data.starter === 'object') {
+            const localHasEnabled = state.starter && Array.isArray(state.starter.reminders) &&
+              state.starter.reminders.some(r => r && r.enabled);
+            if (!localHasEnabled) state.starter = data.starter;
           }
         }
         // Clean up any duplicate categories that came in
@@ -5641,6 +5920,10 @@ Here is the recipe:
         });
         Object.assign(current, restored);
         current.versions = keepVersions;
+        // If the restored snapshot is from before the source field existed, infer source from notes
+        if (!current.source && current.notes) {
+          current.source = formatSource(current.notes) || '';
+        }
         // Re-render the editor with the restored content
         document.getElementById('r-name').value = current.name || '';
         document.getElementById('r-source').value = current.source || '';
@@ -5773,6 +6056,14 @@ Here is the recipe:
         state.activeBakes = []; // active bakes don't need tombstones (they're ephemeral)
         state.focusedBakeId = null;
         state.currentRecipeId = null;
+        // Reset starter to default disabled state — user can re-set it after the wipe
+        state.starter = {
+          reminders: [
+            { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
+            { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
+          ],
+          remindersSentAt: null,
+        };
         stopBakeTicker();
         // Clear the pre-sync backup too — no point keeping it after a deliberate wipe
         try { localStorage.removeItem('crumb-pre-sync-backup'); } catch (e) {}
@@ -5786,6 +6077,7 @@ Here is the recipe:
               bakes: state.bakes,
               categories: state.categories,
               activeBakes: [],
+              starter: state.starter, // sync the reset starter too
               updatedAt: now,
               schemaVersion: 2,
             });
@@ -6124,6 +6416,16 @@ Here is the recipe:
       renderBulkActionBar();
       renderRecipes();
     });
+  }
+
+  // Wire starter management buttons
+  const starterEditBtn = document.getElementById('starter-edit-btn');
+  if (starterEditBtn) {
+    starterEditBtn.addEventListener('click', openStarterEditor);
+  }
+  const starterSaveBtn = document.getElementById('starter-save');
+  if (starterSaveBtn) {
+    starterSaveBtn.addEventListener('click', saveStarterEditor);
   }
   document.getElementById('bulk-cancel-btn').addEventListener('click', () => {
     exitBulkSelectMode();
