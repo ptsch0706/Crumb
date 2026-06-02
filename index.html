@@ -4832,14 +4832,35 @@ Here is the recipe:
       const snapshot = await getDoc(doc(firestoreDb, 'crumb_households', code));
       if (snapshot.exists()) {
         const data = snapshot.data();
-        // Merge remote into local using the same id-based merge as the live listener
-        if (Array.isArray(data.recipes)) state.recipes = mergeById(state.recipes, data.recipes);
-        if (Array.isArray(data.bakes)) state.bakes = mergeById(state.bakes, data.bakes);
-        if (Array.isArray(data.categories)) state.categories = mergeById(state.categories, data.categories);
-        if (Array.isArray(data.activeBakes)) {
-          state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
-        } else if (data.activeBake !== undefined) {
-          state.activeBakes = data.activeBake ? [data.activeBake] : [];
+        // Detect "fresh load" — local state has nothing real (no prior sync, only the
+        // 3 seed categories at most, no recipes, no bakes). In that case we should
+        // REPLACE local state with the remote data, not merge. Merging a fresh-load
+        // local with remote can resurrect stale data if the fresh local was actually
+        // a stale tab/window with old localStorage contents, producing duplicates and
+        // resurrected old active bakes.
+        const localIsFresh = (
+          !state.syncCode &&
+          liveItems(state.recipes).length === 0 &&
+          liveItems(state.bakes).length === 0 &&
+          (state.activeBakes || []).length === 0
+        );
+        if (localIsFresh) {
+          // Replace, don't merge — adopt the remote as the source of truth
+          if (Array.isArray(data.recipes)) state.recipes = data.recipes;
+          if (Array.isArray(data.bakes)) state.bakes = data.bakes;
+          if (Array.isArray(data.categories)) state.categories = data.categories;
+          if (Array.isArray(data.activeBakes)) state.activeBakes = data.activeBakes;
+          else if (data.activeBake !== undefined) state.activeBakes = data.activeBake ? [data.activeBake] : [];
+        } else {
+          // We have meaningful local data — merge so neither side loses
+          if (Array.isArray(data.recipes)) state.recipes = mergeById(state.recipes, data.recipes);
+          if (Array.isArray(data.bakes)) state.bakes = mergeById(state.bakes, data.bakes);
+          if (Array.isArray(data.categories)) state.categories = mergeById(state.categories, data.categories);
+          if (Array.isArray(data.activeBakes)) {
+            state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
+          } else if (data.activeBake !== undefined) {
+            state.activeBakes = data.activeBake ? [data.activeBake] : [];
+          }
         }
         // Clean up any duplicate categories that came in
         dedupeCategories();
@@ -5365,27 +5386,33 @@ Here is the recipe:
       const urlSync = params.get('sync');
       if (urlSync) {
         const clean = urlSync.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        if (clean.length === 6 && clean !== state.syncCode) {
-          // Auto-connect to the sync code from the URL. If we already have a different code,
-          // this replaces it — the user explicitly clicked a link with this code, so honor it.
-          if (isFirebaseConfigured()) {
-            enableSync(clean).then(ok => {
-              if (ok) toast(`Connected to sync code ${clean}`);
-            });
-          }
-          // Strip the param from the URL so reloading doesn't keep re-connecting
-          // (also keeps the URL clean in case the user bookmarks it)
+        const stripParam = () => {
           try {
             const cleanUrl = window.location.pathname + window.location.hash;
             window.history.replaceState({}, '', cleanUrl);
-          } catch (e) { /* ignore */ }
-          return;
+          } catch (e) { /* harmless */ }
+        };
+        if (clean.length === 6) {
+          if (clean === state.syncCode) {
+            // Already connected to this code — just strip the param, let normal sync run
+            stripParam();
+          } else if (state.syncCode) {
+            // We have a DIFFERENT sync code locally. Don't auto-switch — could be stale widget
+            // or a different household. The user can manually switch in Settings if needed.
+            console.warn(`URL sync code ${clean} ignored — already connected to ${state.syncCode}`);
+            stripParam();
+          } else {
+            // No local sync code — fresh device / new install / cleared cache.
+            // Auto-connect to the URL code. enableSync's fresh-load path will replace
+            // (not merge) so stale tab data won't pollute the remote.
+            if (isFirebaseConfigured()) {
+              enableSync(clean).then(ok => {
+                if (ok) toast(`Connected to sync code ${clean}`);
+              });
+            }
+            stripParam();
+          }
         }
-        // URL code matches the existing one — just strip the param, normal auto-connect
-        try {
-          const cleanUrl = window.location.pathname + window.location.hash;
-          window.history.replaceState({}, '', cleanUrl);
-        } catch (e) { /* ignore */ }
       }
     } catch (e) { /* ignore URL parsing errors */ }
 
