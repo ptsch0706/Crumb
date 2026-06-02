@@ -67,7 +67,7 @@
   .tagline { font-size: 11px; color: var(--ink-mute); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
 
   /* Tab bar */
-  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
+  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
   nav.tabs button { background: none; border: none; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--ink-mute); font-size: 10px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; min-width: 0; }
   nav.tabs button.active { color: var(--crust); }
   nav.tabs button svg { width: 20px; height: 20px; stroke-width: 1.8; }
@@ -113,6 +113,23 @@
   .recipe-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; }
   .recipe-sub { font-size: 12px; color: var(--ink-mute); margin-top: 2px; }
   .recipe-chev { color: var(--ink-mute); }
+  /* Bulk select mode */
+  .recipe-checkbox { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--ink-mute); flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-elev); transition: all 0.15s; }
+  .recipe-item.selected { background: var(--bg-warm); border-color: var(--crust); }
+  .recipe-item.selected .recipe-checkbox { background: var(--crust); border-color: var(--crust); }
+  .recipe-item.selected .recipe-checkbox::after { content: ''; width: 6px; height: 11px; border-right: 2px solid white; border-bottom: 2px solid white; transform: rotate(45deg) translate(-1px, -1px); }
+  /* Floating bulk action bar at bottom of screen */
+  .bulk-action-bar {
+    position: fixed; left: 12px; right: 12px; bottom: 80px; z-index: 50;
+    background: var(--ink); color: white; border-radius: var(--radius);
+    padding: 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .bulk-action-bar .count { font-weight: 600; font-size: 14px; }
+  .bulk-action-bar button { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.3); padding: 6px 12px; border-radius: 8px; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .bulk-action-bar button:active { background: rgba(255,255,255,0.1); }
+  .bulk-action-bar button:disabled { opacity: 0.4; cursor: default; }
+  .bulk-action-bar button.danger { color: #ffb4a0; border-color: rgba(255,180,160,0.4); }
 
   /* Modal */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(26, 22, 18, 0.5); backdrop-filter: blur(4px); z-index: 100; display: none; align-items: flex-end; justify-content: center; }
@@ -341,13 +358,29 @@
     </div>
   </div>
   <div id="recipe-filter-bar" style="display: none; margin-bottom: 12px;">
-    <div style="position: relative; margin-bottom: 8px;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ink-mute); pointer-events: none;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input type="text" id="recipe-search" placeholder="Search recipes" style="width: 100%; padding: 8px 12px 8px 36px; border-radius: 100px; border: 1px solid var(--line); background: var(--bg-elev); font-family: inherit; font-size: 14px;">
+    <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+      <div style="position: relative; flex: 1;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ink-mute); pointer-events: none;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="recipe-search" placeholder="Search recipes" style="width: 100%; padding: 8px 12px 8px 36px; border-radius: 100px; border: 1px solid var(--line); background: var(--bg-elev); font-family: inherit; font-size: 14px;">
+      </div>
+      <button class="btn btn-ghost btn-sm" id="recipe-sort-btn" title="Sort recipes" style="padding: 6px 10px; flex-shrink: 0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
+      </button>
+      <button class="btn btn-ghost btn-sm" id="recipe-select-btn" title="Select recipes" style="padding: 6px 10px; flex-shrink: 0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17l2.5 2.5L21 15"/></svg>
+      </button>
     </div>
     <div id="recipe-category-chips" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;"></div>
   </div>
   <div id="recipe-list"></div>
+  <div id="bulk-action-bar" class="bulk-action-bar" style="display: none;">
+    <div class="count" id="bulk-count">0 selected</div>
+    <div style="display: flex; gap: 8px;">
+      <button id="bulk-move-btn">Move</button>
+      <button id="bulk-delete-btn" class="danger">Delete</button>
+      <button id="bulk-cancel-btn">Cancel</button>
+    </div>
+  </div>
   <div class="wheat-deco">·  ·  ·</div>
 </section>
 
@@ -379,6 +412,13 @@
   <div id="active-bakes-list"></div>
 </section>
 
+<!-- STATS VIEW -->
+<section class="view" id="view-stats">
+  <div class="section-title">Stats</div>
+  <div id="stats-content"></div>
+  <div class="wheat-deco">·  ·  ·</div>
+</section>
+
 <!-- TAB BAR -->
 <nav class="tabs">
   <button class="active" data-view="view-recipes">
@@ -395,6 +435,10 @@
   <button data-view="view-history">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/><path d="M12 7v5l3 2"/></svg>
     History
+  </button>
+  <button data-view="view-stats">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+    Stats
   </button>
 </nav>
 
@@ -466,7 +510,7 @@
         </div>
         <div class="field">
           <label>Notes</label>
-          <input type="text" id="r-notes" placeholder="Tips, variations, page number, URL...">
+          <textarea id="r-notes" placeholder="Tips, variations, page number, URL...&#10;&#10;Press Enter for new lines. URLs become tappable." style="min-height: 100px; resize: vertical;"></textarea>
         </div>
         <div class="field">
           <label>Yield</label>
@@ -484,6 +528,8 @@
 
         <div class="wheat-deco">·  ·  ·</div>
 
+        <button class="btn btn-block" id="duplicate-recipe" style="display: none; margin-bottom: 6px;">Duplicate Recipe</button>
+        <button class="btn btn-block" id="recipe-versions" style="display: none; margin-bottom: 6px;">Version History</button>
         <button class="btn btn-ghost btn-block" id="delete-recipe" style="color: var(--warn); display: none;">Delete Recipe</button>
       </div>
 
@@ -699,6 +745,28 @@
   </div>
 </div>
 
+<!-- CHANGELOG MODAL -->
+<div class="modal-backdrop" id="modal-changelog">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">What's new</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body" id="changelog-body"></div>
+  </div>
+</div>
+
+<!-- RECIPE VERSION HISTORY MODAL -->
+<div class="modal-backdrop" id="modal-version-history">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Version History</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body" id="version-history-body"></div>
+  </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div class="modal-backdrop" id="modal-settings">
   <div class="modal">
@@ -795,7 +863,8 @@
       <div class="section-title">About</div>
       <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.6;">
         <div><strong>Crumb</strong> · Bread baking workflow</div>
-        <div style="margin-top: 4px; color: var(--ink-mute);">Version 1.0 · <span id="recipe-count-stat">0</span> recipes · <span id="bake-count-stat">0</span> bakes logged</div>
+        <div style="margin-top: 4px; color: var(--ink-mute);">Version <span id="app-version">1.0.0</span> · <span id="recipe-count-stat">0</span> recipes · <span id="bake-count-stat">0</span> bakes logged</div>
+        <button class="btn btn-ghost btn-sm" id="view-changelog" style="margin-top: 8px; padding: 4px 10px; font-size: 11px;">What's new</button>
       </div>
     </div>
   </div>
@@ -879,6 +948,7 @@
     syncCode: null,
     alertsEnabled: true, // beep + vibrate when stages complete
     recipeFilter: { text: '', categoryId: null }, // recipe list filter
+    recipeSort: 'alpha', // recipe sort mode: 'alpha' | 'recent' | 'mostBaked' | 'duration'
   };
 
   // ============================================================
@@ -1021,6 +1091,49 @@
 
   const LS_KEY = 'crumb-state-v1';
 
+  // App version using semantic versioning: MAJOR.MINOR.PATCH
+  // - PATCH (X.X.+1): bug fixes, small UX tweaks, copy changes
+  // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
+  // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
+  // Most recent entry first. Add new entries at the top when shipping changes.
+  const APP_VERSION = '1.4.0';
+  const CHANGELOG = [
+    { version: '1.4.0', date: '2026-06-02', notes: [
+      'Recipe notes are now multi-line — press Enter for paragraphs and lists.',
+      'URLs in notes are automatically clickable (try pasting a recipe link).',
+      'Same upgrade applied to bake notes (Worked, Change Next Time, and Notes fields) in history.',
+    ]},
+    { version: '1.3.0', date: '2026-06-02', notes: [
+      'Widget progress bars — small, medium, large, and lock screen rectangular widgets now show a visual progress bar for each active bake stage.',
+      'Progress bar uses the bake color, fills as the stage elapses, and turns warn-red when overdue.',
+      'Update Crumb-Widget.js in Scriptable to get the new look.',
+    ]},
+    { version: '1.2.0', date: '2026-06-02', notes: [
+      'New Stats tab — total bakes, hours baking, recipes tried, average score.',
+      'Activity breakdown by day of week with peak day highlighted.',
+      'Last 12 months bar chart of bake activity.',
+      'Top 5 most-baked recipes and highest-rated recipe.',
+      'Category breakdown showing what kinds of things you bake most.',
+    ]},
+    { version: '1.1.0', date: '2026-06-02', notes: [
+      'Recipe version history — every save snapshots the previous version (last 10 kept). Restore from the editor.',
+      'App versioning introduced — see Settings for changelog.',
+    ]},
+    { version: '1.0.0', date: '2026-06-01', notes: [
+      'Phase 2: Bulk select mode for recipes (delete or move multiple at once).',
+      'Phase 2: Duplicate Recipe button in the editor.',
+      'Phase 2: Sort options — Alphabetical, Most Recently Baked, Most Baked, Shortest First.',
+      'Phase 1: Tombstone-based deletes propagate across synced devices.',
+      'Phase 1: Conflict notifications when remote updates an item you\'re viewing or editing.',
+      'Phase 1: Catchup prompt now skips needsStart-awaiting stages and recovers from sync mid-dialog.',
+      'Fixed widget tap re-importing stale data from old localStorage.',
+      'Source field separated from Notes — auto-extracts from URLs (King Arthur Baking, ATK, etc.).',
+      'SVG recipe icons replacing emoji.',
+      'Allow photo library + camera when saving bake notes.',
+      'Schedule view scrolls to top on open.',
+    ]},
+  ];
+
   function loadState() {
     try {
       const saved = localStorage.getItem(LS_KEY);
@@ -1039,6 +1152,7 @@
       if (!Array.isArray(state.activeBakes)) state.activeBakes = [];
       if (typeof state.alertsEnabled !== 'boolean') state.alertsEnabled = true;
       if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null };
+      if (!['alpha', 'recent', 'mostBaked', 'duration'].includes(state.recipeSort)) state.recipeSort = 'alpha';
 
       // Migrate legacy single activeBake to activeBakes array
       if (state.activeBake && typeof state.activeBake === 'object' && state.activeBake.recipeId) {
@@ -1058,6 +1172,12 @@
 
   // Track when we've shown the quota-exceeded warning so we don't spam toasts
   let _quotaWarned = false;
+
+  // Bulk-select mode state — transient (not persisted to localStorage / sync).
+  // When active, recipe rows show checkboxes and tapping toggles selection rather than
+  // opening the recipe schedule view.
+  let bulkSelectMode = false;
+  const bulkSelectedIds = new Set();
   function saveState() {
     // Touch active bakes (they change frequently — mark-done, pause, adjust timer, etc.)
     // so the per-object merge logic picks our version on conflict.
@@ -1081,6 +1201,7 @@
       syncCode: state.syncCode,
       alertsEnabled: state.alertsEnabled,
       recipeFilter: state.recipeFilter,
+      recipeSort: state.recipeSort,
     };
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(payload));
@@ -1325,6 +1446,33 @@
     }).join('');
   }
 
+  // Show/hide the floating bulk action bar based on bulkSelectMode + selection count.
+  // Update the count display. Called whenever selection changes.
+  function renderBulkActionBar() {
+    const bar = document.getElementById('bulk-action-bar');
+    if (!bar) return;
+    if (!bulkSelectMode) {
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = '';
+    const count = bulkSelectedIds.size;
+    document.getElementById('bulk-count').textContent =
+      count === 0 ? 'Select recipes' :
+      count === 1 ? '1 selected' : `${count} selected`;
+    // Disable Move/Delete when nothing is selected
+    document.getElementById('bulk-move-btn').disabled = count === 0;
+    document.getElementById('bulk-delete-btn').disabled = count === 0;
+  }
+
+  // Exit bulk-select mode: clear selection, hide action bar, re-render the list.
+  function exitBulkSelectMode() {
+    bulkSelectMode = false;
+    bulkSelectedIds.clear();
+    renderBulkActionBar();
+    renderRecipes();
+  }
+
   function renderRecipes() {
     const list = document.getElementById('recipe-list');
     // Filter out tombstones (deleted but kept for sync propagation)
@@ -1380,10 +1528,54 @@
       groups.get(key).push(r);
     });
 
-    // Sort each group alphabetically by name (case-insensitive, locale-aware so accented
-    // characters and non-English names sort correctly)
+    // Sort each group according to user's selected sort mode (default alphabetical).
+    // For all sort modes we use a stable secondary alpha sort to break ties consistently.
+    const sortMode = state.recipeSort || 'alpha';
+    const recipeBakeCount = new Map(); // recipeId -> count of completed bakes (computed on demand)
+    if (sortMode === 'mostBaked') {
+      for (const b of liveItems(state.bakes)) {
+        if (!b.recipeId) continue;
+        recipeBakeCount.set(b.recipeId, (recipeBakeCount.get(b.recipeId) || 0) + 1);
+      }
+    }
+    const recipeLastBaked = new Map(); // recipeId -> latest bake timestamp (ms since epoch)
+    if (sortMode === 'recent') {
+      for (const b of liveItems(state.bakes)) {
+        if (!b.recipeId) continue;
+        const ts = new Date(b.startedAt || 0).getTime();
+        const prev = recipeLastBaked.get(b.recipeId) || 0;
+        if (ts > prev) recipeLastBaked.set(b.recipeId, ts);
+      }
+    }
+    const alphaCompare = (a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
     for (const recipes of groups.values()) {
-      recipes.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+      if (sortMode === 'recent') {
+        // Recently baked first; recipes never baked go to the end alphabetically
+        recipes.sort((a, b) => {
+          const aTs = recipeLastBaked.get(a.id) || 0;
+          const bTs = recipeLastBaked.get(b.id) || 0;
+          if (aTs !== bTs) return bTs - aTs;
+          return alphaCompare(a, b);
+        });
+      } else if (sortMode === 'mostBaked') {
+        recipes.sort((a, b) => {
+          const aC = recipeBakeCount.get(a.id) || 0;
+          const bC = recipeBakeCount.get(b.id) || 0;
+          if (aC !== bC) return bC - aC;
+          return alphaCompare(a, b);
+        });
+      } else if (sortMode === 'duration') {
+        // Shortest total duration first
+        recipes.sort((a, b) => {
+          const aD = totalMinutes(a) || 0;
+          const bD = totalMinutes(b) || 0;
+          if (aD !== bD) return aD - bD;
+          return alphaCompare(a, b);
+        });
+      } else {
+        // 'alpha' (default): case-insensitive, locale-aware
+        recipes.sort(alphaCompare);
+      }
     }
 
     // Determine order: categories in state.categories order, then "Uncategorized" last
@@ -1396,15 +1588,18 @@
       const isBaking = !!bake;
       const c = isBaking ? getBakeColor(bake.color) : null;
       const source = (r.source && r.source.trim()) ? r.source.trim() : formatSource(r.notes);
+      const isSelected = bulkSelectMode && bulkSelectedIds.has(r.id);
+      const classes = ['recipe-item'];
+      if (isSelected) classes.push('selected');
       return `
-        <div class="recipe-item" data-id="${r.id}"${isBaking ? ` style="border-left: 3px solid ${c.hex};"` : ''}>
-          <div class="recipe-thumb">${renderRecipeIcon(r.icon, 40)}</div>
+        <div class="${classes.join(' ')}" data-id="${r.id}"${isBaking && !bulkSelectMode ? ` style="border-left: 3px solid ${c.hex};"` : ''}>
+          ${bulkSelectMode ? '<div class="recipe-checkbox"></div>' : `<div class="recipe-thumb">${renderRecipeIcon(r.icon, 40)}</div>`}
           <div class="recipe-meta">
-            <div class="recipe-name">${escapeHtml(r.name)}${isBaking ? ` <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;background:${c.hex};color:white;padding:2px 8px;border-radius:100px;font-family:Inter;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;vertical-align:middle;margin-left:6px;"><span style="width:5px;height:5px;background:white;border-radius:50%;display:inline-block;animation:pulse 1.6s ease-in-out infinite;"></span>Baking</span>` : ''}</div>
+            <div class="recipe-name">${escapeHtml(r.name)}${isBaking && !bulkSelectMode ? ` <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;background:${c.hex};color:white;padding:2px 8px;border-radius:100px;font-family:Inter;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;vertical-align:middle;margin-left:6px;"><span style="width:5px;height:5px;background:white;border-radius:50%;display:inline-block;animation:pulse 1.6s ease-in-out infinite;"></span>Baking</span>` : ''}</div>
             <div class="recipe-sub">${r.stages.length} stages · ${formatDur(totalMinutes(r))} total</div>
             ${source ? `<div class="recipe-sub">${escapeHtml(source)}</div>` : ''}
           </div>
-          <div class="recipe-chev">›</div>
+          ${bulkSelectMode ? '' : '<div class="recipe-chev">›</div>'}
         </div>`;
     };
 
@@ -1429,7 +1624,19 @@
 
     list.querySelectorAll('.recipe-item').forEach(el => {
       el.addEventListener('click', () => {
-        openSchedule(el.dataset.id);
+        const id = el.dataset.id;
+        if (bulkSelectMode) {
+          // Toggle selection — re-render to reflect new selected/unselected state
+          if (bulkSelectedIds.has(id)) bulkSelectedIds.delete(id);
+          else bulkSelectedIds.add(id);
+          renderBulkActionBar();
+          // Update only the row's classes / checkbox without re-rendering the full list
+          // (full re-render would lose scroll position on long lists)
+          if (bulkSelectedIds.has(id)) el.classList.add('selected');
+          else el.classList.remove('selected');
+        } else {
+          openSchedule(id);
+        }
       });
     });
     list.querySelectorAll('[data-rename-cat]').forEach(b => {
@@ -1533,9 +1740,9 @@
 
       // Sectioned notes
       const notesParts = [];
-      if (b.worked) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--leaven); text-transform: uppercase; letter-spacing: 0.06em;">Worked</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">${escapeHtml(b.worked)}</div></div>`);
-      if (b.changeNext) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--warn); text-transform: uppercase; letter-spacing: 0.06em;">Change Next Time</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">${escapeHtml(b.changeNext)}</div></div>`);
-      if (b.notes) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em;">Notes</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">${escapeHtml(b.notes)}</div></div>`);
+      if (b.worked) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--leaven); text-transform: uppercase; letter-spacing: 0.06em;">Worked</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; white-space: pre-wrap;">${renderNotesHtml(b.worked)}</div></div>`);
+      if (b.changeNext) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--warn); text-transform: uppercase; letter-spacing: 0.06em;">Change Next Time</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; white-space: pre-wrap;">${renderNotesHtml(b.changeNext)}</div></div>`);
+      if (b.notes) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em;">Notes</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; white-space: pre-wrap;">${renderNotesHtml(b.notes)}</div></div>`);
 
       // Pills row (temp, scale)
       const pills = [];
@@ -1655,9 +1862,9 @@
 
     // Notes
     const notesParts = [];
-    if (bake.worked) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--leaven); text-transform: uppercase; letter-spacing: 0.06em;">Worked</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px;">${escapeHtml(bake.worked)}</div></div>`);
-    if (bake.changeNext) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--warn); text-transform: uppercase; letter-spacing: 0.06em;">Change Next Time</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px;">${escapeHtml(bake.changeNext)}</div></div>`);
-    if (bake.notes) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em;">Notes</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px;">${escapeHtml(bake.notes)}</div></div>`);
+    if (bake.worked) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--leaven); text-transform: uppercase; letter-spacing: 0.06em;">Worked</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px; white-space: pre-wrap;">${renderNotesHtml(bake.worked)}</div></div>`);
+    if (bake.changeNext) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--warn); text-transform: uppercase; letter-spacing: 0.06em;">Change Next Time</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px; white-space: pre-wrap;">${renderNotesHtml(bake.changeNext)}</div></div>`);
+    if (bake.notes) notesParts.push(`<div style="margin-top: 12px;"><div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em;">Notes</div><div style="font-size: 14px; color: var(--ink); line-height: 1.5; margin-top: 4px; white-space: pre-wrap;">${renderNotesHtml(bake.notes)}</div></div>`);
 
     // Photos
     const photoGrid = bake.photos && bake.photos.length > 0
@@ -1769,6 +1976,264 @@
     showModal('modal-history-detail');
   }
 
+  // ============================================================
+  // STATS VIEW
+  // ============================================================
+  function renderStats() {
+    const c = document.getElementById('stats-content');
+    const allBakes = liveItems(state.bakes);
+    if (allBakes.length === 0) {
+      c.innerHTML = `
+        <div class="empty">
+          <div class="icon">📊</div>
+          <div class="title">No stats yet</div>
+          <div class="body">Bake a few recipes and save them to history — stats will start tracking here.</div>
+        </div>`;
+      return;
+    }
+
+    // === HEADLINE NUMBERS ===
+    const totalBakes = allBakes.length;
+    // Time spent: sum of (completedAt - startedAt) per bake, in hours
+    let totalMs = 0;
+    let bakesWithDuration = 0;
+    for (const b of allBakes) {
+      if (b.startedAt && b.completedAt) {
+        const ms = new Date(b.completedAt) - new Date(b.startedAt);
+        if (ms > 0 && ms < 7 * 24 * 60 * 60 * 1000) { // sanity bound: under a week
+          totalMs += ms;
+          bakesWithDuration++;
+        }
+      }
+    }
+    const totalHours = totalMs / 3600000;
+    const totalHoursDisplay = totalHours >= 100 ? Math.round(totalHours) : totalHours.toFixed(1);
+
+    // Unique recipes baked (resolves via recipeId, fall back to recipeSnapshot name for orphans)
+    const uniqueRecipeIds = new Set();
+    for (const b of allBakes) {
+      if (b.recipeId) uniqueRecipeIds.add(b.recipeId);
+    }
+    const recipesTried = uniqueRecipeIds.size;
+
+    // Average score across bakes with score
+    const scores = allBakes.map(b => b.score).filter(s => typeof s === 'number' && s > 0);
+    const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+
+    // === TIME-WINDOWED COUNTS ===
+    const now = new Date();
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisYear = new Date(now.getFullYear(), 0, 1);
+    const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    let bakesThisMonth = 0, bakesThisYear = 0, bakesLast30 = 0;
+    for (const b of allBakes) {
+      const t = new Date(b.startedAt || 0);
+      if (t >= thisMonth) bakesThisMonth++;
+      if (t >= thisYear) bakesThisYear++;
+      if (t >= last30Days) bakesLast30++;
+    }
+
+    // === DAY-OF-WEEK ACTIVITY ===
+    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayCounts = [0, 0, 0, 0, 0, 0, 0];
+    for (const b of allBakes) {
+      const d = new Date(b.startedAt || 0).getDay();
+      dayCounts[d]++;
+    }
+    const peakDayIdx = dayCounts.indexOf(Math.max(...dayCounts));
+    const peakDayLabel = dayLabels[peakDayIdx];
+    const maxDay = Math.max(...dayCounts) || 1; // for bar scaling
+
+    // === MONTHLY BAKES — LAST 12 MONTHS ===
+    const monthLabels = [];
+    const monthCounts = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      monthLabels.push(d.toLocaleDateString([], { month: 'short' }));
+      const start = d.getTime();
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime();
+      let count = 0;
+      for (const b of allBakes) {
+        const t = new Date(b.startedAt || 0).getTime();
+        if (t >= start && t < end) count++;
+      }
+      monthCounts.push(count);
+    }
+    const maxMonth = Math.max(...monthCounts) || 1;
+
+    // === MOST BAKED RECIPE ===
+    const bakeCountByRecipe = new Map();
+    const bakeNamesById = new Map();
+    for (const b of allBakes) {
+      if (!b.recipeId) continue;
+      bakeCountByRecipe.set(b.recipeId, (bakeCountByRecipe.get(b.recipeId) || 0) + 1);
+      // Capture a name (prefer current live recipe, fall back to snapshot)
+      if (!bakeNamesById.has(b.recipeId)) {
+        const live = state.recipes.find(r => r.id === b.recipeId && !r._deleted);
+        const name = live ? live.name : (b.recipeSnapshot ? b.recipeSnapshot.name : 'Unknown recipe');
+        bakeNamesById.set(b.recipeId, name);
+      }
+    }
+    const topRecipes = [...bakeCountByRecipe.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, count]) => ({ id, count, name: bakeNamesById.get(id) || 'Unknown' }));
+    const mostBaked = topRecipes[0];
+
+    // === HIGHEST AVG SCORE RECIPE (min 2 bakes for stability) ===
+    const scoresByRecipe = new Map();
+    for (const b of allBakes) {
+      if (!b.recipeId || typeof b.score !== 'number' || b.score <= 0) continue;
+      if (!scoresByRecipe.has(b.recipeId)) scoresByRecipe.set(b.recipeId, []);
+      scoresByRecipe.get(b.recipeId).push(b.score);
+    }
+    const recipeAvgScores = [...scoresByRecipe.entries()]
+      .filter(([, scores]) => scores.length >= 2)
+      .map(([id, scores]) => ({
+        id,
+        name: bakeNamesById.get(id) || 'Unknown',
+        avg: scores.reduce((a, b) => a + b, 0) / scores.length,
+        count: scores.length,
+      }))
+      .sort((a, b) => b.avg - a.avg);
+    const highestRated = recipeAvgScores[0];
+
+    // === CATEGORY BREAKDOWN ===
+    const categoryByRecipe = new Map();
+    for (const r of state.recipes) {
+      if (r.id) categoryByRecipe.set(r.id, r.categoryId || null);
+    }
+    const catCounts = new Map();
+    for (const b of allBakes) {
+      const catId = categoryByRecipe.get(b.recipeId) || null;
+      catCounts.set(catId, (catCounts.get(catId) || 0) + 1);
+    }
+    const catEntries = [...catCounts.entries()]
+      .map(([id, count]) => {
+        const cat = id ? state.categories.find(c => c.id === id && !c._deleted) : null;
+        const name = cat ? cat.name : 'Uncategorized';
+        return { name, count };
+      })
+      .sort((a, b) => b.count - a.count);
+
+    // === RENDER ===
+    // Big stat tile helper
+    const tile = (label, value, sub) => `
+      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px;">
+        <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">${escapeHtml(label)}</div>
+        <div style="font-family: 'Fraunces', serif; font-size: 28px; font-weight: 500; color: var(--ink); margin-top: 4px; letter-spacing: -0.02em;">${value}</div>
+        ${sub ? `<div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">${sub}</div>` : ''}
+      </div>`;
+
+    c.innerHTML = `
+      <!-- Headline tiles, 2x2 grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;">
+        ${tile('Total bakes', totalBakes, bakesThisMonth > 0 ? `${bakesThisMonth} this month` : 'lifetime')}
+        ${tile('Hours baking', totalHoursDisplay, `${bakesWithDuration} bakes timed`)}
+        ${tile('Recipes tried', recipesTried, recipesTried === 1 ? 'unique recipe' : 'unique recipes')}
+        ${tile('Avg score', avgScore !== null ? avgScore.toFixed(1) : '—', avgScore !== null ? `${scores.length} rated` : 'rate bakes to track')}
+      </div>
+
+      <!-- Activity -->
+      <div class="section-title">Activity</div>
+      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
+        <div style="display: flex; justify-content: space-between; gap: 10px; margin-bottom: 14px;">
+          <div>
+            <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Last 30 days</div>
+            <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; color: var(--ink);">${bakesLast30} ${bakesLast30 === 1 ? 'bake' : 'bakes'}</div>
+          </div>
+          <div>
+            <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">This year</div>
+            <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; color: var(--ink);">${bakesThisYear}</div>
+          </div>
+          <div>
+            <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Peak day</div>
+            <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; color: var(--ink);">${peakDayLabel}</div>
+          </div>
+        </div>
+        <!-- Day-of-week bar chart -->
+        <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 8px;">By day of week</div>
+        <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 80px;">
+          ${dayCounts.map((count, i) => {
+            const heightPct = Math.round((count / maxDay) * 100);
+            const isPeak = i === peakDayIdx && count > 0;
+            return `
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%;">
+                <div style="flex: 1; width: 100%; display: flex; align-items: flex-end;">
+                  <div style="width: 100%; background: ${isPeak ? 'var(--crust)' : 'var(--crust-soft)'}; border-radius: 3px 3px 0 0; height: ${heightPct}%; min-height: ${count > 0 ? '4px' : '0'};"></div>
+                </div>
+                <div style="font-size: 10px; color: var(--ink-mute); font-weight: 500;">${dayLabels[i].slice(0,1)}</div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Monthly trend -->
+      <div class="section-title">Last 12 months</div>
+      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
+        <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 80px;">
+          ${monthCounts.map((count, i) => {
+            const heightPct = Math.round((count / maxMonth) * 100);
+            return `
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%;" title="${monthLabels[i]}: ${count}">
+                <div style="flex: 1; width: 100%; display: flex; align-items: flex-end;">
+                  <div style="width: 100%; background: var(--crust); opacity: ${count > 0 ? 1 : 0.15}; border-radius: 2px 2px 0 0; height: ${heightPct}%; min-height: ${count > 0 ? '3px' : '2px'};"></div>
+                </div>
+                <div style="font-size: 9px; color: var(--ink-mute);">${monthLabels[i].slice(0,1)}</div>
+              </div>`;
+          }).join('')}
+        </div>
+        <div style="font-size: 11px; color: var(--ink-mute); margin-top: 10px; text-align: center;">${monthLabels[0]} → ${monthLabels[11]}</div>
+      </div>
+
+      <!-- Top recipes -->
+      ${mostBaked ? `
+        <div class="section-title">Top recipes</div>
+        <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
+          ${topRecipes.map((r, i) => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; ${i < topRecipes.length - 1 ? 'border-bottom: 1px solid var(--line);' : ''}">
+              <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                <div style="width: 22px; height: 22px; border-radius: 50%; background: ${i === 0 ? 'var(--crust)' : 'var(--bg-warm)'}; color: ${i === 0 ? 'white' : 'var(--ink-soft)'}; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;">${i + 1}</div>
+                <div style="font-size: 14px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(r.name)}</div>
+              </div>
+              <div style="font-size: 13px; color: var(--ink-soft); font-weight: 600; flex-shrink: 0; margin-left: 8px;">${r.count} ${r.count === 1 ? 'bake' : 'bakes'}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <!-- Highest-rated recipe -->
+      ${highestRated ? `
+        <div class="section-title">Highest rated</div>
+        <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
+          <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em;">${escapeHtml(highestRated.name)}</div>
+          <div style="font-size: 13px; color: var(--ink-soft); margin-top: 4px;">${highestRated.avg.toFixed(1)} avg score · ${highestRated.count} ${highestRated.count === 1 ? 'rating' : 'ratings'}</div>
+        </div>
+      ` : ''}
+
+      <!-- Category breakdown -->
+      ${catEntries.length > 0 ? `
+        <div class="section-title">By category</div>
+        <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
+          ${catEntries.map(entry => {
+            const pct = Math.round((entry.count / totalBakes) * 100);
+            return `
+              <div style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                  <div style="font-size: 13px; color: var(--ink);">${escapeHtml(entry.name)}</div>
+                  <div style="font-size: 12px; color: var(--ink-soft);">${entry.count} ${entry.count === 1 ? 'bake' : 'bakes'} · ${pct}%</div>
+                </div>
+                <div style="height: 6px; background: var(--bg-warm); border-radius: 3px; overflow: hidden;">
+                  <div style="height: 100%; width: ${pct}%; background: var(--crust); border-radius: 3px;"></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
+    `;
+  }
+
   function openSchedule(recipeId) {
     state.currentRecipeId = recipeId;
     const activeForThis = getActiveBakeForRecipe(recipeId);
@@ -1849,7 +2314,7 @@
           const parts = [yieldText, hydText].filter(Boolean);
           return parts.length > 0 ? `<div class="schedule-meta" style="margin-top: 2px;">${parts.join(' · ')}</div>` : '';
         })()}
-        ${recipe.notes ? `<div class="schedule-meta" style="margin-top: 4px;">${escapeHtml(recipe.notes)}</div>` : ''}
+        ${recipe.notes ? `<div class="schedule-meta" style="margin-top: 4px; white-space: pre-wrap; line-height: 1.5;">${renderNotesHtml(recipe.notes)}</div>` : ''}
       </div>
 
       <div class="start-mode">
@@ -3150,6 +3615,51 @@
     return DEFAULT_ICON;
   }
 
+  // ============================================================
+  // RECIPE VERSIONING
+  // ============================================================
+  const MAX_RECIPE_VERSIONS = 10;
+
+  // Build a content snapshot of a recipe — strips fields that aren't part of the user's
+  // "version" of the recipe (sync metadata, tombstone flags, the versions array itself).
+  // The snapshot is what we restore when the user picks an old version.
+  function makeRecipeSnapshot(recipe) {
+    if (!recipe) return null;
+    const snap = JSON.parse(JSON.stringify(recipe));
+    delete snap._updatedAt;
+    delete snap._deleted;
+    delete snap.versions;
+    delete snap.id; // restore should never change the id
+    return snap;
+  }
+
+  // Compare two snapshots to decide if they're substantively different. Returns true
+  // when the new version differs in any user-visible content. Skips snapshotting if
+  // the only difference is sync metadata or trivial whitespace.
+  function recipeSnapshotsDiffer(a, b) {
+    if (!a || !b) return true;
+    // Quick exact-match check via JSON serialization (sorted keys not required since
+    // both come from the same makeRecipeSnapshot pipeline that produces consistent shape)
+    return JSON.stringify(a) !== JSON.stringify(b);
+  }
+
+  // Push a snapshot of the prior recipe state into recipe.versions[], capped at MAX_RECIPE_VERSIONS.
+  // Snapshots are stored newest-first. Called from save-recipe just before applying the new state.
+  function recordRecipeVersion(currentStored, newEditing) {
+    if (!currentStored) return; // No prior version (new recipe, never saved)
+    const priorSnap = makeRecipeSnapshot(currentStored);
+    const newSnap = makeRecipeSnapshot(newEditing);
+    if (!recipeSnapshotsDiffer(priorSnap, newSnap)) return; // No-op save
+    if (!Array.isArray(newEditing.versions)) newEditing.versions = [];
+    newEditing.versions.unshift({
+      savedAt: new Date().toISOString(),
+      snapshot: priorSnap,
+    });
+    if (newEditing.versions.length > MAX_RECIPE_VERSIONS) {
+      newEditing.versions.length = MAX_RECIPE_VERSIONS;
+    }
+  }
+
   // SVG markup for each icon. All viewBox="0 0 72 72" — they share the same coordinate
   // system so they swap cleanly. Compressed (no extra whitespace) to keep file size down.
   const ICON_SVGS = {
@@ -3255,6 +3765,10 @@
     document.getElementById('r-notes').value = state.editingRecipe.notes || '';
     document.getElementById('r-yield').value = state.editingRecipe.yield || '';
     document.getElementById('delete-recipe').style.display = isExisting ? 'inline-flex' : 'none';
+    document.getElementById('duplicate-recipe').style.display = isExisting ? 'inline-flex' : 'none';
+    // Versions button visible if the recipe has at least one prior version snapshot
+    const hasVersions = isExisting && Array.isArray(state.editingRecipe.versions) && state.editingRecipe.versions.length > 0;
+    document.getElementById('recipe-versions').style.display = hasVersions ? 'inline-flex' : 'none';
     renderIconPicker();
     renderCatPicker();
     renderIngEditor();
@@ -3547,6 +4061,8 @@ Here is the recipe:
       document.getElementById('r-notes').value = newRecipe.notes || '';
       document.getElementById('r-yield').value = newRecipe.yield || '';
       document.getElementById('delete-recipe').style.display = 'none';
+      document.getElementById('duplicate-recipe').style.display = 'none';
+      document.getElementById('recipe-versions').style.display = 'none';
       renderIconPicker();
       renderCatPicker();
       renderIngEditor();
@@ -3705,6 +4221,39 @@ Here is the recipe:
 
     // Long free-form notes: don't try to extract a "source" from them
     return '';
+  }
+
+  // Render free-form notes text as safe HTML. Preserves line breaks (via <br>) and
+  // converts http(s) URLs into clickable <a> tags. All other content is HTML-escaped.
+  // Safe to insert into innerHTML.
+  function renderNotesHtml(notes) {
+    if (!notes || typeof notes !== 'string') return '';
+    const trimmed = notes.trim();
+    if (!trimmed) return '';
+    // Escape first, then linkify. The URL regex doesn't include HTML special chars,
+    // so the escape step is safe even with URLs in the text (& becomes &amp; but the
+    // resulting "amp;" still works inside an href because browsers tolerate it).
+    // We linkify after escape by matching the already-escaped URL pattern.
+    const escaped = escapeHtml(trimmed);
+    // URLs containing & in query strings get escaped to &amp; — match that too.
+    // The pattern accepts http(s):// followed by non-whitespace, non-< characters.
+    const linkified = escaped.replace(
+      /(https?:\/\/[^\s<]+)/g,
+      (url) => {
+        // Trim trailing punctuation that's likely sentence-terminal, not part of the URL:
+        // .,;:!?)] etc. — restore them outside the anchor so "see foo.com." reads naturally.
+        const trailingMatch = url.match(/[.,;:!?\)\]]+$/);
+        const trailing = trailingMatch ? trailingMatch[0] : '';
+        const cleanUrl = trailing ? url.slice(0, -trailing.length) : url;
+        // Decode &amp; back to & inside the href so the actual link works (browsers don't
+        // re-decode entities in href attributes consistently across versions).
+        const href = cleanUrl.replace(/&amp;/g, '&');
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color: var(--crust-deep); text-decoration: underline;">${cleanUrl}</a>${trailing}`;
+      }
+    );
+    // Line breaks are handled by the container's `white-space: pre-wrap` CSS, not <br>.
+    // This keeps the rendered HTML simpler and avoids double-spacing.
+    return linkified;
   }
 
   function formatDur(min) {
@@ -4045,10 +4594,17 @@ Here is the recipe:
     if (viewId !== 'view-schedule' && bakingModeOn) {
       disableBakingMode();
     }
+    // Exit bulk-select mode whenever leaving the recipes tab (it's a transient UI state)
+    if (viewId !== 'view-recipes' && bulkSelectMode) {
+      bulkSelectMode = false;
+      bulkSelectedIds.clear();
+      renderBulkActionBar();
+    }
     if (viewId === 'view-recipes') renderRecipes();
     if (viewId === 'view-schedule') renderSchedule();
     if (viewId === 'view-history') renderHistory();
     if (viewId === 'view-active-bakes') renderActiveBakes();
+    if (viewId === 'view-stats') renderStats();
   }
 
   // ============================================================
@@ -4292,8 +4848,13 @@ Here is the recipe:
     // of saving counts as restoring it. The newer _updatedAt will beat any stale remote
     // tombstone via merge.
     delete r._deleted;
-    touchUpdated(r); // mark as just-modified for sync
+    // Find the existing recipe in state.recipes BEFORE we mutate. If this is an edit (not
+    // a brand-new recipe), snapshot the prior version so the user can roll back.
     const existing = state.recipes.findIndex(x => x.id === r.id);
+    if (existing >= 0) {
+      recordRecipeVersion(state.recipes[existing], r);
+    }
+    touchUpdated(r); // mark as just-modified for sync
     if (existing >= 0) state.recipes[existing] = r;
     else state.recipes.push(r);
     // If a bake is running for this recipe, reconcile its stageStates array so it matches
@@ -4316,6 +4877,40 @@ Here is the recipe:
     if (activeForThis && !bakeTickerInterval) startBakeTicker();
     toast('Recipe saved');
   });
+  document.getElementById('duplicate-recipe').addEventListener('click', async () => {
+    if (!state.editingRecipe) return;
+    // Build a deep-copy clone with a new id and " (Copy)" appended to the name.
+    // Strip per-recipe sync metadata so the duplicate gets a fresh timestamp on save.
+    const clone = JSON.parse(JSON.stringify(state.editingRecipe));
+    clone.id = uid();
+    clone.name = (clone.name || 'Untitled') + ' (Copy)';
+    delete clone._deleted;
+    delete clone._updatedAt;
+    // Clear the version history — the duplicate gets its own fresh history starting now,
+    // not inherited snapshots from the original recipe.
+    delete clone.versions;
+    // Save the clone into state.recipes so it persists, then open the editor on it.
+    // The user can rename / tweak before the modal close.
+    touchUpdated(clone);
+    state.recipes.push(clone);
+    saveState();
+    renderRecipes();
+    // Close current modal and immediately re-open editor on the new clone.
+    // Keep modal closed for one tick so the swap is visible.
+    hideModal('modal-recipe');
+    setTimeout(() => {
+      openRecipeEditor(clone);
+      showModal('modal-recipe');
+      toast('Recipe duplicated');
+    }, 50);
+  });
+
+  document.getElementById('recipe-versions').addEventListener('click', () => {
+    if (!state.editingRecipe) return;
+    renderRecipeVersionHistory();
+    showModal('modal-version-history');
+  });
+
   document.getElementById('delete-recipe').addEventListener('click', async () => {
     const activeForThis = state.editingRecipe ? getActiveBakeForRecipe(state.editingRecipe.id) : null;
     const message = activeForThis
@@ -4949,8 +5544,116 @@ Here is the recipe:
   function renderSettingsStats() {
     const r = document.getElementById('recipe-count-stat');
     const b = document.getElementById('bake-count-stat');
+    const v = document.getElementById('app-version');
     if (r) r.textContent = liveItems(state.recipes).length;
     if (b) b.textContent = liveItems(state.bakes).length;
+    if (v) v.textContent = APP_VERSION;
+  }
+
+  // Render the changelog modal body from the CHANGELOG constant
+  function renderChangelog() {
+    const body = document.getElementById('changelog-body');
+    if (!body) return;
+    body.innerHTML = CHANGELOG.map(entry => `
+      <div style="margin-bottom: 18px;">
+        <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px;">
+          <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500;">${escapeHtml(entry.version)}</div>
+          <div style="color: var(--ink-mute); font-size: 12px;">${escapeHtml(entry.date)}</div>
+        </div>
+        <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; color: var(--ink-soft);">
+          ${entry.notes.map(n => `<li style="margin-bottom: 4px;">${escapeHtml(n)}</li>`).join('')}
+        </ul>
+      </div>
+    `).join('');
+  }
+
+  // Render the recipe version history modal — lists each prior snapshot with stats and
+  // a Restore button. Restoring replaces the editor's current state with the snapshot's
+  // content (preserving the recipe's id and current versions array, plus snapshotting the
+  // pre-restore state so the restore is itself reversible).
+  function renderRecipeVersionHistory() {
+    const body = document.getElementById('version-history-body');
+    if (!body || !state.editingRecipe) return;
+    const versions = Array.isArray(state.editingRecipe.versions) ? state.editingRecipe.versions : [];
+    if (versions.length === 0) {
+      body.innerHTML = `
+        <div class="empty" style="padding: 20px 0;">
+          <div class="title">No previous versions</div>
+          <div class="body">Versions get saved automatically each time you change and save this recipe.</div>
+        </div>`;
+      return;
+    }
+    body.innerHTML = `
+      <p class="help" style="margin-bottom: 12px;">Each save snapshots the previous version. The most recent ${MAX_RECIPE_VERSIONS} versions are kept.</p>
+      ${versions.map((v, idx) => {
+        const snap = v.snapshot || {};
+        const date = new Date(v.savedAt);
+        const dateStr = date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const stageCount = Array.isArray(snap.stages) ? snap.stages.length : 0;
+        const ingCount = Array.isArray(snap.ingredients) ? snap.ingredients.length : 0;
+        // Compute a brief diff from current editing state
+        const cur = state.editingRecipe;
+        const diffs = [];
+        if ((cur.name || '') !== (snap.name || '')) diffs.push(`Renamed: "${escapeHtml(snap.name || '')}" → "${escapeHtml(cur.name || '')}"`);
+        const curStages = Array.isArray(cur.stages) ? cur.stages.length : 0;
+        if (curStages !== stageCount) diffs.push(`${stageCount} stages → ${curStages} stages`);
+        const curIngs = Array.isArray(cur.ingredients) ? cur.ingredients.length : 0;
+        if (curIngs !== ingCount) diffs.push(`${ingCount} ingredients → ${curIngs} ingredients`);
+        return `
+          <div style="border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px;">
+              <div>
+                <div style="font-weight: 600; font-size: 14px;">${escapeHtml(snap.name || 'Untitled')}</div>
+                <div style="font-size: 12px; color: var(--ink-mute); margin-top: 2px;">${dateStr} · ${timeStr}</div>
+                <div style="font-size: 12px; color: var(--ink-mute); margin-top: 2px;">${stageCount} stages · ${ingCount} ingredients</div>
+                ${diffs.length > 0 ? `<div style="font-size: 11px; color: var(--ink-soft); margin-top: 6px; font-style: italic;">Changes since: ${diffs.map(escapeHtml).join(' · ')}</div>` : ''}
+              </div>
+              <button class="btn btn-sm" data-restore-version="${idx}" style="flex-shrink: 0;">Restore</button>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    `;
+    // Wire restore buttons
+    body.querySelectorAll('[data-restore-version]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = parseInt(btn.dataset.restoreVersion, 10);
+        if (isNaN(idx) || !versions[idx]) return;
+        const confirmed = await showConfirm({
+          title: 'Restore this version?',
+          message: 'Your current edits will be replaced. When you tap Save, the previous state is automatically kept as a new version so you can come back to it.',
+          buttons: [
+            { label: 'Restore', style: 'primary', value: 'yes' },
+            { label: 'Cancel', style: 'ghost', value: 'no' },
+          ],
+        });
+        if (confirmed !== 'yes') return;
+        // Apply the restored snapshot to the editor.
+        // We don't snapshot the pre-restore state here — when the user taps Save,
+        // recordRecipeVersion() will compare the stored recipe to the restored editor
+        // state and add a version automatically. Doing it here would double-add.
+        const current = state.editingRecipe;
+        const restored = versions[idx].snapshot;
+        const keepVersions = current.versions; // preserve history array across the swap
+        Object.keys(current).forEach(k => {
+          if (k !== 'id' && k !== 'versions') delete current[k];
+        });
+        Object.assign(current, restored);
+        current.versions = keepVersions;
+        // Re-render the editor with the restored content
+        document.getElementById('r-name').value = current.name || '';
+        document.getElementById('r-source').value = current.source || '';
+        document.getElementById('r-notes').value = current.notes || '';
+        document.getElementById('r-yield').value = current.yield || '';
+        renderIconPicker();
+        renderCatPicker();
+        renderIngEditor();
+        renderStageEditor();
+        hideModal('modal-version-history');
+        toast('Version restored — save to keep it');
+      });
+    });
   }
 
   // Show the recovery card if a pre-sync backup exists
@@ -5124,6 +5827,15 @@ Here is the recipe:
           // Quick test chime so user knows it works
           alertStageComplete();
         }
+      });
+    }
+
+    // Changelog viewer
+    const changelogBtn = document.getElementById('view-changelog');
+    if (changelogBtn) {
+      changelogBtn.addEventListener('click', () => {
+        renderChangelog();
+        showModal('modal-changelog');
       });
     }
 
@@ -5376,6 +6088,109 @@ Here is the recipe:
       _recipeSearchTimer = setTimeout(() => renderRecipes(), 150);
     });
   }
+
+  // Wire sort button — opens a picker for the user to choose how recipes are ordered
+  const sortBtn = document.getElementById('recipe-sort-btn');
+  if (sortBtn) {
+    sortBtn.addEventListener('click', async () => {
+      const current = state.recipeSort || 'alpha';
+      const label = (mode, text) => current === mode ? `✓ ${text}` : text;
+      const choice = await showConfirm({
+        title: 'Sort recipes by',
+        message: 'Recipes within each category will be ordered by this option.',
+        buttons: [
+          { label: label('alpha', 'Alphabetical (A → Z)'), style: current === 'alpha' ? 'primary' : 'default', value: 'alpha' },
+          { label: label('recent', 'Most recently baked'), style: current === 'recent' ? 'primary' : 'default', value: 'recent' },
+          { label: label('mostBaked', 'Most baked'), style: current === 'mostBaked' ? 'primary' : 'default', value: 'mostBaked' },
+          { label: label('duration', 'Shortest first'), style: current === 'duration' ? 'primary' : 'default', value: 'duration' },
+          { label: 'Cancel', style: 'ghost', value: null },
+        ],
+      });
+      if (choice && choice !== current) {
+        state.recipeSort = choice;
+        saveState();
+        renderRecipes();
+      }
+    });
+  }
+
+  // Wire bulk-select toggle button — enters/exits selection mode
+  const selectBtn = document.getElementById('recipe-select-btn');
+  if (selectBtn) {
+    selectBtn.addEventListener('click', () => {
+      if (liveItems(state.recipes).length === 0) return; // nothing to select
+      bulkSelectMode = !bulkSelectMode;
+      bulkSelectedIds.clear();
+      renderBulkActionBar();
+      renderRecipes();
+    });
+  }
+  document.getElementById('bulk-cancel-btn').addEventListener('click', () => {
+    exitBulkSelectMode();
+  });
+  document.getElementById('bulk-delete-btn').addEventListener('click', async () => {
+    if (bulkSelectedIds.size === 0) return;
+    const ids = Array.from(bulkSelectedIds);
+    // Surface any that have an active bake — those can't be silently deleted (we end the bake too)
+    const idsWithActiveBakes = ids.filter(id => getActiveBakeForRecipe(id));
+    const message = idsWithActiveBakes.length > 0
+      ? `${ids.length} recipe${ids.length === 1 ? '' : 's'} will be deleted. ${idsWithActiveBakes.length} of them ${idsWithActiveBakes.length === 1 ? 'has' : 'have'} an active bake — those bakes will be ended without saving. This can't be undone.`
+      : `${ids.length} recipe${ids.length === 1 ? '' : 's'} will be deleted. This can't be undone.`;
+    const choice = await showConfirm({
+      title: `Delete ${ids.length} recipe${ids.length === 1 ? '' : 's'}?`,
+      message,
+      buttons: [
+        { label: 'Delete All', style: 'danger', value: 'yes' },
+        { label: 'Cancel', style: 'ghost', value: 'no' },
+      ],
+    });
+    if (choice !== 'yes') return;
+    // End active bakes, then tombstone each recipe
+    for (const id of ids) {
+      const activeForThis = getActiveBakeForRecipe(id);
+      if (activeForThis) removeActiveBake(activeForThis.id);
+      const target = state.recipes.find(x => x.id === id);
+      if (target) tombstone(target);
+    }
+    // If the user was viewing one of the deleted recipes, clear the schedule pointer
+    if (state.currentRecipeId && bulkSelectedIds.has(state.currentRecipeId)) {
+      state.currentRecipeId = null;
+    }
+    if (state.activeBakes.length === 0) stopBakeTicker();
+    updateActiveTabBadge();
+    saveState();
+    exitBulkSelectMode();
+    toast(`${ids.length} recipe${ids.length === 1 ? '' : 's'} deleted`);
+  });
+  document.getElementById('bulk-move-btn').addEventListener('click', async () => {
+    if (bulkSelectedIds.size === 0) return;
+    const ids = Array.from(bulkSelectedIds);
+    // Build category options: existing categories + Uncategorized + Cancel
+    const cats = liveItems(state.categories);
+    const buttons = [
+      { label: 'Uncategorized', style: 'default', value: '__none__' },
+      ...cats.map(c => ({ label: c.name, style: 'default', value: c.id })),
+      { label: 'Cancel', style: 'ghost', value: null },
+    ];
+    const choice = await showConfirm({
+      title: `Move ${ids.length} recipe${ids.length === 1 ? '' : 's'} to…`,
+      message: 'Pick a category to move the selected recipes into.',
+      buttons,
+    });
+    if (!choice) return;
+    const newCatId = choice === '__none__' ? null : choice;
+    for (const id of ids) {
+      const r = state.recipes.find(x => x.id === id);
+      if (r) {
+        r.categoryId = newCatId;
+        touchUpdated(r);
+      }
+    }
+    saveState();
+    exitBulkSelectMode();
+    const catName = newCatId ? (cats.find(c => c.id === newCatId)?.name || 'category') : 'Uncategorized';
+    toast(`${ids.length} recipe${ids.length === 1 ? '' : 's'} moved to ${catName}`);
+  });
 
   // Connect to Firebase once SDK is loaded
   function tryAutoConnect() {
