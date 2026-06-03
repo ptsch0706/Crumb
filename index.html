@@ -1147,8 +1147,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.5.3';
+  const APP_VERSION = '1.5.4';
   const CHANGELOG = [
+    { version: '1.5.4', date: '2026-06-02', notes: [
+      'Starter reminder titles now include the date and a "[Crumb Starter]" tag, e.g. "Feed starter — Fri Jun 5 [Crumb Starter]".',
+      'Unique titles prevent iOS from collapsing or removing duplicate-titled reminders.',
+    ]},
     { version: '1.5.3', date: '2026-06-02', notes: [
       'Unified button labels — "Send Reminders" and "Refresh Reminders" everywhere.',
       'Settings: sync explanation moved behind an info icon next to "Your Sync Code".',
@@ -4791,8 +4795,9 @@ Here is the recipe:
           for (let wk = 0; wk < STARTER_WEEKS; wk++) {
             const d = new Date(firstDate);
             d.setDate(firstDate.getDate() + wk * 7);
+            const dateLabel = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
             milestones.push({
-              title: r.name,
+              title: `${r.name} — ${dateLabel} [Crumb Starter]`,
               time: formatForShortcut(d),
               year: d.getFullYear(),
               month: d.getMonth() + 1,
@@ -4809,7 +4814,7 @@ Here is the recipe:
           refreshNudge.setDate(latestTime.getDate() + 1);
           refreshNudge.setHours(9, 0, 0, 0);
           milestones.push({
-            title: 'Refresh Crumb starter reminders',
+            title: 'Refresh Crumb starter reminders [Crumb Starter]',
             time: formatForShortcut(refreshNudge),
             year: refreshNudge.getFullYear(),
             month: refreshNudge.getMonth() + 1,
@@ -4846,6 +4851,13 @@ Here is the recipe:
     // Push 12 weeks of starter feeding reminders per enabled slot. iOS doesn't reliably
     // support setting Repeat=Weekly via Shortcuts on iOS 18+, so we push each occurrence
     // as its own one-shot reminder. 12 weeks ≈ 3 months between manual refreshes.
+    //
+    // Title includes the date (e.g. "Feed starter — Fri Jun 5 [Crumb Starter]") so each
+    // reminder has a unique title. The "[Crumb Starter]" tag lets the Shortcut's cleanup
+    // step (Find Reminders where Title contains "Crumb Starter" → Remove) collect every
+    // app-created starter reminder for removal on the next refresh, while leaving any
+    // manually-created reminders untouched. The unique-per-week date prevents iOS or
+    // Shortcuts from merging duplicates.
     const STARTER_WEEKS = 12;
     const milestones = [];
     // Track the latest reminder time so we can schedule a self-refresh nudge after it
@@ -4855,8 +4867,9 @@ Here is the recipe:
       for (let wk = 0; wk < STARTER_WEEKS; wk++) {
         const d = new Date(firstDate);
         d.setDate(firstDate.getDate() + wk * 7);
+        const dateLabel = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
         milestones.push({
-          title: r.name,
+          title: `${r.name} — ${dateLabel} [Crumb Starter]`,
           time: formatForShortcut(d),
           year: d.getFullYear(),
           month: d.getMonth() + 1,
@@ -4875,7 +4888,7 @@ Here is the recipe:
       refreshNudge.setDate(latestTime.getDate() + 1);
       refreshNudge.setHours(9, 0, 0, 0);
       milestones.push({
-        title: 'Refresh Crumb starter reminders',
+        title: 'Refresh Crumb starter reminders [Crumb Starter]',
         time: formatForShortcut(refreshNudge),
         year: refreshNudge.getFullYear(),
         month: refreshNudge.getMonth() + 1,
