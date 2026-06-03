@@ -1147,8 +1147,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.5.4';
+  const APP_VERSION = '1.5.6';
   const CHANGELOG = [
+    { version: '1.5.6', date: '2026-06-02', notes: [
+      'Cleaner starter reminder titles — back to just "Feed starter" instead of date-suffixed titles.',
+    ]},
+    { version: '1.5.5', date: '2026-06-02', notes: [
+      'Removed diagnostic Copy Payload button now that starter reminders are working.',
+    ]},
     { version: '1.5.4', date: '2026-06-02', notes: [
       'Starter reminder titles now include the date and a "[Crumb Starter]" tag, e.g. "Feed starter — Fri Jun 5 [Crumb Starter]".',
       'Unique titles prevent iOS from collapsing or removing duplicate-titled reminders.',
@@ -4781,67 +4787,16 @@ Here is the recipe:
         <button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send Reminders'}</button>
       </div>
       ${lastSent ? `<p class="help" style="margin-top: 6px; text-align: center;">Last sent ${escapeHtml(lastSent)}</p>` : '<p class="help" style="margin-top: 6px;">Send to your iPhone Reminders app via the Crumb Timers Shortcut.</p>'}
-      <button class="btn btn-sm btn-block btn-ghost" id="starter-copy-payload" style="margin-top: 10px; font-size: 11px; opacity: 0.7;">Copy Payload (Diagnostic)</button>
     `;
-    const copyBtn = document.getElementById('starter-copy-payload');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', async () => {
-        const enabledReminders = (state.starter && state.starter.reminders || []).filter(r => r.enabled);
-        const STARTER_WEEKS = 12;
-        const milestones = [];
-        let latestTime = null;
-        for (const r of enabledReminders) {
-          const firstDate = nextStarterDate(r);
-          for (let wk = 0; wk < STARTER_WEEKS; wk++) {
-            const d = new Date(firstDate);
-            d.setDate(firstDate.getDate() + wk * 7);
-            const dateLabel = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-            milestones.push({
-              title: `${r.name} — ${dateLabel} [Crumb Starter]`,
-              time: formatForShortcut(d),
-              year: d.getFullYear(),
-              month: d.getMonth() + 1,
-              day: d.getDate(),
-              hour: d.getHours(),
-              minute: d.getMinutes(),
-              note: `Starter feeding (week ${wk + 1} of ${STARTER_WEEKS})`,
-            });
-            if (!latestTime || d > latestTime) latestTime = d;
-          }
-        }
-        if (latestTime) {
-          const refreshNudge = new Date(latestTime);
-          refreshNudge.setDate(latestTime.getDate() + 1);
-          refreshNudge.setHours(9, 0, 0, 0);
-          milestones.push({
-            title: 'Refresh Crumb starter reminders [Crumb Starter]',
-            time: formatForShortcut(refreshNudge),
-            year: refreshNudge.getFullYear(),
-            month: refreshNudge.getMonth() + 1,
-            day: refreshNudge.getDate(),
-            hour: refreshNudge.getHours(),
-            minute: refreshNudge.getMinutes(),
-            note: 'Open Crumb → Active tab → Starter → tap Refresh Reminders to push the next 12 weeks',
-          });
-        }
-        const payload = { recipe: 'Starter', milestones, replaceExisting: true };
-        try {
-          await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-          toast(`Copied ${milestones.length} milestones`);
-        } catch (e) {
-          toast('Clipboard copy failed');
-        }
-      });
-    }
     // Wire send button
     const sendBtn = document.getElementById('starter-send-reminders');
     if (sendBtn) sendBtn.addEventListener('click', sendStarterReminders);
   }
 
   // Build and send the starter reminder payload to the Crumb Timers Shortcut.
-  // Includes a `recurring: 'weekly'` flag on each milestone so the Shortcut can
-  // create weekly-repeating reminders (Shortcut update needed on iOS side to honor this).
-  // Existing one-shot Shortcuts will still create the reminders, just not recurring.
+  // Pushes 12 weeks of one-shot reminders per enabled feeding slot, plus a refresh nudge
+  // the day after the last feeding (so the user knows to come back and push the next batch).
+  // Each title has a unique date suffix and "[Crumb Starter]" tag for clean cleanup.
   async function sendStarterReminders() {
     const reminders = (state.starter && state.starter.reminders || []).filter(r => r.enabled);
     if (reminders.length === 0) {
@@ -4851,13 +4806,6 @@ Here is the recipe:
     // Push 12 weeks of starter feeding reminders per enabled slot. iOS doesn't reliably
     // support setting Repeat=Weekly via Shortcuts on iOS 18+, so we push each occurrence
     // as its own one-shot reminder. 12 weeks ≈ 3 months between manual refreshes.
-    //
-    // Title includes the date (e.g. "Feed starter — Fri Jun 5 [Crumb Starter]") so each
-    // reminder has a unique title. The "[Crumb Starter]" tag lets the Shortcut's cleanup
-    // step (Find Reminders where Title contains "Crumb Starter" → Remove) collect every
-    // app-created starter reminder for removal on the next refresh, while leaving any
-    // manually-created reminders untouched. The unique-per-week date prevents iOS or
-    // Shortcuts from merging duplicates.
     const STARTER_WEEKS = 12;
     const milestones = [];
     // Track the latest reminder time so we can schedule a self-refresh nudge after it
@@ -4867,9 +4815,8 @@ Here is the recipe:
       for (let wk = 0; wk < STARTER_WEEKS; wk++) {
         const d = new Date(firstDate);
         d.setDate(firstDate.getDate() + wk * 7);
-        const dateLabel = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
         milestones.push({
-          title: `${r.name} — ${dateLabel} [Crumb Starter]`,
+          title: r.name,
           time: formatForShortcut(d),
           year: d.getFullYear(),
           month: d.getMonth() + 1,
@@ -4888,7 +4835,7 @@ Here is the recipe:
       refreshNudge.setDate(latestTime.getDate() + 1);
       refreshNudge.setHours(9, 0, 0, 0);
       milestones.push({
-        title: 'Refresh Crumb starter reminders [Crumb Starter]',
+        title: 'Refresh Crumb starter reminders',
         time: formatForShortcut(refreshNudge),
         year: refreshNudge.getFullYear(),
         month: refreshNudge.getMonth() + 1,
