@@ -550,7 +550,7 @@
 <div class="modal-backdrop" id="modal-shortcut">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title" id="modal-shortcut-title">Send to iPhone</div>
+      <div class="modal-title" id="modal-shortcut-title">Send Reminders</div>
       <div style="display: flex; gap: 8px; align-items: center;">
         <button class="modal-close" id="info-shortcut" aria-label="Setup info">i</button>
         <button class="modal-close" data-close>✕</button>
@@ -560,7 +560,7 @@
       <div id="shortcut-payload-preview"></div>
       <button class="btn btn-primary btn-block" id="send-to-shortcut" style="margin-top: 12px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        Send Schedule to Shortcut
+        Send Reminders
       </button>
     </div>
   </div>
@@ -662,7 +662,7 @@
     <div class="modal-body">
       <button class="btn btn-block opt-btn" id="opt-send-reminders" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        <span style="flex: 1;">Send Remaining to Reminders</span>
+        <span style="flex: 1;">Send Reminders</span>
       </button>
 
       <button class="btn btn-block opt-btn" id="opt-refresh-reminders" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px; position: relative;">
@@ -764,6 +764,36 @@
   </div>
 </div>
 
+<!-- SYNC INFO MODAL -->
+<div class="modal-backdrop" id="modal-sync-info">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">About Sync</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size: 14px; color: var(--ink-soft); line-height: 1.6;">Crumb syncs through Firebase. Data is stored under your sync code only — no account or sign-in needed. Anyone with your sync code can read and write your data, so treat it like a password.</p>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE ALL DATA MODAL -->
+<div class="modal-backdrop" id="modal-delete-all-data">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Delete All Data</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="padding: 12px; background: rgba(184, 92, 42, 0.06); border-radius: var(--radius-sm); border: 1px solid var(--warn);">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--warn); margin-bottom: 8px;">Danger Zone</div>
+        <button class="btn btn-sm btn-block" id="wipe-all-data" style="color: var(--warn); background: transparent; border: 1px solid var(--warn);">Delete All Data</button>
+        <p class="help" style="margin-top: 8px;">Deletes all recipes, bakes, categories, and active bakes — locally AND on Firebase if sync is enabled. Cannot be undone. Other connected devices may push their data back if they're still online — disconnect them first for a clean wipe.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- RECIPE VERSION HISTORY MODAL -->
 <div class="modal-backdrop" id="modal-version-history">
   <div class="modal">
@@ -800,7 +830,10 @@
       <button class="modal-close" data-close>✕</button>
     </div>
     <div class="modal-body">
-      <div class="section-title" style="margin-top: 0;">Cloud Sync</div>
+      <div class="section-title" style="margin-top: 0; display: flex; align-items: center; gap: 8px;">
+        <span>Cloud Sync</span>
+        <button id="sync-info-btn" aria-label="About sync" style="background: var(--bg-warm); border: 1px solid var(--line); color: var(--ink-soft); width: 20px; height: 20px; border-radius: 50%; padding: 0; font-size: 12px; font-weight: 700; font-family: serif; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1;">i</button>
+      </div>
 
       <div id="sync-status-card" style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
@@ -840,10 +873,6 @@
 
       <div class="wheat-deco">·  ·  ·</div>
 
-      <p class="help">Crumb syncs through Firebase. Data is stored under your sync code only — no account or sign-in needed. Anyone with your sync code can read and write your data, so treat it like a password.</p>
-
-      <div class="wheat-deco">·  ·  ·</div>
-
       <div class="section-title">Alerts</div>
       <div class="bake-mode-toggle" id="alerts-toggle">
         <div>
@@ -869,19 +898,7 @@
       <input type="file" id="import-data-file" accept="application/json,.json" style="display: none;">
       <p class="help" style="margin-top: 8px;">Export gives you a JSON backup file. Import merges into your current data. Use this to back up to iCloud Drive or migrate between devices without sync.</p>
 
-      <div id="restore-backup-wrap" style="display: none; margin-top: 12px; padding: 10px 12px; background: var(--bg-warm); border-radius: var(--radius-sm); border: 1px solid var(--crust-soft);">
-        <div style="font-size: 12px; color: var(--ink-soft); margin-bottom: 8px;">
-          <strong>Recovery available.</strong> A snapshot of your data was saved before connecting to sync. If recipes went missing, you can restore it.
-        </div>
-        <div id="restore-backup-info" style="font-size: 11px; color: var(--ink-mute); margin-bottom: 8px;"></div>
-        <button class="btn btn-sm btn-block" id="restore-backup">Restore Pre-Sync Snapshot</button>
-      </div>
-
-      <div style="margin-top: 16px; padding: 12px; background: rgba(184, 92, 42, 0.06); border-radius: var(--radius-sm); border: 1px solid var(--warn);">
-        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--warn); margin-bottom: 6px;">Danger Zone</div>
-        <button class="btn btn-sm btn-block" id="wipe-all-data" style="color: var(--warn); background: transparent; border: 1px solid var(--warn);">Wipe All Data</button>
-        <p class="help" style="margin-top: 6px;">Deletes all recipes, bakes, categories, and active bakes — locally AND on Firebase if sync is enabled. Cannot be undone. Other connected devices may push their data back if they're still online — disconnect them first for a clean wipe.</p>
-      </div>
+      <button class="btn btn-block btn-ghost" id="delete-all-data-btn" style="color: var(--warn); margin-top: 16px;">Delete All Data</button>
 
       <div class="wheat-deco">·  ·  ·</div>
 
@@ -1130,8 +1147,18 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.5.1';
+  const APP_VERSION = '1.5.3';
   const CHANGELOG = [
+    { version: '1.5.3', date: '2026-06-02', notes: [
+      'Unified button labels — "Send Reminders" and "Refresh Reminders" everywhere.',
+      'Settings: sync explanation moved behind an info icon next to "Your Sync Code".',
+      'Settings: removed pre-sync snapshot recovery (use Export/Import for backups).',
+      '"Delete All Data" now requires opening a sub-modal first — harder to tap accidentally.',
+    ]},
+    { version: '1.5.2', date: '2026-06-02', notes: [
+      'Starter reminders now push 12 weeks of one-shot reminders at once (iOS 18 removed Shortcuts support for recurring reminders).',
+      'A self-refresh nudge reminder fires at 9 AM the day after the last feeding, prompting you to come back into Crumb and refresh.',
+    ]},
     { version: '1.5.1', date: '2026-06-02', notes: [
       'Audit fixes: starter schedule now syncs across devices.',
       'Audit fixes: Wipe All Data resets starter schedule.',
@@ -4160,8 +4187,8 @@ Here is the recipe:
     const modalTitle = document.getElementById('modal-shortcut-title');
     const sendBtn = document.getElementById('send-to-shortcut');
     const isRefresh = !!options.replaceExisting;
-    if (modalTitle) modalTitle.textContent = isRefresh ? 'Refresh Reminders' : 'Send to iPhone';
-    if (sendBtn) sendBtn.textContent = isRefresh ? 'Refresh Reminders Now' : 'Send Schedule to Shortcut';
+    if (modalTitle) modalTitle.textContent = isRefresh ? 'Refresh Reminders' : 'Send Reminders';
+    if (sendBtn) sendBtn.textContent = isRefresh ? 'Refresh Reminders' : 'Send Reminders';
 
     const milestones = timeline
       .filter(s => !s.isWait)
@@ -4407,8 +4434,27 @@ Here is the recipe:
     toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
 
-  function showModal(id) { document.getElementById(id).classList.add('show'); }
-  function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+  // When opening a modal, bump its z-index above any currently-open modals so it
+  // appears on top. Without this, stacked modals (e.g. a sub-modal opened from inside
+  // Settings) appear BEHIND Settings because they share the same CSS z-index of 100
+  // and DOM order decides the painting order.
+  let _modalStack = 100;
+  function showModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    _modalStack++;
+    el.style.zIndex = _modalStack;
+    el.classList.add('show');
+  }
+  function hideModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('show');
+    // Reset its inline z-index so it falls back to the CSS default next time
+    el.style.zIndex = '';
+    // Decrement so subsequent modals don't keep climbing forever
+    if (_modalStack > 100) _modalStack--;
+  }
 
   // In-app prompt dialog (replaces native prompt() which is blocked in some in-app browsers)
   function showPrompt(opts) {
@@ -4728,7 +4774,7 @@ Here is the recipe:
         `;
       }).join('')}
       <div style="display: flex; gap: 8px; margin-top: 4px;">
-        <button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send to iPhone'}</button>
+        <button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send Reminders'}</button>
       </div>
       ${lastSent ? `<p class="help" style="margin-top: 6px; text-align: center;">Last sent ${escapeHtml(lastSent)}</p>` : '<p class="help" style="margin-top: 6px;">Send to your iPhone Reminders app via the Crumb Timers Shortcut.</p>'}
     `;
@@ -4747,20 +4793,48 @@ Here is the recipe:
       toast('Enable a Reminder First');
       return;
     }
-    const milestones = reminders.map(r => {
-      const d = nextStarterDate(r);
-      return {
-        title: r.name,
-        time: formatForShortcut(d),
-        year: d.getFullYear(),
-        month: d.getMonth() + 1,
-        day: d.getDate(),
-        hour: d.getHours(),
-        minute: d.getMinutes(),
-        note: 'Weekly starter feeding',
-        recurring: 'weekly', // tells the Shortcut to create a recurring reminder
-      };
-    });
+    // Push 12 weeks of starter feeding reminders per enabled slot. iOS doesn't reliably
+    // support setting Repeat=Weekly via Shortcuts on iOS 18+, so we push each occurrence
+    // as its own one-shot reminder. 12 weeks ≈ 3 months between manual refreshes.
+    const STARTER_WEEKS = 12;
+    const milestones = [];
+    // Track the latest reminder time so we can schedule a self-refresh nudge after it
+    let latestTime = null;
+    for (const r of reminders) {
+      const firstDate = nextStarterDate(r);
+      for (let wk = 0; wk < STARTER_WEEKS; wk++) {
+        const d = new Date(firstDate);
+        d.setDate(firstDate.getDate() + wk * 7);
+        milestones.push({
+          title: r.name,
+          time: formatForShortcut(d),
+          year: d.getFullYear(),
+          month: d.getMonth() + 1,
+          day: d.getDate(),
+          hour: d.getHours(),
+          minute: d.getMinutes(),
+          note: `Starter feeding (week ${wk + 1} of ${STARTER_WEEKS})`,
+        });
+        if (!latestTime || d > latestTime) latestTime = d;
+      }
+    }
+    // Add a self-refresh nudge reminder — fires the day after the last feeding at 9 AM.
+    // This reminds the user to come back into Crumb and re-push the next batch.
+    if (latestTime) {
+      const refreshNudge = new Date(latestTime);
+      refreshNudge.setDate(latestTime.getDate() + 1);
+      refreshNudge.setHours(9, 0, 0, 0);
+      milestones.push({
+        title: 'Refresh Crumb starter reminders',
+        time: formatForShortcut(refreshNudge),
+        year: refreshNudge.getFullYear(),
+        month: refreshNudge.getMonth() + 1,
+        day: refreshNudge.getDate(),
+        hour: refreshNudge.getHours(),
+        minute: refreshNudge.getMinutes(),
+        note: 'Open Crumb → Active tab → Starter → tap Refresh Reminders to push the next 12 weeks',
+      });
+    }
     const payload = {
       recipe: 'Starter',
       milestones,
@@ -4778,7 +4852,7 @@ Here is the recipe:
     const url = `shortcuts://run-shortcut?name=${encodeURIComponent('Crumb Timers')}`;
     window.location.href = url;
     renderStarter();
-    toast('Reminders sent');
+    toast(`Sent ${milestones.length} reminders`);
   }
 
   // Open the starter schedule editor modal — renders the form, wires events.
@@ -5677,18 +5751,6 @@ Here is the recipe:
       toast('Sync engine failed to start');
       return false;
     }
-    // Safety: stash a backup of current local state BEFORE sync changes anything.
-    // If a merge goes sideways, the user can restore from Settings.
-    try {
-      const backup = {
-        savedAt: new Date().toISOString(),
-        recipes: state.recipes,
-        bakes: state.bakes,
-        categories: state.categories,
-        activeBakes: state.activeBakes,
-      };
-      localStorage.setItem('crumb-pre-sync-backup', JSON.stringify(backup));
-    } catch (e) { console.warn('Could not save pre-sync backup', e); }
 
     // CRITICAL: fetch the existing remote document FIRST before pushing anything.
     // If we push first (even debounced), we'd overwrite an existing household's data
@@ -5939,80 +6001,18 @@ Here is the recipe:
     });
   }
 
-  // Show the recovery card if a pre-sync backup exists
-  function renderRestoreBackup() {
-    const wrap = document.getElementById('restore-backup-wrap');
-    const info = document.getElementById('restore-backup-info');
-    if (!wrap) return;
-    let backup = null;
-    try {
-      const raw = localStorage.getItem('crumb-pre-sync-backup');
-      if (raw) backup = JSON.parse(raw);
-    } catch (e) { /* corrupted backup, ignore */ }
-    if (!backup) {
-      wrap.style.display = 'none';
-      return;
-    }
-    wrap.style.display = '';
-    if (info) {
-      const when = backup.savedAt ? new Date(backup.savedAt).toLocaleString() : 'unknown time';
-      const rCount = (backup.recipes || []).length;
-      const bCount = (backup.bakes || []).length;
-      info.textContent = `Saved ${when} · ${rCount} recipes, ${bCount} bakes`;
-    }
-  }
-
   // Wire up settings + sync controls
   function wireSyncControls() {
     const openSettings = () => {
       renderSyncStatus();
       renderAlertsToggle();
       renderSettingsStats();
-      renderRestoreBackup();
       showModal('modal-settings');
     };
     const oldGear = document.getElementById('btn-settings');
     if (oldGear) oldGear.addEventListener('click', openSettings);
     const newGear = document.getElementById('btn-open-settings');
     if (newGear) newGear.addEventListener('click', openSettings);
-
-    // Restore pre-sync backup
-    const restoreBtn = document.getElementById('restore-backup');
-    if (restoreBtn) {
-      restoreBtn.addEventListener('click', async () => {
-        let backup = null;
-        try {
-          const raw = localStorage.getItem('crumb-pre-sync-backup');
-          if (raw) backup = JSON.parse(raw);
-        } catch (e) { toast('Backup file is corrupted'); return; }
-        if (!backup) { toast('No backup found'); return; }
-        const rCount = (backup.recipes || []).length;
-        const bCount = (backup.bakes || []).length;
-        const choice = await showConfirm({
-          title: 'Restore from backup?',
-          message: `This will merge ${rCount} recipes and ${bCount} bakes from before sync was last connected. Duplicates skipped by ID. Sync stays enabled and will push the restored data.`,
-          buttons: [
-            { label: 'Restore', style: 'primary', value: 'yes' },
-            { label: 'Cancel', style: 'ghost', value: 'no' },
-          ],
-        });
-        if (choice !== 'yes') return;
-        // Merge using same id-based merge as sync — preserves newer items of either side
-        if (Array.isArray(backup.recipes)) state.recipes = mergeById(state.recipes, backup.recipes);
-        if (Array.isArray(backup.bakes)) state.bakes = mergeById(state.bakes, backup.bakes);
-        if (Array.isArray(backup.categories)) state.categories = mergeById(state.categories, backup.categories);
-        // Touch all so the restored versions win the sync merge against any stale remote
-        const now = Date.now();
-        for (const r of state.recipes) r._updatedAt = now;
-        for (const b of state.bakes) b._updatedAt = now;
-        for (const c of state.categories) c._updatedAt = now;
-        saveState();
-        renderRecipes();
-        renderHistory();
-        renderSettingsStats();
-        toast(`Restored ${rCount} Recipes, ${bCount} Bakes`);
-      });
-    }
 
     // Wipe all data — local + remote (if synced). Requires two confirmations.
     const wipeBtn = document.getElementById('wipe-all-data');
@@ -6129,6 +6129,21 @@ Here is the recipe:
         renderChangelog();
         showModal('modal-changelog');
       });
+    }
+
+    // Sync info — popup with the explanation about Firebase/security
+    const syncInfoBtn = document.getElementById('sync-info-btn');
+    if (syncInfoBtn) {
+      syncInfoBtn.addEventListener('click', () => showModal('modal-sync-info'));
+    }
+
+    // Delete All Data — opens a sub-modal containing the actual wipe button.
+    // Two-tap gate: tapping "Delete All Data" in Settings opens the modal, then
+    // user must tap the Delete All Data button inside the modal to start the wipe flow
+    // (which itself has two more confirmations).
+    const deleteAllDataBtn = document.getElementById('delete-all-data-btn');
+    if (deleteAllDataBtn) {
+      deleteAllDataBtn.addEventListener('click', () => showModal('modal-delete-all-data'));
     }
 
     // Export all data as JSON file download
