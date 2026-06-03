@@ -4777,7 +4777,57 @@ Here is the recipe:
         <button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send Reminders'}</button>
       </div>
       ${lastSent ? `<p class="help" style="margin-top: 6px; text-align: center;">Last sent ${escapeHtml(lastSent)}</p>` : '<p class="help" style="margin-top: 6px;">Send to your iPhone Reminders app via the Crumb Timers Shortcut.</p>'}
+      <button class="btn btn-sm btn-block btn-ghost" id="starter-copy-payload" style="margin-top: 10px; font-size: 11px; opacity: 0.7;">Copy Payload (Diagnostic)</button>
     `;
+    const copyBtn = document.getElementById('starter-copy-payload');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        const enabledReminders = (state.starter && state.starter.reminders || []).filter(r => r.enabled);
+        const STARTER_WEEKS = 12;
+        const milestones = [];
+        let latestTime = null;
+        for (const r of enabledReminders) {
+          const firstDate = nextStarterDate(r);
+          for (let wk = 0; wk < STARTER_WEEKS; wk++) {
+            const d = new Date(firstDate);
+            d.setDate(firstDate.getDate() + wk * 7);
+            milestones.push({
+              title: r.name,
+              time: formatForShortcut(d),
+              year: d.getFullYear(),
+              month: d.getMonth() + 1,
+              day: d.getDate(),
+              hour: d.getHours(),
+              minute: d.getMinutes(),
+              note: `Starter feeding (week ${wk + 1} of ${STARTER_WEEKS})`,
+            });
+            if (!latestTime || d > latestTime) latestTime = d;
+          }
+        }
+        if (latestTime) {
+          const refreshNudge = new Date(latestTime);
+          refreshNudge.setDate(latestTime.getDate() + 1);
+          refreshNudge.setHours(9, 0, 0, 0);
+          milestones.push({
+            title: 'Refresh Crumb starter reminders',
+            time: formatForShortcut(refreshNudge),
+            year: refreshNudge.getFullYear(),
+            month: refreshNudge.getMonth() + 1,
+            day: refreshNudge.getDate(),
+            hour: refreshNudge.getHours(),
+            minute: refreshNudge.getMinutes(),
+            note: 'Open Crumb → Active tab → Starter → tap Refresh Reminders to push the next 12 weeks',
+          });
+        }
+        const payload = { recipe: 'Starter', milestones, replaceExisting: true };
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+          toast(`Copied ${milestones.length} milestones`);
+        } catch (e) {
+          toast('Clipboard copy failed');
+        }
+      });
+    }
     // Wire send button
     const sendBtn = document.getElementById('starter-send-reminders');
     if (sendBtn) sendBtn.addEventListener('click', sendStarterReminders);
