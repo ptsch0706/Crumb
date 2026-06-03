@@ -1147,8 +1147,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.5.6';
+  const APP_VERSION = '1.5.7';
   const CHANGELOG = [
+    { version: '1.5.7', date: '2026-06-02', notes: [
+      'Starter countdown reads more naturally — "on Friday" instead of "in 1 day" for 1+ days out, "in 8 hours" for sub-day. Applied to both the widget and the in-app Starter section.',
+    ]},
     { version: '1.5.6', date: '2026-06-02', notes: [
       'Cleaner starter reminder titles — back to just "Feed starter" instead of date-suffixed titles.',
     ]},
@@ -4768,11 +4771,23 @@ Here is the recipe:
       ${items.map(item => {
         const r = item.reminder;
         const msAway = item.next - new Date();
-        const hoursAway = Math.floor(msAway / 3600000);
-        const daysAway = Math.floor(hoursAway / 24);
-        const awayStr = daysAway >= 1
-          ? `in ${daysAway} day${daysAway === 1 ? '' : 's'}`
-          : `in ${Math.max(1, hoursAway)}h`;
+        // For sub-day, show hour count. For 1+ days, show the day name ("on Friday",
+        // "Tomorrow"). Whole-day counts like "in 1 day" are too coarse — they conflate
+        // 24-hours-out with 47-hours-out which feel meaningfully different.
+        let awayStr;
+        if (msAway < 86400000) {
+          const hours = Math.max(1, Math.round(msAway / 3600000));
+          awayStr = `in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+        } else {
+          const now = new Date();
+          const tomorrow = new Date(now.getTime() + 86400000);
+          if (item.next.toDateString() === tomorrow.toDateString()) {
+            awayStr = 'Tomorrow';
+          } else {
+            const fullDay = item.next.toLocaleDateString(undefined, { weekday: 'long' });
+            awayStr = `on ${fullDay}`;
+          }
+        }
         return `
           <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
