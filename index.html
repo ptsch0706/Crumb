@@ -871,8 +871,6 @@
         <button class="btn btn-block btn-ghost" id="disable-sync" style="color: var(--warn); margin-top: 16px;">Disconnect Sync</button>
       </div>
 
-      <div class="wheat-deco">·  ·  ·</div>
-
       <div class="section-title">Alerts</div>
       <div class="bake-mode-toggle" id="alerts-toggle">
         <div>
@@ -883,8 +881,6 @@
         </div>
         <div class="switch-pill"></div>
       </div>
-
-      <div class="wheat-deco">·  ·  ·</div>
 
       <div class="section-title">Data</div>
       <button class="btn btn-block" id="export-data" style="margin-bottom: 8px;">
@@ -899,8 +895,6 @@
       <p class="help" style="margin-top: 8px;">Export gives you a JSON backup file. Import merges into your current data. Use this to back up to iCloud Drive or migrate between devices without sync.</p>
 
       <button class="btn btn-block btn-ghost" id="delete-all-data-btn" style="color: var(--warn); margin-top: 16px;">Delete All Data</button>
-
-      <div class="wheat-deco">·  ·  ·</div>
 
       <div class="section-title">About</div>
       <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.6;">
@@ -2455,7 +2449,7 @@
       </button>
       <button class="btn btn-block" id="btn-shortcut" style="margin-top: 8px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        Create iOS Reminders
+        Send Reminders
       </button>
       <button class="btn btn-block" id="btn-edit-recipe" style="margin-top: 8px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -4458,6 +4452,12 @@ Here is the recipe:
     _modalStack++;
     el.style.zIndex = _modalStack;
     el.classList.add('show');
+    // Reset scroll position so the modal always opens at the top, not where the user
+    // last scrolled. Without this, reopening a long modal like the recipe editor would
+    // jump to the previous scroll position which looks unpolished.
+    const body = el.querySelector('.modal-body');
+    if (body) body.scrollTop = 0;
+    el.scrollTop = 0; // fallback in case the modal scrolls at the root level
   }
   function hideModal(id) {
     const el = document.getElementById(id);
@@ -4738,6 +4738,29 @@ Here is the recipe:
     return target;
   }
 
+  // Given a starter reminder { dayOfWeek, hour, minute }, return the JS Date of its
+  // most recent past occurrence (< now). Used to compute progress between consecutive
+  // feedings. Always lands somewhere within the last 7 days.
+  function prevStarterDate(reminder) {
+    const next = nextStarterDate(reminder);
+    // Subtract one week to get the previous occurrence
+    const prev = new Date(next);
+    prev.setDate(next.getDate() - 7);
+    return prev;
+  }
+
+  // Find the most recent past reminder time across ALL enabled starter slots.
+  // Returns null if no slots are enabled.
+  function mostRecentStarterFeed(enabledReminders) {
+    if (!enabledReminders || enabledReminders.length === 0) return null;
+    let latest = null;
+    for (const r of enabledReminders) {
+      const prev = prevStarterDate(r);
+      if (!latest || prev > latest) latest = prev;
+    }
+    return latest;
+  }
+
   // Format a starter reminder as "Saturday · 9:00 AM" for display
   function fmtStarterSchedule(reminder) {
     const d = new Date();
@@ -4767,37 +4790,58 @@ Here is the recipe:
     const lastSent = state.starter.remindersSentAt
       ? new Date(state.starter.remindersSentAt).toLocaleDateString([], { month: 'short', day: 'numeric' })
       : null;
+    // Compute progress bar data for the soonest upcoming reminder.
+    // Progress runs from the most recent past feeding (any slot) to the next upcoming feeding.
+    // Hidden when the gap is < 24h, since that indicates we're in the "active feeding window"
+    // between two same-day slots (e.g. Fri 8 AM and Fri 7 PM).
+    const now = new Date();
+    const soonestNext = items[0].next;
+    const prevFeed = mostRecentStarterFeed(enabledReminders);
+    let progressPct = null;
+    if (prevFeed) {
+      const gapMs = soonestNext - prevFeed;
+      if (gapMs >= 86400000) { // 24h threshold
+        const elapsed = now - prevFeed;
+        progressPct = Math.max(0, Math.min(1, elapsed / gapMs));
+      }
+    }
+    // Single merged card: "Feed Starter" with progress bar and a list of upcoming reminders.
+    // The top item is the soonest feeding (with "away" text). Subsequent items are listed
+    // below as supporting context. Progress bar matches the gap from previous feed to next.
+    const soonestItem = items[0];
+    const soonestMsAway = soonestItem.next - new Date();
+    let awayStr;
+    if (soonestMsAway < 86400000) {
+      const hours = Math.max(1, Math.round(soonestMsAway / 3600000));
+      awayStr = `in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+    } else {
+      const now2 = new Date();
+      const tomorrow = new Date(now2.getTime() + 86400000);
+      if (soonestItem.next.toDateString() === tomorrow.toDateString()) {
+        awayStr = 'Tomorrow';
+      } else {
+        const fullDay = soonestItem.next.toLocaleDateString(undefined, { weekday: 'long' });
+        awayStr = `on ${fullDay}`;
+      }
+    }
     c.innerHTML = `
-      ${items.map(item => {
-        const r = item.reminder;
-        const msAway = item.next - new Date();
-        // For sub-day, show hour count. For 1+ days, show the day name ("on Friday",
-        // "Tomorrow"). Whole-day counts like "in 1 day" are too coarse — they conflate
-        // 24-hours-out with 47-hours-out which feel meaningfully different.
-        let awayStr;
-        if (msAway < 86400000) {
-          const hours = Math.max(1, Math.round(msAway / 3600000));
-          awayStr = `in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
-        } else {
-          const now = new Date();
-          const tomorrow = new Date(now.getTime() + 86400000);
-          if (item.next.toDateString() === tomorrow.toDateString()) {
-            awayStr = 'Tomorrow';
-          } else {
-            const fullDay = item.next.toLocaleDateString(undefined, { weekday: 'long' });
-            awayStr = `on ${fullDay}`;
-          }
-        }
-        return `
-          <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 10px;">
-            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
-              <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em;">${escapeHtml(r.name)}</div>
-              <div style="font-size: 12px; color: var(--leaven); font-weight: 600;">${escapeHtml(awayStr)}</div>
-            </div>
-            <div style="font-size: 13px; color: var(--ink-soft); margin-top: 2px;">${escapeHtml(fmtStarterSchedule(r))}</div>
+      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+          <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em;">Feed Starter</div>
+          <div style="font-size: 12px; color: var(--leaven); font-weight: 600;">${escapeHtml(awayStr)}</div>
+        </div>
+        ${progressPct !== null ? `
+          <div style="margin-top: 10px; height: 6px; background: var(--bg-warm); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; width: ${(progressPct * 100).toFixed(1)}%; background: var(--leaven); border-radius: 3px; transition: width 0.3s;"></div>
           </div>
-        `;
-      }).join('')}
+        ` : ''}
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);">
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Schedule</div>
+          ${items.map(item => `
+            <div style="font-size: 13px; color: var(--ink-soft); padding: 3px 0;">${escapeHtml(fmtStarterSchedule(item.reminder))}</div>
+          `).join('')}
+        </div>
+      </div>
       <div style="display: flex; gap: 8px; margin-top: 4px;">
         <button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send Reminders'}</button>
       </div>
