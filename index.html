@@ -212,6 +212,10 @@
   .ing-row:last-child { border-bottom: none; }
   .ing-row .name { color: var(--ink-soft); flex: 1; }
   .ing-row .qty { font-family: 'JetBrains Mono', monospace; color: var(--ink); font-weight: 500; text-align: right; flex-shrink: 0; }
+  /* Convertible weight qtys are tappable. The dotted underline signals "interactive" the
+     way a defined-term tooltip does on the web, without making it feel like a button. */
+  .qty-convertible { cursor: pointer; border-bottom: 1px dotted var(--ink-mute); padding-bottom: 1px; -webkit-tap-highlight-color: rgba(201, 123, 60, 0.2); transition: color 0.15s; }
+  .qty-convertible:active { color: var(--crust-deep); }
 
   /* Scale control */
   .scale-control { display: flex; align-items: center; gap: 12px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 10px; }
@@ -343,8 +347,23 @@
   .bake-hero .countdown-when { font-size: 12px; opacity: 0.85; margin-top: 4px; }
   .bake-hero.waiting { background: linear-gradient(135deg, var(--rest), var(--crust)); }
   .bake-hero.idle { background: linear-gradient(135deg, var(--leaven), #5a7044); }
+  /* Approaching-end: gentle amber warm-up in the final 5 minutes before the stage ends.
+     Sits between the default crust gradient and the overdue red, giving an early visual
+     cue so you can look up before timers start "shouting." Transitions smoothly so the
+     re-render every second doesn't pop. */
+  .bake-hero.approaching { background: linear-gradient(135deg, #d97a3a, #b85c2a); transition: background 0.6s ease; }
   .bake-hero.overdue { background: linear-gradient(135deg, #b54a2a, #8a3015); animation: overduePulse 1.8s ease-in-out infinite; }
   @keyframes overduePulse { 0%, 100% { box-shadow: var(--shadow-lg); } 50% { box-shadow: 0 12px 40px rgba(181, 74, 42, 0.5), 0 0 0 3px rgba(181, 74, 42, 0.3); } }
+
+  /* In-stage progress bar at the bottom of the bake hero. Mirrors the widget's bar so the
+     in-app view stays consistent with what the widget shows on the home screen. */
+  .stage-progress { margin-top: 14px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 100px; overflow: hidden; }
+  .stage-progress > .fill { height: 100%; background: rgba(255,255,255,0.85); border-radius: 100px; transition: width 0.6s ease; }
+  .bake-hero.overdue .stage-progress > .fill { background: rgba(255,255,255,0.9); }
+
+  /* "What's next" preview line under the countdown */
+  .bake-hero .whats-next { margin-top: 10px; font-size: 12px; opacity: 0.85; display: flex; align-items: center; gap: 6px; }
+  .bake-hero .whats-next .arrow { opacity: 0.7; }
   .overdue-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.25); padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
   .overdue-badge::before { content: ''; width: 6px; height: 6px; background: white; border-radius: 50%; animation: pulse 1s ease-in-out infinite; }
 
@@ -1211,8 +1230,18 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.7.0';
+  const APP_VERSION = '1.9.0';
   const CHANGELOG = [
+    { version: '1.9.0', date: '2026-06-02', notes: [
+      'Tap any weight quantity to convert grams ↔ ounces, in the recipe view or active bake checklist.',
+      'Grams remain the default; conversions are transient (reset on app reload).',
+      'Convertible quantities are marked with a subtle dotted underline.',
+    ]},
+    { version: '1.8.0', date: '2026-06-02', notes: [
+      'Active bake hero now shows a stage progress bar — see at a glance how much of the current stage is left.',
+      'Bake card subtly warms to amber in the final 5 minutes before a stage ends, so the harsh red overdue color isn\'t your first cue.',
+      '"Next: ..." preview line under the countdown shows what stage is coming up so you can plan ahead.',
+    ]},
     { version: '1.7.0', date: '2026-06-02', notes: [
       'Pull-to-refresh on Recipes, History, and Active tabs — drag down from the top to sync.',
       'Smoother view transitions when switching tabs.',
@@ -1525,6 +1554,75 @@
       ...ing,
       qty: scaleQuantity(ing.qty || '', factor),
     }));
+  }
+
+  // ============================================================
+  // WEIGHT UNIT CONVERSION (g ↔ oz)
+  // ============================================================
+  // Detects weight in a qty string and toggles between grams and ounces. Used by tap-to-
+  // convert in the recipe view + active bake checklist. Non-weight qtys are returned unchanged.
+  //
+  // Detection: looks for `<number><optional space><g|gram(s)|oz|ounce(s)|kg|lb|pound(s)>`.
+  // Conversion factor: 1 oz = 28.3495 g exactly per international avoirdupois pound.
+  // When converting from a kg/lb input we still display in g or oz (more useful for baking).
+  const GRAMS_PER_OUNCE = 28.3495;
+
+  // Parse a qty string and return { value, unit, prefix, suffix } if a weight is found,
+  // or null if not. value is in grams (the canonical unit). prefix/suffix preserve the
+  // surrounding text so we can reconstruct the original string with just the unit swapped.
+  // Example: "about 500g" → { value: 500, unit: 'g', prefix: 'about ', suffix: '' }
+  function parseWeight(qty) {
+    if (!qty) return null;
+    // Order matters: longer/more-specific patterns first so "kg" doesn't match as "g".
+    const re = /^(\s*[\w\s.,\-/¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]*?)(\d+(?:\.\d+)?|\d+\s+\d+\/\d+|\d+\/\d+|[¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])\s*(kilograms?|kilos?|kg|grams?|gm?|pounds?|lbs?|lb|ounces?|ozs?|oz)\b\s*(.*)$/i;
+    const m = qty.match(re);
+    if (!m) return null;
+    const [, prefix, numStr, unitRaw, suffix] = m;
+    const num = parseNumberToken(numStr);
+    if (num === null) return null;
+    const unit = unitRaw.toLowerCase();
+    // Normalize input to grams as the canonical internal value
+    let grams;
+    if (/^(kilograms?|kilos?|kg)$/.test(unit)) grams = num * 1000;
+    else if (/^(pounds?|lbs?|lb)$/.test(unit)) grams = num * GRAMS_PER_OUNCE * 16;
+    else if (/^(ounces?|ozs?|oz)$/.test(unit)) grams = num * GRAMS_PER_OUNCE;
+    else grams = num; // grams variants
+    return { value: grams, unit, prefix: prefix || '', suffix: suffix || '' };
+  }
+
+  // Convert a parsed weight to a target unit and format nicely.
+  // target: 'g' or 'oz' (the two units in our toggle cycle).
+  function formatWeightAs(parsed, target) {
+    if (!parsed) return '';
+    const grams = parsed.value;
+    if (target === 'oz') {
+      const oz = grams / GRAMS_PER_OUNCE;
+      // Round to 2 decimals when small, 1 decimal when larger
+      const rounded = oz < 1 ? oz.toFixed(2) : oz < 10 ? oz.toFixed(2) : oz.toFixed(1);
+      // Trim trailing zeros for cleaner display ("3.50" → "3.5")
+      const clean = rounded.replace(/\.?0+$/, '');
+      return `${parsed.prefix}${clean} oz${parsed.suffix ? ' ' + parsed.suffix : ''}`.trim();
+    }
+    // Default: grams. Round to whole grams for amounts > 10, one decimal under.
+    const g = grams >= 10 ? Math.round(grams) : Math.round(grams * 10) / 10;
+    return `${parsed.prefix}${g}g${parsed.suffix ? ' ' + parsed.suffix : ''}`.trim();
+  }
+
+  // Transient per-session map of which weight unit each ingredient is displayed in.
+  // Keyed by ingredient name. Not persisted — refreshes back to grams on every reload,
+  // since grams is the canonical baking unit and the toggle is meant for quick reference
+  // conversions ("how many oz is that?") not lasting preferences.
+  const _ingredientUnitOverride = new Map();
+
+  // Returns the qty string for an ingredient, applying any active unit override.
+  // If no override, returns the qty in its original (already-grams-by-default) form.
+  function displayQty(ing) {
+    const raw = ing.qty || '';
+    const override = _ingredientUnitOverride.get(ing.name);
+    if (!override) return raw;
+    const parsed = parseWeight(raw);
+    if (!parsed) return raw;
+    return formatWeightAs(parsed, override);
   }
 
   // Auto-detect which recipe ingredients are mentioned in a given stage's text.
@@ -2567,14 +2665,17 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
         Start Bake
       </button>
-      <button class="btn btn-block" id="btn-shortcut" style="margin-top: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        Send Reminders
-      </button>
-      <button class="btn btn-block" id="btn-edit-recipe" style="margin-top: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Edit Recipe
-      </button>
+      <!-- Secondary actions: Send Reminders + Edit Recipe as compact icon-only buttons side by side.
+           They are secondary to Start Bake, so de-emphasizing them with icons keeps the visual
+           hierarchy clean. aria-label keeps them accessible for VoiceOver. -->
+      <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: center;">
+        <button class="btn" id="btn-shortcut" aria-label="Send Reminders" title="Send Reminders" style="padding: 12px 36px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin: 0;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </button>
+        <button class="btn" id="btn-edit-recipe" aria-label="Edit Recipe" title="Edit Recipe" style="padding: 12px 36px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin: 0;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      </div>
 
       ${recipe.ingredients && recipe.ingredients.length > 0 ? `
         <div class="section-title">Ingredients</div>
@@ -2588,12 +2689,24 @@
           </div>
         </div>
         <div class="ing-list">
-          ${getScaledIngredients(recipe, state.scaleFactor).map(ing => `
-            <div class="ing-row">
-              <span class="name">${escapeHtml(ing.name)}</span>
-              <span class="qty">${escapeHtml(ing.qty || '')}</span>
-            </div>
-          `).join('')}
+          ${recipe.ingredients.map(ing => {
+            // Apply scale to the raw qty first, then check for unit override.
+            // If overridden, parse the scaled qty and reformat in the override unit.
+            const scaledQty = scaleQuantity(ing.qty || '', state.scaleFactor);
+            const override = _ingredientUnitOverride.get(ing.name);
+            const parsed = override ? parseWeight(scaledQty) : null;
+            const displayedQty = parsed ? formatWeightAs(parsed, override) : scaledQty;
+            // Only attach the tappable class if the qty is actually a recognized weight.
+            // Otherwise tapping a "1 tsp" ingredient would do nothing — better to make it
+            // visually un-tappable so the affordance matches behavior.
+            const isWeight = !!parseWeight(scaledQty);
+            return `
+              <div class="ing-row">
+                <span class="name">${escapeHtml(ing.name)}</span>
+                <span class="qty ${isWeight ? 'qty-convertible' : ''}" data-ing-name="${escapeAttr(ing.name)}">${escapeHtml(displayedQty || '')}</span>
+              </div>
+            `;
+          }).join('')}
         </div>
         ${state.scaleFactor !== 1 ? `<p class="help" style="margin-top: -4px; margin-bottom: 12px;">Scaled ${state.scaleFactor}× from original. Stage durations stay the same — fermentation doesn't care about batch size.</p>` : ''}
       ` : ''}
@@ -2690,6 +2803,19 @@
           state.scaleFactor = parseFloat(val);
         }
         saveState();
+        renderSchedule();
+      });
+    });
+    // Tap a weight qty to toggle between grams and ounces. State is transient (in-memory
+    // only), so units default back to grams on reload. Just for quick reference conversion.
+    container.querySelectorAll('.qty-convertible').forEach(span => {
+      span.addEventListener('click', () => {
+        const ingName = span.dataset.ingName;
+        const cur = _ingredientUnitOverride.get(ingName);
+        const next = cur === 'oz' ? null : 'oz'; // toggle: null (default g) → oz → null
+        if (next === null) _ingredientUnitOverride.delete(ingName);
+        else _ingredientUnitOverride.set(ingName, next);
+        haptic('light');
         renderSchedule();
       });
     });
@@ -3365,7 +3491,18 @@
       countdownValue = f.value;
       countdownWhen = f.when;
     } else {
-      heroState = msToEnd < 0 ? 'overdue' : '';
+      // Active "doing" stage (not a waiting stage, not awaiting-start, has started)
+      // Apply approaching-end visual ramp in the final 5 minutes before the stage ends,
+      // so the user gets a softer "look up" cue before the harsh overdue red kicks in.
+      // Threshold: 5 minutes. Anything earlier feels indistinguishable from "in progress."
+      const APPROACHING_THRESHOLD_MS = 5 * 60 * 1000;
+      if (msToEnd < 0) {
+        heroState = 'overdue';
+      } else if (msToEnd <= APPROACHING_THRESHOLD_MS) {
+        heroState = 'approaching';
+      } else {
+        heroState = '';
+      }
       statusText = msToEnd < 0 ? 'Past scheduled end' : 'Now doing';
       countdownLabel = msToEnd < 0 ? 'Overdue by' : 'Done by';
       if (msToEnd < 0) {
@@ -3377,6 +3514,29 @@
         countdownWhen = f.when;
       }
       showOverdueBadge = msToEnd < 0;
+    }
+
+    // ----------------------------------------------------------
+    // Progress bar + "what's next" computations (used in render)
+    // ----------------------------------------------------------
+    // Progress bar shows fraction of THIS stage that has elapsed. Visible only when the
+    // stage has actually started (msToStart <= 0) and isn't an awaiting-start gate.
+    // Skipped for zero-duration stages (instant) since the fraction is undefined.
+    const stageDurMs = getStageDur(recipe, curIdx, ab) * 60000;
+    let stageProgressPct = null;
+    if (!isAwaitingStart && msToStart <= 0 && stageDurMs > 0) {
+      const elapsed = stageDurMs - msToEnd; // can exceed stageDurMs when overdue
+      stageProgressPct = Math.max(0, Math.min(1, elapsed / stageDurMs));
+    }
+
+    // What's next: preview the upcoming stage so the user knows what's coming without
+    // having to scroll the stage list. Skipped on the last stage (no "next") and while
+    // paused (the countdown is meaningless then, the "next" line would feel disconnected).
+    let whatsNextHtml = '';
+    if (!ab.paused && !isAwaitingStart && curIdx < recipe.stages.length - 1) {
+      const nextStage = recipe.stages[curIdx + 1];
+      const nextDur = getStageDur(recipe, curIdx + 1, ab);
+      whatsNextHtml = `<div class="whats-next"><span class="arrow">↪</span> Next: ${escapeHtml(nextStage.name)} · ${formatDur(nextDur)}</div>`;
     }
 
     container.innerHTML = `
@@ -3420,11 +3580,16 @@
                 // Use the ingredient's name as the stable key (ids don't exist in this schema)
                 const key = ing.name;
                 const checked = !!checks[key];
+                // Scale first, then apply any active unit override
                 const scaledQty = scaleQuantity(ing.qty || '', scale);
+                const override = _ingredientUnitOverride.get(ing.name);
+                const parsed = override ? parseWeight(scaledQty) : null;
+                const displayedQty = parsed ? formatWeightAs(parsed, override) : scaledQty;
+                const isWeight = !!parseWeight(scaledQty);
                 return `
                   <label class="stage-ing-row" data-ing-key="${escapeHtml(key)}" style="display: flex; align-items: center; gap: 10px; padding: 6px 0; cursor: pointer; font-size: 14px;">
                     <span class="stage-ing-box" style="width: 20px; height: 20px; border-radius: 5px; border: 2px solid currentColor; flex-shrink: 0; display: flex; align-items: center; justify-content: center; opacity: ${checked ? 1 : 0.55}; background: ${checked ? 'currentColor' : 'transparent'};">${checked ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--bake-accent)" stroke-width="3" style="width: 12px; height: 12px;"><path d="M5 13l4 4L19 7"/></svg>' : ''}</span>
-                    <span style="flex: 1; ${checked ? 'text-decoration: line-through; opacity: 0.55;' : ''}">${escapeHtml(ing.name)}${scaledQty ? ` <span style="opacity: 0.7;">· ${escapeHtml(scaledQty)}</span>` : ''}</span>
+                    <span style="flex: 1; ${checked ? 'text-decoration: line-through; opacity: 0.55;' : ''}">${escapeHtml(ing.name)}${displayedQty ? ` <span ${isWeight ? `class="qty-convertible-bake" data-ing-name="${escapeAttr(ing.name)}"` : ''} style="opacity: 0.7;${isWeight ? ' border-bottom: 1px dotted rgba(255,255,255,0.5); cursor: pointer;' : ''}">· ${escapeHtml(displayedQty)}</span>` : ''}</span>
                   </label>
                 `;
               }).join('')}
@@ -3436,6 +3601,12 @@
           <div class="countdown-value">${ab.paused ? '—' : countdownValue}</div>
           ${countdownWhen && !ab.paused ? `<div class="countdown-when">${countdownWhen}</div>` : ''}
         </div>
+        ${stageProgressPct !== null && !ab.paused ? `
+          <div class="stage-progress">
+            <div class="fill" style="width: ${(stageProgressPct * 100).toFixed(1)}%;"></div>
+          </div>
+        ` : ''}
+        ${whatsNextHtml}
       </div>
 
       <div class="done-btn">
@@ -3548,7 +3719,24 @@
       const editRecipeBtn = e.target.closest('#btn-edit-recipe-active');
       const adjustTimerBtn = e.target.closest('#btn-adjust-timer');
       const bakingModeBtn = e.target.closest('#baking-mode-toggle');
+      const qtyConvBake = e.target.closest('.qty-convertible-bake');
       const ingRow = e.target.closest('.stage-ing-row');
+
+      // Tap on a weight qty inside the bake checklist — toggle the displayed unit (g ↔ oz).
+      // Must be checked BEFORE the ingRow handler since the qty span sits inside the label;
+      // otherwise tapping the qty would also toggle the checkbox.
+      if (qtyConvBake) {
+        e.preventDefault();
+        e.stopPropagation();
+        const ingName = qtyConvBake.dataset.ingName;
+        const cur = _ingredientUnitOverride.get(ingName);
+        const next = cur === 'oz' ? null : 'oz';
+        if (next === null) _ingredientUnitOverride.delete(ingName);
+        else _ingredientUnitOverride.set(ingName, next);
+        haptic('light');
+        renderActiveBake(recipe, ab);
+        return;
+      }
 
       // Ingredient checklist tap — toggle, persist, and re-render the row in place
       // so we don't bounce the whole bake card. Uses ingredient name as the persistence key.
