@@ -3510,6 +3510,33 @@
             </button>
           </div>
           <p class="help" style="margin-top: 8px; text-align: center;">Tap to skip the prep window and begin ${escapeHtml(firstStage.name)} immediately.</p>
+          ${recipe.ingredients && recipe.ingredients.length > 0 ? `
+            <div class="section-title">Ingredients${ab.scaleFactor && ab.scaleFactor !== 1 ? ` <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-mute);">· scaled ${ab.scaleFactor}×</span>` : ''}</div>
+            <div class="ing-list">
+              ${recipe.ingredients.map(ing => {
+                const scaledQty = scaleQuantity(ing.qty || '', ab.scaleFactor || 1);
+                const override = _ingredientUnitOverride.get(ing.name);
+                const parsed = override ? parseWeight(scaledQty) : null;
+                const displayedQty = parsed ? formatWeightAs(parsed, override) : scaledQty;
+                const isWeight = !!parseWeight(scaledQty);
+                return `
+                  <div class="ing-row">
+                    <span class="name">${escapeHtml(ing.name)}</span>
+                    <span class="qty ${isWeight ? 'qty-convertible' : ''}" data-ing-name="${escapeAttr(ing.name)}">${escapeHtml(displayedQty || '')}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
+          <div class="section-title">First Up</div>
+          <div style="background: var(--bg-elev); border: 1px solid var(--line); border-left: 4px solid ${color.hex}; border-radius: var(--radius); padding: 14px 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 4px;">
+              <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em;">${escapeHtml(firstStage.name)}</div>
+              <div style="font-size: 12px; color: var(--ink-mute); white-space: nowrap;">${formatDur(getStageDur(recipe, 0, ab))}${firstStage.isWait ? ' wait' : ''}</div>
+            </div>
+            ${firstStage.detail ? `<div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">${renderNotesHtml(firstStage.detail)}</div>` : ''}
+            ${recipe.stages.length > 1 ? `<div style="font-size: 11px; color: var(--ink-mute); margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line);">Then ${recipe.stages.length - 1} more stage${recipe.stages.length - 1 === 1 ? '' : 's'} \u00b7 ~${formatDur(recipe.stages.slice(1).reduce((s, st, i) => s + getStageDur(recipe, i + 1, ab), 0))} remaining</div>` : ''}
+          </div>
         `;
         // Wire the End Bake button (same handler as normal end-bake)
         document.getElementById('btn-end-bake').onclick = async () => {
@@ -3538,6 +3565,19 @@
           saveState();
           renderActiveBake(recipe, ab);
         };
+        // Tap-to-convert on ingredient quantities (g ↔ oz). Same behavior as the schedule
+        // view; transient (resets on reload). Re-renders the prep view to reflect the change.
+        container.querySelectorAll('.qty-convertible').forEach(span => {
+          span.addEventListener('click', () => {
+            const ingName = span.dataset.ingName;
+            const cur = _ingredientUnitOverride.get(ingName);
+            const next = cur === 'oz' ? null : 'oz';
+            if (next === null) _ingredientUnitOverride.delete(ingName);
+            else _ingredientUnitOverride.set(ingName, next);
+            haptic('light');
+            renderActiveBake(recipe, ab);
+          });
+        });
         return;
       } else {
         // Prep window has expired — auto-advance by clearing the flag. The render falls
