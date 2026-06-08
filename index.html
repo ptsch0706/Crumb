@@ -18,8 +18,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
-  import { getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
-  window.__firebase = { initializeApp, getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence };
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, collection, getDocs, deleteDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
+  window.__firebase = { initializeApp, getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, collection, getDocs, deleteDoc, writeBatch };
   window.dispatchEvent(new Event('firebase-ready'));
 </script>
 <style>
@@ -1282,8 +1282,13 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.13.4';
+  const APP_VERSION = '1.14.0';
   const CHANGELOG = [
+    { version: '1.14.0', date: '2026-06-02', notes: [
+      'Sync now uses Firestore subcollections \u2014 each recipe, bake, and category gets its own 1 MiB document instead of all sharing one. Goodbye sync size limit.',
+      'On first launch after this update, the app pulls existing remote data from the new structure or migrates legacy data automatically.',
+      'IMPORTANT: requires updated Firebase security rule. See setup guide in the chat for the new rule.',
+    ]},
     { version: '1.13.4', date: '2026-06-02', notes: [
       'Moved sync payload size and bake-size breakdown into a new "Diagnostics" modal accessible from Settings \u2192 About.',
       'Diagnostics also shows sync state, data counts, tombstone count pending prune, and localStorage usage.',
@@ -6631,27 +6636,40 @@ Here is the recipe:
     return true;
   }
 
+  // Tracks which items have changed locally since the last push so we only write the
+  // items that need writing. Cleared after a successful push. Keys are `<col>:<id>`.
+  // Populated by saveState() whenever recipes/bakes/categories are touched.
+  const _dirtyItems = new Set();
+  function markDirty(collection, id) {
+    if (!collection || !id) return;
+    _dirtyItems.add(`${collection}:${id}`);
+  }
+  function isDirty(collection, id) {
+    return _dirtyItems.has(`${collection}:${id}`);
+  }
+
   function pushToFirestore({ immediate = false } = {}) {
     if (!state.syncCode || !firestoreDb) return Promise.resolve();
     clearTimeout(pushDebounceTimer);
     return new Promise((resolve) => {
       const doPush = async () => {
         try {
-          const { doc, setDoc } = window.__firebase;
+          const { doc, setDoc, writeBatch, collection } = window.__firebase;
           const now = Date.now();
-          const rawPayload = {
-            recipes: stampForSync(state.recipes, now),
-            bakes: stampForSync(state.bakes, now),
-            categories: stampForSync(state.categories, now),
-            activeBakes: stampForSync(state.activeBakes || [], now),
-            starter: state.starter || null, // sync the starter schedule across devices
-            updatedAt: now,
-            schemaVersion: 2, // bump so we know this push uses per-object _updatedAt
-          };
-          // Sanitize: Firestore rejects undefined, NaN, and Infinity with invalid-argument.
-          // These can sneak in from incomplete form inputs, parseInt of '', or new code paths
-          // that forgot to default a field. We strip them silently and log the paths so we
-          // can spot regressions in the console.
+          // SUBCOLLECTION ARCHITECTURE:
+          // - Parent doc holds tiny, frequently-changing metadata: starter schedule,
+          //   activeBakes (in-progress runtime state), updatedAt, schemaVersion.
+          // - Subcollections hold the big stuff that we now write per-item:
+          //   /crumb_households/{code}/recipes/{id}
+          //   /crumb_households/{code}/bakes/{id}
+          //   /crumb_households/{code}/categories/{id}
+          // Each subcollection doc gets its own 1 MiB limit. A single bake with photos
+          // is well under that even when the household total is many MiB.
+          //
+          // We use writeBatch for atomicity AND efficiency — a single batch is one network
+          // round-trip and reduces Firestore write quota usage.
+
+          // Sanitize: Firestore rejects undefined/NaN/Infinity. See historical notes in 1.13.2.
           const stripped = [];
           const sanitize = (val, path) => {
             if (val === undefined) { stripped.push(path); return null; }
@@ -6667,35 +6685,68 @@ Here is the recipe:
             }
             return val;
           };
-          const payload = sanitize(rawPayload, '');
+
+          // Stamp all items so changes carry a timestamp for last-write-wins on conflicts.
+          // Even though we now write per-item, we still stamp the whole list so saveState()
+          // has consistent metadata. The dirty tracker decides what to actually push.
+          stampForSync(state.recipes, now);
+          stampForSync(state.bakes, now);
+          stampForSync(state.categories, now);
+          stampForSync(state.activeBakes || [], now);
+
+          // Build the per-item write set. If _dirtyItems is empty, we fall back to writing
+          // EVERYTHING (covers the first push after enableSync, or when something stamped
+          // an item without us tracking it). This is the safe default.
+          const writeAll = _dirtyItems.size === 0;
+          const batch = writeBatch(firestoreDb);
+          let itemWrites = 0;
+          const pushCollection = (name, items) => {
+            if (!Array.isArray(items)) return;
+            const colRef = collection(firestoreDb, 'crumb_households', state.syncCode, name);
+            for (const item of items) {
+              if (!item || !item.id) continue;
+              if (!writeAll && !isDirty(name, item.id)) continue;
+              const sanitized = sanitize(item, `${name}.${item.id}`);
+              batch.set(doc(colRef, item.id), sanitized);
+              itemWrites++;
+            }
+          };
+          pushCollection('recipes', state.recipes);
+          pushCollection('bakes', state.bakes);
+          pushCollection('categories', state.categories);
+
+          // Parent doc gets the small/transient stuff that changes every interaction.
+          // Sending it on every push is fine — the doc itself is just a few KB.
+          const parentPayload = sanitize({
+            activeBakes: state.activeBakes || [],
+            starter: state.starter || null,
+            updatedAt: now,
+            schemaVersion: 3, // 3 = subcollection era; was 2 in monolith era
+          }, '');
+          batch.set(doc(firestoreDb, 'crumb_households', state.syncCode), parentPayload);
+
           window.__lastSyncStripped = stripped.length;
           if (stripped.length > 0) {
             console.warn(`[sync] Sanitized ${stripped.length} bad value(s) before push:`, stripped.slice(0, 20));
           }
-          // Track payload size on the module scope so the Settings diagnostic and failure
-          // toast can both report it. Helps the user diagnose "why is sync failing" without
-          // opening Web Inspector.
+
+          // Track parent payload size for diagnostics (parent stays small, subcollection
+          // docs are individually small too — total sync size is now functionally unbounded)
           try {
-            const bytes = new Blob([JSON.stringify(payload)]).size;
+            const bytes = new Blob([JSON.stringify(parentPayload)]).size;
             window.__lastSyncPayloadBytes = bytes;
           } catch (e) { /* size calc shouldn't fail the push */ }
-          suppressNextRemote = true;
+
+          // Echo suppression: parent doc and each subcollection listener will fire on
+          // our own writes. We bump a counter so we ignore that many bounces.
+          suppressNextRemote += (itemWrites + 1); // +1 for the parent doc
           lastPushAt = Date.now();
-          // Set syncing flag, re-render status if Settings is open so the user sees the spinner
           syncInFlight = true;
           renderSyncStatus();
-          // Log payload size for diagnostic — Firestore has a 1 MiB per-document limit.
-          // Helps us catch when a household doc has grown too large (often due to photos).
-          try {
-            const sizeBytes = new Blob([JSON.stringify(payload)]).size;
-            const sizeKb = (sizeBytes / 1024).toFixed(1);
-            const pct = ((sizeBytes / (1024 * 1024)) * 100).toFixed(1);
-            console.log(`[sync] Pushing ${sizeKb} KB (${pct}% of 1 MiB Firestore limit)`);
-            if (sizeBytes > 900 * 1024) {
-              console.warn(`[sync] Payload approaching Firestore 1 MiB limit. Consider trimming photos.`);
-            }
-          } catch (e) { /* size calc shouldn't fail the push */ }
-          await setDoc(doc(firestoreDb, 'crumb_households', state.syncCode), payload);
+          console.log(`[sync] Batch push: ${itemWrites} item(s) + parent doc${writeAll ? ' (full sync)' : ''}`);
+          await batch.commit();
+          // Clear dirty tracker — those items are now in sync
+          _dirtyItems.clear();
           lastSyncAt = Date.now();
           syncInFlight = false;
           renderSyncStatus();
@@ -6704,20 +6755,20 @@ Here is the recipe:
           console.error('Firestore push failed:', e);
           const code = e && e.code ? e.code : 'unknown';
           const msg = e && e.message ? e.message : String(e);
-          // If invalid-argument and payload is over ~700KB, it's almost certainly the
-          // 1 MiB document limit. Surface a specific actionable message rather than the
-          // raw code so the user knows what to do (usually: delete old bakes with photos).
           const bytes = window.__lastSyncPayloadBytes || 0;
           const kb = Math.round(bytes / 1024);
           if (code === 'invalid-argument' && bytes > 700 * 1024) {
             toast(`Sync failed: data too large (${kb} KB). Try removing photos from old bakes.`);
           } else if (code === 'invalid-argument') {
-            toast(`Sync failed: invalid data (${kb} KB)`);
+            toast(`Sync failed: invalid data`);
+          } else if (code === 'permission-denied') {
+            toast(`Sync failed: permission denied. Update security rule for subcollections.`);
           } else {
             toast(`Sync failed: ${code}`);
           }
           console.error(`[sync] code=${code} bytes=${bytes} message=${msg}`);
-          suppressNextRemote = false;
+          // Reset echo counter to a safe state — partial failures shouldn't strand it
+          suppressNextRemote = 0;
           syncInFlight = false;
           renderSyncStatus();
           resolve(false);
@@ -6736,60 +6787,101 @@ Here is the recipe:
   function startSyncListener() {
     if (!state.syncCode || !firestoreDb) return;
     if (unsubscribeSnapshot) unsubscribeSnapshot();
-    const { doc, onSnapshot } = window.__firebase;
-    unsubscribeSnapshot = onSnapshot(
+    // We now have multiple listeners (parent doc + 3 subcollections). Track them all so
+    // we can unsubscribe cleanly on disable. unsubscribeSnapshot is replaced with a
+    // composite function that tears down all listeners.
+    const { doc, onSnapshot, collection } = window.__firebase;
+    const unsubs = [];
+
+    // Helper: merge a single remote item into local state by id, preserving last-write-wins.
+    // Used by the per-subcollection listeners. Skips if our local copy has a newer timestamp.
+    const mergeRemoteItem = (collectionName, remoteItem) => {
+      if (!remoteItem || !remoteItem.id) return;
+      const arr = state[collectionName];
+      if (!Array.isArray(arr)) return;
+      const idx = arr.findIndex(x => x && x.id === remoteItem.id);
+      const localTs = idx >= 0 && typeof arr[idx]._updatedAt === 'number' ? arr[idx]._updatedAt : 0;
+      const remoteTs = typeof remoteItem._updatedAt === 'number' ? remoteItem._updatedAt : 0;
+      if (idx === -1) {
+        arr.push(remoteItem);
+      } else if (remoteTs > localTs) {
+        arr[idx] = remoteItem;
+      }
+      // else keep local — it's newer or equal
+    };
+
+    // Subcollection listener: fires when a single recipe/bake/category doc changes remotely.
+    // We process individual docChanges() rather than the whole snapshot so the listener is
+    // efficient even when the subcollection grows large.
+    const subscribeCollection = (name) => {
+      const colRef = collection(firestoreDb, 'crumb_households', state.syncCode, name);
+      const unsub = onSnapshot(colRef, (snapshot) => {
+        // Echo suppression: each item we just wrote bounces back. The push counts items
+        // and bumps suppressNextRemote by that count. We decrement per change here.
+        let absorbed = 0;
+        snapshot.docChanges().forEach((change) => {
+          if (suppressNextRemote > 0) {
+            suppressNextRemote--;
+            absorbed++;
+            return;
+          }
+          const data = change.doc.data();
+          mergeRemoteItem(name, data);
+        });
+        if (absorbed === snapshot.docChanges().length) return; // nothing to do, all echoes
+        saveState();
+        renderRecipes();
+        if (name === 'bakes') renderHistory();
+        if (document.getElementById('view-active-bakes').classList.contains('active')) renderActiveBakes();
+        if (document.getElementById('view-schedule').classList.contains('active')) renderSchedule();
+        renderStats();
+      });
+      unsubs.push(unsub);
+    };
+    subscribeCollection('recipes');
+    subscribeCollection('bakes');
+    subscribeCollection('categories');
+
+    // Parent doc listener: handles starter, activeBakes, and conflict detection on
+    // the recipe currently being edited. Same logic as before, just narrower scope.
+    const parentUnsub = onSnapshot(
       doc(firestoreDb, 'crumb_households', state.syncCode),
       (snapshot) => {
         if (!snapshot.exists()) return;
-        // Ignore our own writes that bounce back
-        if (suppressNextRemote) {
-          suppressNextRemote = false;
+        if (suppressNextRemote > 0) {
+          suppressNextRemote--;
           return;
         }
         const data = snapshot.data();
-        // Conflict detection: before we merge in remote data, capture what the user might
-        // currently be editing. If a remote update changes an item the user has open in
-        // the editor (recipe modal) OR is actively viewing (current schedule recipe with
-        // a different _updatedAt), warn them so they don't lose their in-progress edits.
         const conflicts = [];
-        // Only count editingRecipe as a conflict source if the recipe modal is actually
-        // visible. Otherwise editingRecipe is stale (left over from a previous editor close).
+        // Recipe-in-editor conflict detection — needs access to current parent fields,
+        // but recipes now live in subcollections so check via state.recipes instead.
         const recipeModalShown = document.getElementById('modal-recipe').classList.contains('show');
-        if (recipeModalShown && state.editingRecipe && state.editingRecipe.id && Array.isArray(data.recipes)) {
-          // Only detect conflicts for recipes that exist in state.recipes already.
-          // A new (never-saved) recipe being edited has its own freshly-generated id
-          // that won't collide with anything remote — no point comparing.
+        if (recipeModalShown && state.editingRecipe && state.editingRecipe.id) {
           const localExisting = state.recipes.find(r => r && r.id === state.editingRecipe.id);
-          if (localExisting) {
-            const remoteCopy = data.recipes.find(r => r && r.id === state.editingRecipe.id);
-            if (remoteCopy && remoteCopy._updatedAt) {
-              const localTs = typeof state.editingRecipe._updatedAt === 'number' ? state.editingRecipe._updatedAt : 0;
-              if (remoteCopy._updatedAt > localTs) {
-                conflicts.push({ kind: 'recipe', name: remoteCopy.name || 'a recipe', tombstoned: !!remoteCopy._deleted });
-              }
+          if (localExisting && localExisting._updatedAt) {
+            const localTs = typeof state.editingRecipe._updatedAt === 'number' ? state.editingRecipe._updatedAt : 0;
+            if (localExisting._updatedAt > localTs) {
+              conflicts.push({ kind: 'recipe', name: localExisting.name || 'a recipe', tombstoned: !!localExisting._deleted });
             }
           }
         }
-        // Detect remote deletes of recipes that are currently displayed.
-        // Only relevant if the user is actually on the schedule view (currentRecipeId
-        // persists across tab navigation).
-        const scheduleViewActive = document.getElementById('view-schedule').classList.contains('active');
-        if (scheduleViewActive && state.currentRecipeId && Array.isArray(data.recipes)) {
-          const remoteCopy = data.recipes.find(r => r && r.id === state.currentRecipeId);
-          const localCopy = state.recipes.find(r => r && r.id === state.currentRecipeId);
-          if (remoteCopy && remoteCopy._deleted && localCopy && !localCopy._deleted) {
-            // Only warn if it's not already going to be caught by the editing-recipe check
-            if (!state.editingRecipe || state.editingRecipe.id !== state.currentRecipeId) {
-              conflicts.push({ kind: 'recipe', name: localCopy.name || 'this recipe', tombstoned: true });
-            }
+        // Merge parent-level fields: activeBakes + starter
+        if (Array.isArray(data.activeBakes)) {
+          state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
+          reconcileActiveBakesAgainstHistory();
+        } else if (data.activeBake !== undefined) {
+          state.activeBakes = data.activeBake ? [data.activeBake] : [];
+        }
+        if (data.starter && typeof data.starter === 'object') {
+          state.starter = data.starter;
+          if (!Array.isArray(state.starter.reminders) || state.starter.reminders.length !== 2) {
+            ensureStarterDefaults();
           }
         }
-
-        // ALWAYS merge by id. Replace mode was dangerous — if remote was stale or empty
-        // it would clobber local recipes. Merging by _updatedAt timestamp preserves both
-        // sides' data and lets newer-timestamped versions win. Items missing a timestamp
-        // are treated as ancient (timestamp 0) so locally-touched items take precedence.
-        // Items with _deleted: true ride along — display filters (liveItems) hide them.
+        // BACKWARD COMPATIBILITY: if remote parent still has legacy recipes/bakes/categories
+        // fields (older device hasn't migrated yet), merge them. They'll get migrated to
+        // subcollections on the next push.
         if (Array.isArray(data.recipes)) {
           state.recipes = mergeById(state.recipes, data.recipes);
         }
@@ -6799,84 +6891,32 @@ Here is the recipe:
         if (Array.isArray(data.categories)) {
           state.categories = mergeById(state.categories, data.categories);
         }
-        if (Array.isArray(data.activeBakes)) {
-          state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
-          // After merge, re-reconcile in case the remote re-introduced a bake we've
-          // already finalized to history. Belt-and-suspenders on top of tombstoning.
-          reconcileActiveBakesAgainstHistory();
-        }
-        else if (data.activeBake !== undefined) {
-          // Backward-compat: remote might be using old single-bake schema
-          state.activeBakes = data.activeBake ? [data.activeBake] : [];
-        }
-        // Starter schedule: last-write-wins via the document's updatedAt (we don't
-        // version individual reminders since the user controls both fields together)
-        if (data.starter && typeof data.starter === 'object') {
-          state.starter = data.starter;
-          // Defensive re-validation in case remote data is malformed
-          if (!Array.isArray(state.starter.reminders) || state.starter.reminders.length !== 2) {
-            state.starter.reminders = [
-              { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
-              { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
-            ];
-          }
-        }
-        // Clean up any duplicate categories that merged in from the remote
-        dedupeCategories();
-        lastSyncAt = Date.now(); // remote pull also counts as a sync
-        // Persist the merged result locally
-        try {
-          localStorage.setItem(LS_KEY, JSON.stringify({
-            recipes: state.recipes,
-            bakes: state.bakes,
-            categories: state.categories,
-            currentRecipeId: state.currentRecipeId,
-            scheduleMode: state.scheduleMode,
-            scheduleStart: state.scheduleStart,
-            scheduleFinish: state.scheduleFinish,
-            scaleFactor: state.scaleFactor,
-            activeBakes: state.activeBakes,
-            focusedBakeId: state.focusedBakeId,
-            syncCode: state.syncCode,
-          }));
-        } catch (e) { console.error('local save failed', e); }
-        // Refresh whatever view is active
-        const activeView = document.querySelector('.view.active');
-        if (activeView) {
-          if (activeView.id === 'view-recipes') renderRecipes();
-          if (activeView.id === 'view-schedule') renderSchedule();
-          if (activeView.id === 'view-history') renderHistory();
-          if (activeView.id === 'view-active-bakes') renderActiveBakes();
-        }
-        const hasAnyActive = liveActiveBakes().length > 0;
-        if (hasAnyActive && !bakeTickerInterval) startBakeTicker();
-        else if (!hasAnyActive && bakeTickerInterval) stopBakeTicker();
-        updateActiveTabBadge();
-        // If the settings modal is visible, refresh the "last synced" indicator
-        const settingsModal = document.getElementById('modal-settings');
-        if (settingsModal && settingsModal.classList.contains('show')) {
-          renderSyncStatus();
-        }
-        // Surface conflict notifications — items the user is editing/viewing that just
-        // got changed by another device. Use a deferred toast so it doesn't get drowned
-        // out by other UI updates.
+        saveState();
+        renderRecipes();
+        renderHistory();
+        if (document.getElementById('view-active-bakes').classList.contains('active')) renderActiveBakes();
+        if (document.getElementById('view-schedule').classList.contains('active')) renderSchedule();
         if (conflicts.length > 0) {
-          // Coalesce: one toast describing the situation
-          const c = conflicts[0];
+          // Defer the warning slightly so it doesn't fire mid-keystroke
           setTimeout(() => {
-            if (c.tombstoned) {
-              toast(`"${c.name}" Was Deleted on Another Device`);
-            } else {
-              toast(`"${c.name}" Was Updated on Another Device`);
+            for (const c of conflicts) {
+              toast(`Heads up: "${c.name}" was ${c.tombstoned ? 'deleted' : 'changed'} on another device`);
             }
           }, 300);
         }
       },
       (err) => {
-        console.error('Firestore listener error:', err);
-        toast('Sync connection issue — will retry');
+        console.error('Firestore parent listener error:', err);
       }
     );
+    unsubs.push(parentUnsub);
+
+    // Composite unsub for cleanup
+    unsubscribeSnapshot = () => {
+      for (const u of unsubs) {
+        try { u(); } catch (e) { /* ignore */ }
+      }
+    };
   }
 
   function stopSyncListener() {
@@ -6899,17 +6939,36 @@ Here is the recipe:
     // CRITICAL: fetch the existing remote document FIRST before pushing anything.
     // If we push first (even debounced), we'd overwrite an existing household's data
     // with our local state. Fetch → merge into local → then push the merged result.
+    //
+    // SUBCOLLECTION FETCH: with the new schema, recipes/bakes/categories live in their
+    // own subcollections. Parent doc only has activeBakes + starter + metadata. We fetch
+    // BOTH the parent doc AND the 3 subcollections concurrently, then merge everything.
+    // Backward compat: if parent doc still has legacy recipes/bakes/categories arrays
+    // (from a device that hasn't upgraded yet), we merge those too.
     try {
-      const { doc, getDoc } = window.__firebase;
-      const snapshot = await getDoc(doc(firestoreDb, 'crumb_households', code));
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        // Detect "fresh load" — local state has nothing real (no prior sync, only the
-        // 3 seed categories at most, no recipes, no bakes). In that case we should
-        // REPLACE local state with the remote data, not merge. Merging a fresh-load
-        // local with remote can resurrect stale data if the fresh local was actually
-        // a stale tab/window with old localStorage contents, producing duplicates and
-        // resurrected old active bakes.
+      const { doc, getDoc, collection, getDocs } = window.__firebase;
+      const parentRef = doc(firestoreDb, 'crumb_households', code);
+      const [parentSnap, recipesSnap, bakesSnap, categoriesSnap] = await Promise.all([
+        getDoc(parentRef),
+        getDocs(collection(parentRef, 'recipes')),
+        getDocs(collection(parentRef, 'bakes')),
+        getDocs(collection(parentRef, 'categories')),
+      ]);
+      // Collect subcollection items into plain arrays
+      const remoteRecipes = [];
+      recipesSnap.forEach(d => remoteRecipes.push(d.data()));
+      const remoteBakes = [];
+      bakesSnap.forEach(d => remoteBakes.push(d.data()));
+      const remoteCategories = [];
+      categoriesSnap.forEach(d => remoteCategories.push(d.data()));
+
+      // Did we get any remote data (parent OR subcollections)? If everything is empty,
+      // this is a brand-new household and we'll create it via the push below.
+      const hasRemote = parentSnap.exists() || remoteRecipes.length > 0 || remoteBakes.length > 0 || remoteCategories.length > 0;
+      if (hasRemote) {
+        const data = parentSnap.exists() ? parentSnap.data() : {};
+        // "Fresh load" — local state has nothing real. In that case we REPLACE local
+        // state with remote, avoiding any merge ambiguity.
         const localIsFresh = (
           !state.syncCode &&
           liveItems(state.recipes).length === 0 &&
@@ -6917,26 +6976,28 @@ Here is the recipe:
           (state.activeBakes || []).length === 0
         );
         if (localIsFresh) {
-          // Replace, don't merge — adopt the remote as the source of truth
-          if (Array.isArray(data.recipes)) state.recipes = data.recipes;
-          if (Array.isArray(data.bakes)) state.bakes = data.bakes;
-          if (Array.isArray(data.categories)) state.categories = data.categories;
+          // Adopt remote as source of truth. Prefer subcollection data; fall back to
+          // legacy parent-doc arrays for households that haven't been migrated yet.
+          state.recipes = remoteRecipes.length > 0 ? remoteRecipes : (Array.isArray(data.recipes) ? data.recipes : []);
+          state.bakes = remoteBakes.length > 0 ? remoteBakes : (Array.isArray(data.bakes) ? data.bakes : []);
+          state.categories = remoteCategories.length > 0 ? remoteCategories : (Array.isArray(data.categories) ? data.categories : []);
           if (Array.isArray(data.activeBakes)) state.activeBakes = data.activeBakes;
           else if (data.activeBake !== undefined) state.activeBakes = data.activeBake ? [data.activeBake] : [];
           if (data.starter && typeof data.starter === 'object') state.starter = data.starter;
         } else {
-          // We have meaningful local data — merge so neither side loses
-          if (Array.isArray(data.recipes)) state.recipes = mergeById(state.recipes, data.recipes);
-          if (Array.isArray(data.bakes)) state.bakes = mergeById(state.bakes, data.bakes);
-          if (Array.isArray(data.categories)) state.categories = mergeById(state.categories, data.categories);
+          // Merge so neither side loses
+          if (remoteRecipes.length > 0) state.recipes = mergeById(state.recipes, remoteRecipes);
+          else if (Array.isArray(data.recipes)) state.recipes = mergeById(state.recipes, data.recipes);
+          if (remoteBakes.length > 0) state.bakes = mergeById(state.bakes, remoteBakes);
+          else if (Array.isArray(data.bakes)) state.bakes = mergeById(state.bakes, data.bakes);
+          if (remoteCategories.length > 0) state.categories = mergeById(state.categories, remoteCategories);
+          else if (Array.isArray(data.categories)) state.categories = mergeById(state.categories, data.categories);
           if (Array.isArray(data.activeBakes)) {
             state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
             reconcileActiveBakesAgainstHistory();
           } else if (data.activeBake !== undefined) {
             state.activeBakes = data.activeBake ? [data.activeBake] : [];
           }
-          // For non-fresh loads, prefer remote starter only if local has none enabled.
-          // This avoids clobbering an active local schedule with empty remote data.
           if (data.starter && typeof data.starter === 'object') {
             const localHasEnabled = state.starter && Array.isArray(state.starter.reminders) &&
               state.starter.reminders.some(r => r && r.enabled);
@@ -6946,7 +7007,7 @@ Here is the recipe:
         // Clean up any duplicate categories that came in
         dedupeCategories();
       }
-      // Even if the document didn't exist, that's fine — we'll create it on push.
+      // Even if nothing existed remotely, that's fine — we'll create everything on push.
     } catch (e) {
       console.error('Failed to fetch remote sync data:', e);
       toast('Could not reach sync — check connection');
