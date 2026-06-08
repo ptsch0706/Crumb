@@ -1282,8 +1282,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.14.0';
+  const APP_VERSION = '1.14.1';
   const CHANGELOG = [
+    { version: '1.14.1', date: '2026-06-02', notes: [
+      'Diagnostics now reflects the new subcollection architecture \u2014 shows largest single doc (the actual sync limit), parent doc size, and total data separately.',
+    ]},
     { version: '1.14.0', date: '2026-06-02', notes: [
       'Sync now uses Firestore subcollections \u2014 each recipe, bake, and category gets its own 1 MiB document instead of all sharing one. Goodbye sync size limit.',
       'On first launch after this update, the app pulls existing remote data from the new structure or migrates legacy data automatically.',
@@ -7107,28 +7110,82 @@ Here is the recipe:
     if (!body) return;
 
     // Sync payload size + top-N largest bakes
+    // With subcollections, the relevant Firestore limit is PER-DOCUMENT (1 MiB), not the
+    // sum of everything. We show three numbers:
+    //   1. Parent doc — what currently goes to crumb_households/{code} (small: activeBakes + starter)
+    //   2. Largest single subcollection doc — the actual risk number (a bake with photos)
+    //   3. Total stored — informational, in case the user is curious about overall growth
     let payloadSizeHtml = '<div style="color: var(--ink-mute); font-size: 12px;">Could not compute</div>';
     let breakdownHtml = '';
     try {
-      const payload = {
-        recipes: state.recipes || [],
-        bakes: state.bakes || [],
-        categories: state.categories || [],
+      // Parent doc: only activeBakes + starter + tiny metadata
+      const parentPayload = {
         activeBakes: state.activeBakes || [],
         starter: state.starter || null,
+        updatedAt: Date.now(),
+        schemaVersion: 3,
       };
-      const bytes = new Blob([JSON.stringify(payload)]).size;
-      const kb = bytes / 1024;
-      const pct = ((bytes / (1024 * 1024)) * 100).toFixed(1);
-      const sizeStr = kb < 1024 ? kb.toFixed(1) + ' KB' : (kb / 1024).toFixed(2) + ' MB';
-      const warnColor = kb > 900 ? 'var(--warn)' : kb > 600 ? 'var(--crust-deep)' : 'var(--leaven)';
-      const warnLabel = kb > 900 ? ' \u2014 near 1 MiB limit!' : kb > 600 ? ' \u2014 getting large' : '';
+      const parentBytes = new Blob([JSON.stringify(parentPayload)]).size;
+      const parentKb = parentBytes / 1024;
+
+      // Find the largest single subcollection doc — that's the real "are we near a limit"
+      // metric. A bake with photos is the most likely offender.
+      let largestDoc = { name: '\u2014', bytes: 0, kind: '' };
+      const checkDoc = (item, kind, displayName) => {
+        try {
+          const b = new Blob([JSON.stringify(item)]).size;
+          if (b > largestDoc.bytes) largestDoc = { name: displayName, bytes: b, kind };
+        } catch (e) { /* skip */ }
+      };
+      for (const r of (state.recipes || [])) {
+        if (!r || r._deleted) continue;
+        checkDoc(r, 'recipe', r.name || 'Unnamed recipe');
+      }
+      for (const b of (state.bakes || [])) {
+        if (!b || b._deleted) continue;
+        const recipe = state.recipes.find(x => x.id === b.recipeId);
+        const name = recipe ? recipe.name : (b.recipeSnapshot ? b.recipeSnapshot.name : 'Unknown bake');
+        const dateStr = b.completedAt ? new Date(b.completedAt).toLocaleDateString() : '';
+        checkDoc(b, 'bake', `${name}${dateStr ? ' \u00b7 ' + dateStr : ''}`);
+      }
+      for (const c of (state.categories || [])) {
+        if (!c || c._deleted) continue;
+        checkDoc(c, 'category', c.name || 'Unnamed category');
+      }
+
+      const largestKb = largestDoc.bytes / 1024;
+      const largestPct = ((largestDoc.bytes / (1024 * 1024)) * 100).toFixed(1);
+      const largestStr = largestKb < 1024 ? largestKb.toFixed(1) + ' KB' : (largestKb / 1024).toFixed(2) + ' MB';
+      const warnColor = largestKb > 900 ? 'var(--warn)' : largestKb > 600 ? 'var(--crust-deep)' : 'var(--leaven)';
+
+      // Total stored data (all items, all collections) for informational context
+      let totalBytes = parentBytes;
+      for (const r of (state.recipes || [])) { try { totalBytes += new Blob([JSON.stringify(r)]).size; } catch (e) {} }
+      for (const b of (state.bakes || [])) { try { totalBytes += new Blob([JSON.stringify(b)]).size; } catch (e) {} }
+      for (const c of (state.categories || [])) { try { totalBytes += new Blob([JSON.stringify(c)]).size; } catch (e) {} }
+      const totalKb = totalBytes / 1024;
+      const totalStr = totalKb < 1024 ? totalKb.toFixed(1) + ' KB' : (totalKb / 1024).toFixed(2) + ' MB';
+
       payloadSizeHtml = `
-        <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; color: ${warnColor}; font-weight: 600;">${sizeStr} <span style="font-weight: 400; opacity: 0.7;">/ 1 MiB · ${pct}%</span></div>
-        ${warnLabel ? `<div style="font-size: 11px; color: ${warnColor}; margin-top: 2px;">${warnLabel.replace(' \u2014 ', '')}</div>` : ''}
+        <div style="display: flex; flex-direction: column; gap: 4px; font-size: 13px;">
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: var(--ink-soft);">Largest single doc</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 600; color: ${warnColor};">${largestStr} / 1 MiB</span>
+          </div>
+          <div style="font-size: 11px; color: var(--ink-mute); margin-top: -2px; padding-left: 0;">${escapeHtml(largestDoc.name)}</div>
+          <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+            <span style="color: var(--ink-soft);">Parent doc</span>
+            <span style="font-family: 'JetBrains Mono', monospace; color: var(--ink-mute);">${parentKb < 1024 ? parentKb.toFixed(1) + ' KB' : (parentKb / 1024).toFixed(2) + ' MB'}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: var(--ink-soft);">Total data</span>
+            <span style="font-family: 'JetBrains Mono', monospace; color: var(--ink-mute);">${totalStr}</span>
+          </div>
+        </div>
+        <div style="font-size: 11px; color: var(--ink-mute); margin-top: 8px; font-style: italic;">Each doc has its own 1 MiB limit. Total is just informational \u2014 not a sync limit.</div>
       `;
 
-      // Breakdown of bakes by photo size, top 5
+      // Breakdown of bakes by photo size, top 5 (still useful in case any one bake bloats)
       const bakeSizes = (state.bakes || [])
         .filter(b => b && !b._deleted)
         .map(b => {
@@ -7145,7 +7202,6 @@ Here is the recipe:
           <div style="margin-top: 14px;">
             <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Largest bakes (by photos)</div>
             ${bakeSizes.map(b => `<div style="font-size: 13px; color: var(--ink-soft); padding: 3px 0; display: flex; justify-content: space-between;"><span>${escapeHtml(b.name)} <span style="color: var(--ink-mute);">(${b.photoCount} photo${b.photoCount === 1 ? '' : 's'})</span></span><span style="font-family: 'JetBrains Mono', monospace; color: var(--ink-mute);">${Math.round(b.photoBytes / 1024)} KB</span></div>`).join('')}
-            <div style="font-size: 11px; color: var(--ink-mute); margin-top: 6px; font-style: italic;">To reduce, edit a bake in History and remove photos.</div>
           </div>
         `;
       }
