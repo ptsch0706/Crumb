@@ -1234,22 +1234,31 @@
     return BAKE_COLORS.find(c => c.id === colorId) || BAKE_COLORS[0];
   }
 
+  // All active-bake getters filter tombstones (_deleted: true) so the rest of the app
+  // never sees a removed bake even before the next sync purges it.
   function getActiveBakeById(id) {
-    return (state.activeBakes || []).find(b => b.id === id) || null;
+    return (state.activeBakes || []).find(b => b.id === id && !b._deleted) || null;
   }
 
   function getActiveBakeForRecipe(recipeId) {
-    return (state.activeBakes || []).find(b => b.recipeId === recipeId) || null;
+    return (state.activeBakes || []).find(b => b.recipeId === recipeId && !b._deleted) || null;
   }
 
   // Backward-compat accessor: returns the focused bake or the first active bake
   function getFocusedBake() {
-    if (!state.activeBakes || state.activeBakes.length === 0) return null;
+    const live = (state.activeBakes || []).filter(b => !b._deleted);
+    if (live.length === 0) return null;
     if (state.focusedBakeId) {
-      const found = state.activeBakes.find(b => b.id === state.focusedBakeId);
+      const found = live.find(b => b.id === state.focusedBakeId);
       if (found) return found;
     }
-    return state.activeBakes[0];
+    return live[0];
+  }
+
+  // Returns active bakes excluding tombstones. Use this anywhere you'd otherwise read
+  // state.activeBakes directly for the UI or for "is anything baking" decisions.
+  function liveActiveBakes() {
+    return (state.activeBakes || []).filter(b => !b._deleted);
   }
 
   const LS_KEY = 'crumb-state-v1';
@@ -1259,8 +1268,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.12.1';
+  const APP_VERSION = '1.12.2';
   const CHANGELOG = [
+    { version: '1.12.2', date: '2026-06-02', notes: [
+      'Fix: a saved bake could come back to life in Active Bakes after sync. Active bake deletions are now tombstoned so they propagate cleanly across devices.',
+      'One-time cleanup at boot removes any zombie active bakes that already snuck through.',
+    ]},
     { version: '1.12.1', date: '2026-06-02', notes: [
       'Fix: active bake countdown could freeze after returning from background. The timer now self-heals whenever you view a bake or return to the app.',
     ]},
@@ -2900,7 +2913,7 @@
   // ============================================================
   async function startBake(recipe, startTime) {
     // Allow up to MAX_ACTIVE_BAKES simultaneous bakes
-    if (state.activeBakes.length >= MAX_ACTIVE_BAKES) {
+    if (liveActiveBakes().length >= MAX_ACTIVE_BAKES) {
       await showConfirm({
         title: 'Active bake limit reached',
         message: `You can have up to ${MAX_ACTIVE_BAKES} bakes going at once. Finish or end one before starting another.`,
@@ -2976,11 +2989,21 @@
     }
   }
 
-  // Remove an active bake by id; if it was focused, clear focus
+  // Remove an active bake by id; if it was focused, clear focus.
+  // Uses tombstoning (rather than array splice) so the removal propagates through sync.
+  // Without tombstones, a remote device that hadn't yet seen the removal would push the
+  // bake back into our state during merge, "resurrecting" a finalized/discarded bake.
   function removeActiveBake(bakeId) {
-    state.activeBakes = state.activeBakes.filter(b => b.id !== bakeId);
+    const idx = state.activeBakes.findIndex(b => b.id === bakeId);
+    if (idx !== -1) {
+      // Mark as deleted + bump timestamp so sync merge keeps the newer "deleted" state
+      // over any remote "alive" copy. liveActiveBakes() filters these out for UI.
+      state.activeBakes[idx]._deleted = true;
+      state.activeBakes[idx]._updatedAt = Date.now();
+    }
     if (state.focusedBakeId === bakeId) {
-      state.focusedBakeId = state.activeBakes.length > 0 ? state.activeBakes[0].id : null;
+      const next = state.activeBakes.find(b => !b._deleted);
+      state.focusedBakeId = next ? next.id : null;
     }
     if (typeof clearAlertsForBake === 'function') clearAlertsForBake(bakeId);
   }
@@ -2996,7 +3019,7 @@
       } else {
         removeActiveBake(bake.id);
         saveState();
-        const stillBaking = state.activeBakes.length > 0;
+        const stillBaking = liveActiveBakes().length > 0;
         if (!stillBaking) stopBakeTicker();
         renderRecipes();
         renderSchedule();
@@ -3049,7 +3072,7 @@
     // New bake from active session — bakeId tells us which active bake to finalize
     const activeBake = notesData._activeBakeId
       ? getActiveBakeById(notesData._activeBakeId)
-      : (state.activeBakes.length === 1 ? state.activeBakes[0] : null);
+      : (() => { const live = liveActiveBakes(); return live.length === 1 ? live[0] : null; })();
     if (!activeBake) return;
     const recipe = state.recipes.find(r => r.id === activeBake.recipeId);
     state.bakes = state.bakes || [];
@@ -3079,7 +3102,7 @@
     });
     removeActiveBake(activeBake.id);
     saveState();
-    const stillBaking = state.activeBakes.length > 0;
+    const stillBaking = liveActiveBakes().length > 0;
     if (!stillBaking) stopBakeTicker();
     renderRecipes();
     renderSchedule();
@@ -3317,7 +3340,7 @@
     const currentBake = getActiveBakeById(bakeId);
     if (!currentBake || !currentBake.stageStates[idx] || currentBake.stageStates[idx].done) {
       // Bake ended or stage already marked done by another device — discard the choice
-      if (state.activeBakes.length > 0) startBakeTicker();
+      if (liveActiveBakes().length > 0) startBakeTicker();
       return;
     }
     if (choice === 'notyet') {
@@ -3334,7 +3357,7 @@
       saveState();
     }
     // Any other choice (null, unexpected) is silently ignored — safer than mutating state
-    if (state.activeBakes.length > 0) startBakeTicker();
+    if (liveActiveBakes().length > 0) startBakeTicker();
     renderActiveBake(recipe, currentBake);
   }
 
@@ -4248,7 +4271,7 @@
   // the page was backgrounded. Without this, the timer can stay frozen after the PWA
   // comes back into view even though the UI is showing the bake.
   function ensureBakeTickerRunning() {
-    if (!bakeTickerInterval && state.activeBakes && state.activeBakes.length > 0) {
+    if (!bakeTickerInterval && liveActiveBakes().length > 0) {
       startBakeTicker();
     }
   }
@@ -4260,6 +4283,7 @@
       // (Alert state must continue to update even when the page is hidden, because the user
       // may have set up audio/vibrate notifications that still want to fire.)
       for (const ab of state.activeBakes) {
+        if (ab._deleted) continue; // tombstoned bake, skip
         if (ab.paused) continue;
         const recipe = state.recipes.find(r => r.id === ab.recipeId);
         if (!recipe || recipe._deleted) continue;
@@ -5335,7 +5359,7 @@ Here is the recipe:
   function updateActiveTabBadge() {
     const badge = document.getElementById('active-badge');
     if (!badge) return;
-    const count = (state.activeBakes || []).length;
+    const count = liveActiveBakes().length;
     if (count === 0) {
       badge.style.display = 'none';
     } else {
@@ -5346,7 +5370,7 @@ Here is the recipe:
 
   function renderActiveBakes() {
     const list = document.getElementById('active-bakes-list');
-    const bakes = state.activeBakes || [];
+    const bakes = liveActiveBakes();
     if (bakes.length === 0) {
       list.innerHTML = `
         <div class="empty">
@@ -6160,7 +6184,7 @@ Here is the recipe:
     if (choice !== 'yes') return;
     if (activeForThis) {
       removeActiveBake(activeForThis.id);
-      if (state.activeBakes.length === 0) stopBakeTicker();
+      if (liveActiveBakes().length === 0) stopBakeTicker();
       updateActiveTabBadge();
     }
     // Mark as deleted (tombstone) rather than removing — lets the sync propagate the
@@ -6191,7 +6215,7 @@ Here is the recipe:
         importAppendMode = false;
       }
       // Resume bake ticker if the user closed an editor mid-bake
-      if ((modal.id === 'modal-stage-edit' || modal.id === 'modal-recipe' || modal.id === 'modal-adjust-timer') && state.activeBakes.length > 0) {
+      if ((modal.id === 'modal-stage-edit' || modal.id === 'modal-recipe' || modal.id === 'modal-adjust-timer') && liveActiveBakes().length > 0) {
         if (!bakeTickerInterval) startBakeTicker();
       }
     });
@@ -6203,7 +6227,7 @@ Here is the recipe:
         if (m.id === 'modal-recipe') {
           importAppendMode = false;
         }
-        if ((m.id === 'modal-stage-edit' || m.id === 'modal-recipe' || m.id === 'modal-adjust-timer') && state.activeBakes.length > 0) {
+        if ((m.id === 'modal-stage-edit' || m.id === 'modal-recipe' || m.id === 'modal-adjust-timer') && liveActiveBakes().length > 0) {
           if (!bakeTickerInterval) startBakeTicker();
         }
       }
@@ -6394,18 +6418,45 @@ Here is the recipe:
   // treated as "starting fresh" anyway. Returns true if anything was pruned.
   function pruneOldTombstones() {
     const cutoff = Date.now() - (30 * 24 * 3600 * 1000);
+    // Active bakes have a much shorter prune window (1 day) since they're transient runtime
+    // state. After other devices have had a day to see the deletion, the tombstone has done
+    // its job and can be dropped.
+    const activeBakeCutoff = Date.now() - (24 * 3600 * 1000);
     let pruned = false;
-    const prune = (arr) => {
+    const prune = (arr, cut) => {
       if (!Array.isArray(arr)) return arr;
       const before = arr.length;
-      const filtered = arr.filter(x => !(x && x._deleted && typeof x._updatedAt === 'number' && x._updatedAt < cutoff));
+      const filtered = arr.filter(x => !(x && x._deleted && typeof x._updatedAt === 'number' && x._updatedAt < cut));
       if (filtered.length !== before) pruned = true;
       return filtered;
     };
-    state.recipes = prune(state.recipes);
-    state.bakes = prune(state.bakes);
-    state.categories = prune(state.categories);
+    state.recipes = prune(state.recipes, cutoff);
+    state.bakes = prune(state.bakes, cutoff);
+    state.categories = prune(state.categories, cutoff);
+    state.activeBakes = prune(state.activeBakes, activeBakeCutoff);
     return pruned;
+  }
+
+  // One-shot recovery: tombstone any active bake whose startedAt timestamp matches a
+  // finalized bake in history. Before activeBakes had tombstoning, sync could resurrect
+  // a removed bake; this finds those zombies and lays them to rest. Idempotent.
+  function reconcileActiveBakesAgainstHistory() {
+    if (!Array.isArray(state.activeBakes) || !Array.isArray(state.bakes)) return;
+    const finalizedStarts = new Set();
+    for (const b of state.bakes) {
+      if (b && !b._deleted && b.startedAt) finalizedStarts.add(`${b.recipeId}|${b.startedAt}`);
+    }
+    let changed = false;
+    for (const ab of state.activeBakes) {
+      if (!ab || ab._deleted) continue;
+      const key = `${ab.recipeId}|${ab.startedAt}`;
+      if (finalizedStarts.has(key)) {
+        ab._deleted = true;
+        ab._updatedAt = Date.now();
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   // Touch an object's _updatedAt to "now". Called whenever we mutate a recipe/bake/category.
@@ -6570,6 +6621,9 @@ Here is the recipe:
         }
         if (Array.isArray(data.activeBakes)) {
           state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
+          // After merge, re-reconcile in case the remote re-introduced a bake we've
+          // already finalized to history. Belt-and-suspenders on top of tombstoning.
+          reconcileActiveBakesAgainstHistory();
         }
         else if (data.activeBake !== undefined) {
           // Backward-compat: remote might be using old single-bake schema
@@ -6614,7 +6668,7 @@ Here is the recipe:
           if (activeView.id === 'view-history') renderHistory();
           if (activeView.id === 'view-active-bakes') renderActiveBakes();
         }
-        const hasAnyActive = state.activeBakes && state.activeBakes.length > 0;
+        const hasAnyActive = liveActiveBakes().length > 0;
         if (hasAnyActive && !bakeTickerInterval) startBakeTicker();
         else if (!hasAnyActive && bakeTickerInterval) stopBakeTicker();
         updateActiveTabBadge();
@@ -6697,6 +6751,7 @@ Here is the recipe:
           if (Array.isArray(data.categories)) state.categories = mergeById(state.categories, data.categories);
           if (Array.isArray(data.activeBakes)) {
             state.activeBakes = mergeById(state.activeBakes, data.activeBakes);
+            reconcileActiveBakesAgainstHistory();
           } else if (data.activeBake !== undefined) {
             state.activeBakes = data.activeBake ? [data.activeBake] : [];
           }
@@ -7284,16 +7339,20 @@ Here is the recipe:
   }
   // Prune tombstones older than 30 days — anything that old has had plenty of time to sync
   if (pruneOldTombstones()) saveState();
+  // Recover from any earlier bug where active bakes lingered after being saved to history.
+  // This was caused by sync re-introducing locally-removed bakes; now fixed by tombstoning.
+  if (reconcileActiveBakesAgainstHistory()) saveState();
   // Clean up any duplicate categories left over from earlier seed/sync bugs
   if (dedupeCategories()) {
     saveState();
   }
   renderRecipes();
   updateActiveTabBadge();
-  if (state.activeBakes.length > 0) {
+  if (liveActiveBakes().length > 0) {
     // Pre-populate alertedStageEnds so we don't beep for stages that became overdue
     // while the app was closed. The first alert should be for NEW transitions only.
     for (const ab of state.activeBakes) {
+      if (ab._deleted) continue;
       const recipe = state.recipes.find(r => r.id === ab.recipeId);
       if (!recipe || recipe._deleted) continue;
       const curIdx = getCurrentStageIdx(recipe, ab);
@@ -7399,7 +7458,7 @@ Here is the recipe:
     if (state.currentRecipeId && bulkSelectedIds.has(state.currentRecipeId)) {
       state.currentRecipeId = null;
     }
-    if (state.activeBakes.length === 0) stopBakeTicker();
+    if (liveActiveBakes().length === 0) stopBakeTicker();
     updateActiveTabBadge();
     saveState();
     exitBulkSelectMode();
