@@ -74,8 +74,14 @@
 
   /* Views */
   .view { display: none; padding: 0 20px; max-width: 100%; overflow-x: hidden; }
-  .view.active { display: block; animation: fadeIn 0.25s ease; }
+  .view.active { display: block; animation: viewIn 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+  @keyframes viewIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    .view.active { animation: none; }
+    .modal { animation: none !important; }
+    .modal-backdrop.show { animation: none; }
+  }
 
   /* Buttons */
   .btn { font-family: inherit; font-size: 15px; font-weight: 500; padding: 12px 18px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--bg-elev); color: var(--ink); cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
@@ -243,6 +249,33 @@
   /* Loading */
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes syncPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.3); } }
+
+  /* Pull-to-refresh indicator. Lives at the top of pull-enabled views and is
+     translated/scaled based on drag distance. Hidden by default. */
+  .ptr-indicator {
+    position: fixed;
+    top: calc(var(--safe-top, 0px) + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-40px) scale(0.6);
+    width: 36px;
+    height: 36px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--crust-deep);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    transition: none; /* set transitions dynamically; we want instant during drag, animated on release */
+  }
+  .ptr-indicator.refreshing { transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+  .ptr-indicator svg { width: 18px; height: 18px; stroke-width: 2.5; }
+  .ptr-indicator.spinning svg { animation: spin 0.7s linear infinite; }
 
   /* Pacing */
   .pacing-summary { background: var(--leaven-soft); border: 1px solid var(--leaven); color: var(--rye); padding: 12px 14px; border-radius: var(--radius); margin-bottom: 14px; }
@@ -383,6 +416,11 @@
   </div>
   <div class="wheat-deco">·  ·  ·</div>
 </section>
+
+<!-- Pull-to-refresh indicator (global, repositioned/animated via JS during drag) -->
+<div class="ptr-indicator" id="ptr-indicator">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5"/></svg>
+</div>
 
 <!-- SCHEDULE VIEW -->
 <section class="view" id="view-schedule">
@@ -881,6 +919,15 @@
         </div>
         <div class="switch-pill"></div>
       </div>
+      <div class="bake-mode-toggle" id="haptics-toggle" style="margin-top: 8px;">
+        <div>
+          <div class="label">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/><circle cx="12" cy="12" r="4"/></svg>
+            <span>Haptic Feedback <span class="sub" style="display: block;">Subtle vibration on taps and key actions</span></span>
+          </div>
+        </div>
+        <div class="switch-pill"></div>
+      </div>
 
       <div class="section-title">Data</div>
       <button class="btn btn-block" id="export-data" style="margin-bottom: 8px;">
@@ -983,6 +1030,7 @@
     editingRecipe: null,
     syncCode: null,
     alertsEnabled: true, // beep + vibrate when stages complete
+    hapticsEnabled: true, // subtle vibration on taps, toggles, and key actions
     recipeFilter: { text: '', categoryId: null }, // recipe list filter
     recipeSort: 'alpha', // recipe sort mode: 'alpha' | 'recent' | 'mostBaked' | 'duration'
     // Starter feeding schedule. Up to 2 weekly reminders; each independently enabled.
@@ -1037,6 +1085,28 @@
   function vibrate(pattern) {
     if (!state.alertsEnabled) return;
     if (navigator.vibrate) navigator.vibrate(pattern);
+  }
+
+  // UI haptic feedback — separate gate from `alertsEnabled` (which controls the loud
+  // stage-complete chime). Lets users have tap feedback even with chimes disabled.
+  //
+  // iOS Safari/PWAs only support binary navigator.vibrate (no API for distinct intensity
+  // like UIImpactFeedbackGenerator), so we simulate intensity with vibration duration.
+  // Patterns chosen to feel right at typical iPhone Taptic Engine resolution:
+  //   light:   ~15ms blip — routine taps, toggle, checkbox
+  //   medium:  ~25ms — meaningful actions (mark stage done, save)
+  //   success: short-pause-short — bake complete, big save
+  //   warning: stronger double-pulse — destructive action, overdue
+  function haptic(intensity) {
+    if (!state.hapticsEnabled) return;
+    if (!navigator.vibrate) return;
+    switch (intensity) {
+      case 'light':   navigator.vibrate(15); break;
+      case 'medium':  navigator.vibrate(25); break;
+      case 'success': navigator.vibrate([15, 40, 25]); break;
+      case 'warning': navigator.vibrate([30, 30, 30]); break;
+      default:        navigator.vibrate(15);
+    }
   }
   function alertStageComplete() {
     playStageCompleteSound();
@@ -1141,8 +1211,19 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.5.7';
+  const APP_VERSION = '1.7.0';
   const CHANGELOG = [
+    { version: '1.7.0', date: '2026-06-02', notes: [
+      'Pull-to-refresh on Recipes, History, and Active tabs — drag down from the top to sync.',
+      'Smoother view transitions when switching tabs.',
+      'Sync indicator dot pulses orange while a push is in flight.',
+      'Respects iOS "Reduce Motion" — animations disabled when system setting is on.',
+    ]},
+    { version: '1.6.0', date: '2026-06-02', notes: [
+      'Haptic feedback added throughout the app — subtle vibrations on stage actions, checklist toggles, saves, deletes, and bake completion.',
+      'Four-tier intensity: light tap (toggles), medium (save and stage actions), success pattern (bake complete), warning pulse (destructive actions).',
+      'Toggle haptics independently of sound alerts in Settings → Alerts.',
+    ]},
     { version: '1.5.7', date: '2026-06-02', notes: [
       'Starter countdown reads more naturally — "on Friday" instead of "in 1 day" for 1+ days out, "in 8 hours" for sub-day. Applied to both the widget and the in-app Starter section.',
     ]},
@@ -1230,6 +1311,7 @@
       if (state.scheduleMode !== 'finish' && state.scheduleMode !== 'now') state.scheduleMode = 'now';
       if (!Array.isArray(state.activeBakes)) state.activeBakes = [];
       if (typeof state.alertsEnabled !== 'boolean') state.alertsEnabled = true;
+      if (typeof state.hapticsEnabled !== 'boolean') state.hapticsEnabled = true;
       if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null };
       if (!['alpha', 'recent', 'mostBaked', 'duration'].includes(state.recipeSort)) state.recipeSort = 'alpha';
       // Starter schema migration: ensure the object and its 2 reminders exist with valid shape.
@@ -1307,6 +1389,7 @@
       focusedBakeId: state.focusedBakeId,
       syncCode: state.syncCode,
       alertsEnabled: state.alertsEnabled,
+      hapticsEnabled: state.hapticsEnabled,
       recipeFilter: state.recipeFilter,
       recipeSort: state.recipeSort,
       starter: state.starter,
@@ -1442,6 +1525,42 @@
       ...ing,
       qty: scaleQuantity(ing.qty || '', factor),
     }));
+  }
+
+  // Auto-detect which recipe ingredients are mentioned in a given stage's text.
+  // Matches on the ingredient name as a whole word (case-insensitive) against
+  // `stage.name + stage.detail`. If the full name doesn't match, falls back to
+  // matching the LAST word of the ingredient name (often the key noun, e.g.
+  // "all-purpose flour" → "flour"). Returns the matched ingredient objects (not scaled).
+  function findIngredientsForStage(stage, ingredients) {
+    if (!stage || !ingredients || ingredients.length === 0) return [];
+    const text = `${stage.name || ''} ${stage.detail || ''}`.toLowerCase();
+    if (!text.trim()) return [];
+    const matched = [];
+    for (const ing of ingredients) {
+      if (!ing.name) continue;
+      const fullName = ing.name.toLowerCase().trim();
+      if (!fullName) continue;
+      // Escape regex special chars before building the word-boundary pattern
+      const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const fullRe = new RegExp(`\\b${esc(fullName)}\\b`);
+      if (fullRe.test(text)) {
+        matched.push(ing);
+        continue;
+      }
+      // Fallback: try the last whitespace-separated token. Helps for compound
+      // names like "all-purpose flour" (matches "flour") or "active dry yeast" (matches "yeast").
+      const tokens = fullName.split(/\s+/).filter(Boolean);
+      if (tokens.length > 1) {
+        const last = tokens[tokens.length - 1];
+        // Skip very short last tokens (single letters, common suffixes) to avoid false matches
+        if (last.length >= 3) {
+          const lastRe = new RegExp(`\\b${esc(last)}\\b`);
+          if (lastRe.test(text)) matched.push(ing);
+        }
+      }
+    }
+    return matched;
   }
 
   // ============================================================
@@ -1737,6 +1856,7 @@
           // Toggle selection — re-render to reflect new selected/unselected state
           if (bulkSelectedIds.has(id)) bulkSelectedIds.delete(id);
           else bulkSelectedIds.add(id);
+          haptic('light');
           renderBulkActionBar();
           // Update only the row's classes / checkbox without re-rendering the full list
           // (full re-render would lose scroll position on long lists)
@@ -2995,6 +3115,7 @@
       currentBake.needsReminderRefresh = true; // subsequent stages have shifted
       // Clear any leftover dismissal — the stage is now done, dismissal is no longer relevant
       currentBake.stageStates[idx].catchupDismissedAt = null;
+      haptic('medium');
       saveState();
     }
     // Any other choice (null, unexpected) is silently ignored — safer than mutating state
@@ -3281,6 +3402,35 @@
         <div class="status">${ab.paused ? 'Paused' : statusText} · Stage ${curIdx + 1} of ${recipe.stages.length}</div>
         <div class="stage-name">${escapeHtml(curStage.name)}</div>
         ${curStage.detail ? `<div class="stage-detail">${escapeHtml(curStage.detail)}</div>` : ''}
+        ${(() => {
+          // Auto-detect ingredients referenced in this stage's text and render them as a
+          // checklist. Persisted per-bake-per-stage in ab.stageStates[i].ingredientChecks
+          // so taps survive re-renders. Hidden when no ingredient matches.
+          const matched = findIngredientsForStage(curStage, recipe.ingredients || []);
+          if (matched.length === 0) return '';
+          // Ensure storage exists
+          if (!ab.stageStates[curIdx]) ab.stageStates[curIdx] = {};
+          if (!ab.stageStates[curIdx].ingredientChecks) ab.stageStates[curIdx].ingredientChecks = {};
+          const checks = ab.stageStates[curIdx].ingredientChecks;
+          const scale = ab.scaleFactor || 1;
+          return `
+            <div class="stage-ingredients" style="margin-top: 14px; padding: 10px 12px; background: rgba(255,255,255,0.12); border-radius: 10px;">
+              <div style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 6px;">Ingredients for this step</div>
+              ${matched.map(ing => {
+                // Use the ingredient's name as the stable key (ids don't exist in this schema)
+                const key = ing.name;
+                const checked = !!checks[key];
+                const scaledQty = scaleQuantity(ing.qty || '', scale);
+                return `
+                  <label class="stage-ing-row" data-ing-key="${escapeHtml(key)}" style="display: flex; align-items: center; gap: 10px; padding: 6px 0; cursor: pointer; font-size: 14px;">
+                    <span class="stage-ing-box" style="width: 20px; height: 20px; border-radius: 5px; border: 2px solid currentColor; flex-shrink: 0; display: flex; align-items: center; justify-content: center; opacity: ${checked ? 1 : 0.55}; background: ${checked ? 'currentColor' : 'transparent'};">${checked ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--bake-accent)" stroke-width="3" style="width: 12px; height: 12px;"><path d="M5 13l4 4L19 7"/></svg>' : ''}</span>
+                    <span style="flex: 1; ${checked ? 'text-decoration: line-through; opacity: 0.55;' : ''}">${escapeHtml(ing.name)}${scaledQty ? ` <span style="opacity: 0.7;">· ${escapeHtml(scaledQty)}</span>` : ''}</span>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          `;
+        })()}
         <div class="countdown-box">
           <div class="countdown-label">${ab.paused ? 'Timer paused' : countdownLabel}</div>
           <div class="countdown-value">${ab.paused ? '—' : countdownValue}</div>
@@ -3398,9 +3548,28 @@
       const editRecipeBtn = e.target.closest('#btn-edit-recipe-active');
       const adjustTimerBtn = e.target.closest('#btn-adjust-timer');
       const bakingModeBtn = e.target.closest('#baking-mode-toggle');
+      const ingRow = e.target.closest('.stage-ing-row');
+
+      // Ingredient checklist tap — toggle, persist, and re-render the row in place
+      // so we don't bounce the whole bake card. Uses ingredient name as the persistence key.
+      if (ingRow) {
+        e.preventDefault();
+        const key = ingRow.dataset.ingKey;
+        if (!ab.stageStates[curIdx]) ab.stageStates[curIdx] = {};
+        if (!ab.stageStates[curIdx].ingredientChecks) ab.stageStates[curIdx].ingredientChecks = {};
+        const checks = ab.stageStates[curIdx].ingredientChecks;
+        checks[key] = !checks[key];
+        haptic('light');
+        ab._updatedAt = Date.now();
+        saveState();
+        // Re-render only this row to preserve scroll position
+        renderActiveBake(recipe, ab);
+        return;
+      }
 
       if (startBtn) {
         if (ab.paused) return;
+        haptic('medium');
         stopBakeTicker();
         // Record the actual moment the user is starting this stage. The countdown for it
         // (and the start times for all subsequent stages) cascade from here.
@@ -3521,6 +3690,9 @@
 
       if (doneBtn) {
         if (ab.paused) return; // disabled while paused
+        // Success haptic if this completes the bake (last stage); medium otherwise
+        const isLastStage = curIdx === recipe.stages.length - 1;
+        haptic(isLastStage ? 'success' : 'medium');
         stopBakeTicker();
         // Detect off-schedule completion (>5 min off the planned end)
         const plannedEnd = new Date(getStageScheduledStart(recipe, curIdx, ab).getTime() + getStageDur(recipe, curIdx, ab) * 60000);
@@ -3555,6 +3727,7 @@
               ab.stageStates[i].skipped = true;
             }
           }
+          haptic('medium');
           saveState();
           renderActiveBake(recipe, ab);
         }
@@ -4710,8 +4883,8 @@ Here is the recipe:
             { label: 'Cancel', style: 'ghost', value: 'cancel' },
           ],
         });
-        if (choice === 'save') endBake(bakeId, true);
-        else if (choice === 'discard') endBake(bakeId, false);
+        if (choice === 'save') { haptic('success'); endBake(bakeId, true); }
+        else if (choice === 'discard') { haptic('warning'); endBake(bakeId, false); }
       });
     });
 
@@ -4921,6 +5094,7 @@ Here is the recipe:
     const url = `shortcuts://run-shortcut?name=${encodeURIComponent('Crumb Timers')}`;
     window.location.href = url;
     renderStarter();
+    haptic('medium');
     toast(`Sent ${milestones.length} reminders`);
   }
 
@@ -4980,6 +5154,7 @@ Here is the recipe:
     saveState();
     hideModal('modal-starter');
     renderStarter();
+    haptic('medium');
     toast('Starter Schedule Saved');
   }
 
@@ -5276,6 +5451,7 @@ Here is the recipe:
     if (state.currentRecipeId === r.id) renderSchedule();
     // If a bake is in progress for this recipe, restart the ticker so countdowns continue
     if (activeForThis && !bakeTickerInterval) startBakeTicker();
+    haptic('medium');
     toast('Recipe saved');
   });
   document.getElementById('duplicate-recipe').addEventListener('click', async () => {
@@ -5342,6 +5518,7 @@ Here is the recipe:
       switchView('view-recipes');
     }
     renderRecipes();
+    haptic('warning');
     toast('Recipe deleted');
   });
 
@@ -5455,6 +5632,7 @@ Here is the recipe:
   let pushDebounceTimer = null;
   let lastPushAt = 0;
   let lastSyncAt = 0; // wall-clock time of the last successful push or pull (for UI display)
+  let syncInFlight = false; // true while a push is actively in transit; toggles the status spinner
 
   function isFirebaseConfigured() {
     return FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('REPLACE_WITH');
@@ -5642,12 +5820,19 @@ Here is the recipe:
           };
           suppressNextRemote = true;
           lastPushAt = Date.now();
+          // Set syncing flag, re-render status if Settings is open so the user sees the spinner
+          syncInFlight = true;
+          renderSyncStatus();
           await setDoc(doc(firestoreDb, 'crumb_households', state.syncCode), payload);
           lastSyncAt = Date.now();
+          syncInFlight = false;
+          renderSyncStatus();
           resolve(true);
         } catch (e) {
           console.error('Firestore push failed:', e);
           suppressNextRemote = false;
+          syncInFlight = false;
+          renderSyncStatus();
           resolve(false);
         }
       };
@@ -5915,8 +6100,9 @@ Here is the recipe:
     }
 
     if (state.syncCode) {
-      dot.style.background = 'var(--leaven)';
-      label.textContent = 'Sync enabled';
+      dot.style.background = syncInFlight ? 'var(--crust)' : 'var(--leaven)';
+      dot.style.animation = syncInFlight ? 'syncPulse 0.9s ease-in-out infinite' : 'none';
+      label.textContent = syncInFlight ? 'Syncing…' : 'Sync enabled';
       detail.textContent = 'Recipes, bakes, and active baking state sync across devices.';
       offPane.style.display = 'none';
       onPane.style.display = '';
@@ -5947,8 +6133,9 @@ Here is the recipe:
 
   function renderAlertsToggle() {
     const t = document.getElementById('alerts-toggle');
-    if (!t) return;
-    t.classList.toggle('on', !!state.alertsEnabled);
+    if (t) t.classList.toggle('on', !!state.alertsEnabled);
+    const h = document.getElementById('haptics-toggle');
+    if (h) h.classList.toggle('on', !!state.hapticsEnabled);
   }
 
   function renderSettingsStats() {
@@ -6173,6 +6360,7 @@ Here is the recipe:
         renderRecipes();
         renderHistory();
         updateActiveTabBadge();
+        haptic('warning');
         toast('All Data Wiped');
       });
     }
@@ -6188,6 +6376,18 @@ Here is the recipe:
           // Quick test chime so user knows it works
           alertStageComplete();
         }
+      });
+    }
+
+    // Haptics toggle — separate from sound alerts. Fires a sample haptic when turning on
+    // so the user can feel that it's working.
+    const hapticsToggle = document.getElementById('haptics-toggle');
+    if (hapticsToggle) {
+      hapticsToggle.addEventListener('click', () => {
+        state.hapticsEnabled = !state.hapticsEnabled;
+        saveState();
+        renderAlertsToggle();
+        if (state.hapticsEnabled) haptic('medium');
       });
     }
 
@@ -6497,6 +6697,7 @@ Here is the recipe:
       if (liveItems(state.recipes).length === 0) return; // nothing to select
       bulkSelectMode = !bulkSelectMode;
       bulkSelectedIds.clear();
+      haptic('light');
       renderBulkActionBar();
       renderRecipes();
     });
@@ -6546,6 +6747,7 @@ Here is the recipe:
     updateActiveTabBadge();
     saveState();
     exitBulkSelectMode();
+    haptic('warning');
     toast(`${ids.length} recipe${ids.length === 1 ? '' : 's'} deleted`);
   });
   document.getElementById('bulk-move-btn').addEventListener('click', async () => {
@@ -6575,8 +6777,165 @@ Here is the recipe:
     saveState();
     exitBulkSelectMode();
     const catName = newCatId ? (cats.find(c => c.id === newCatId)?.name || 'category') : 'Uncategorized';
+    haptic('medium');
     toast(`${ids.length} recipe${ids.length === 1 ? '' : 's'} moved to ${catName}`);
   });
+
+  // =========================================================
+  // PULL-TO-REFRESH
+  // =========================================================
+  // Native-feeling pull gesture on the recipe and history lists. When the user is at
+  // scrollTop=0 and drags down past a threshold, we trigger a sync refresh and animate
+  // a spinner indicator. Mirrors iOS Mail / Safari behavior.
+  //
+  // Implementation notes:
+  // - Only attach to touch events (skip on desktop — they'd use Sync Now button)
+  // - Track scrollTop on touchstart; if > 0, ignore the gesture (let normal scroll happen)
+  // - Visual feedback: indicator translates down + scales up with drag distance
+  // - Threshold of 70px to trigger; under that, just snap back
+  // - Resistance curve so the pull feels weighty (not 1:1 with finger movement)
+  (function setupPullToRefresh() {
+    const indicator = document.getElementById('ptr-indicator');
+    if (!indicator) return;
+    if (!('ontouchstart' in window)) return; // skip on desktop
+
+    const PULL_THRESHOLD = 70;        // pixels of pull needed to trigger refresh
+    const MAX_PULL = 120;             // visual cap; indicator stops moving past this
+    const TOP_OFFSET = 8;             // where the indicator sits at rest (matches CSS top)
+
+    let startY = 0;
+    let currentY = 0;
+    let pulling = false;
+    let refreshing = false;
+
+    // Resistance: the pull feels heavier as you go further. 0.5 means 1px finger ~ 0.5px visual.
+    // Combined with the threshold, this gives a satisfying "weight."
+    const RESISTANCE = 0.55;
+
+    function applyDrag(rawDelta) {
+      const eased = rawDelta * RESISTANCE;
+      const clamped = Math.min(eased, MAX_PULL);
+      // Indicator scales 0.6 → 1.0 as it pulls into view. Translate sits at -40 at rest,
+      // moves down by clamped pixels.
+      const progress = Math.min(1, clamped / PULL_THRESHOLD);
+      const translateY = -40 + clamped;
+      const scale = 0.6 + (0.4 * progress);
+      const opacity = Math.min(1, progress * 1.2);
+      // Rotate the icon as the user pulls — extra polish; full 180° rotation by threshold
+      const rotate = progress * 180;
+      indicator.style.transform = `translateX(-50%) translateY(${translateY}px) scale(${scale})`;
+      indicator.style.opacity = opacity;
+      const svg = indicator.querySelector('svg');
+      if (svg) svg.style.transform = `rotate(${rotate}deg)`;
+    }
+
+    function resetIndicator(animated) {
+      if (animated) indicator.classList.add('refreshing');
+      indicator.style.transform = 'translateX(-50%) translateY(-40px) scale(0.6)';
+      indicator.style.opacity = '0';
+      const svg = indicator.querySelector('svg');
+      if (svg) svg.style.transform = 'rotate(0deg)';
+      indicator.classList.remove('spinning');
+      if (animated) {
+        setTimeout(() => indicator.classList.remove('refreshing'), 350);
+      }
+    }
+
+    async function triggerRefresh() {
+      refreshing = true;
+      // Snap to threshold position and start spinning
+      indicator.classList.add('refreshing');
+      indicator.style.transform = `translateX(-50%) translateY(${PULL_THRESHOLD}px) scale(1)`;
+      indicator.style.opacity = '1';
+      indicator.classList.add('spinning');
+      const svg = indicator.querySelector('svg');
+      if (svg) svg.style.transform = 'rotate(0deg)';
+      haptic('medium');
+      // Actually do the refresh — if sync is on, force push + relisten; otherwise just
+      // animate so the gesture feels acknowledged.
+      try {
+        if (state.syncCode && firestoreDb) {
+          await pushToFirestore({ immediate: true });
+          if (ensureFirebaseInit()) startSyncListener();
+          // Give listener a moment to fire
+          await new Promise(r => setTimeout(r, 500));
+        } else {
+          // No sync — short artificial delay so the user sees the spinner briefly
+          await new Promise(r => setTimeout(r, 400));
+        }
+      } catch (e) {
+        console.warn('PTR refresh failed:', e);
+      }
+      refreshing = false;
+      resetIndicator(true);
+      // Re-render the active view so any synced changes appear
+      const activeView = document.querySelector('.view.active');
+      if (activeView) {
+        if (activeView.id === 'view-recipes') renderRecipes();
+        else if (activeView.id === 'view-history') renderHistory();
+        else if (activeView.id === 'view-active-bakes') renderActiveBakes();
+      }
+    }
+
+    // Use the document for touch tracking — simpler than attaching per-view and avoids
+    // missing touch events that start in one view and end in another.
+    document.addEventListener('touchstart', (e) => {
+      if (refreshing) return;
+      // Only enable PTR on the main scrollable views (not modals, not when inside a modal)
+      const activeView = document.querySelector('.view.active');
+      if (!activeView) return;
+      const allowedViews = ['view-recipes', 'view-history', 'view-active-bakes'];
+      if (!allowedViews.includes(activeView.id)) return;
+      // Skip if a modal is open
+      if (document.querySelector('.modal-backdrop.show')) return;
+      // Only start tracking if the page is scrolled to the very top
+      const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+      if (scrollTop > 0) return;
+      // Single-touch only
+      if (e.touches.length !== 1) return;
+      startY = e.touches[0].clientY;
+      currentY = startY;
+      pulling = true;
+      indicator.classList.remove('refreshing'); // make drag instant, not animated
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!pulling || refreshing) return;
+      currentY = e.touches[0].clientY;
+      const delta = currentY - startY;
+      if (delta <= 0) {
+        // User is scrolling up or hasn't moved — reset and stop tracking
+        if (delta < -10) {
+          pulling = false;
+          resetIndicator(false);
+        }
+        return;
+      }
+      // Apply visual feedback. Don't preventDefault on every move — only when actively
+      // pulling down past a small threshold, so normal taps still work.
+      if (delta > 5) {
+        applyDrag(delta);
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', () => {
+      if (!pulling || refreshing) return;
+      pulling = false;
+      const delta = currentY - startY;
+      const eased = delta * RESISTANCE;
+      if (eased >= PULL_THRESHOLD) {
+        triggerRefresh();
+      } else {
+        resetIndicator(true);
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchcancel', () => {
+      if (!pulling || refreshing) return;
+      pulling = false;
+      resetIndicator(true);
+    }, { passive: true });
+  })();
 
   // Connect to Firebase once SDK is loaded
   function tryAutoConnect() {
