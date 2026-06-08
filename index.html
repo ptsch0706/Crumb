@@ -1269,8 +1269,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.13.1';
+  const APP_VERSION = '1.13.2';
   const CHANGELOG = [
+    { version: '1.13.2', date: '2026-06-02', notes: [
+      'Fix: sync was failing with "invalid-argument" when payloads contained undefined or NaN values (common after partial form edits). The sync layer now sanitizes these before sending and logs what was cleaned up to the console.',
+    ]},
     { version: '1.13.1', date: '2026-06-02', notes: [
       'Sync failures now surface the actual Firebase error code in the toast (e.g. "Sync failed: resource-exhausted") instead of a generic "check connection" message.',
       'Settings \u2192 About now shows current sync payload size and warns when approaching the 1 MiB Firestore limit.',
@@ -6612,7 +6615,7 @@ Here is the recipe:
         try {
           const { doc, setDoc } = window.__firebase;
           const now = Date.now();
-          const payload = {
+          const rawPayload = {
             recipes: stampForSync(state.recipes, now),
             bakes: stampForSync(state.bakes, now),
             categories: stampForSync(state.categories, now),
@@ -6621,6 +6624,29 @@ Here is the recipe:
             updatedAt: now,
             schemaVersion: 2, // bump so we know this push uses per-object _updatedAt
           };
+          // Sanitize: Firestore rejects undefined, NaN, and Infinity with invalid-argument.
+          // These can sneak in from incomplete form inputs, parseInt of '', or new code paths
+          // that forgot to default a field. We strip them silently and log the paths so we
+          // can spot regressions in the console.
+          const stripped = [];
+          const sanitize = (val, path) => {
+            if (val === undefined) { stripped.push(path); return null; }
+            if (typeof val === 'number' && !isFinite(val)) { stripped.push(`${path} (${val})`); return null; }
+            if (Array.isArray(val)) return val.map((v, i) => sanitize(v, `${path}[${i}]`));
+            if (val && typeof val === 'object') {
+              const out = {};
+              for (const k of Object.keys(val)) {
+                const sv = sanitize(val[k], `${path}.${k}`);
+                if (sv !== undefined) out[k] = sv;
+              }
+              return out;
+            }
+            return val;
+          };
+          const payload = sanitize(rawPayload, '');
+          if (stripped.length > 0) {
+            console.warn(`[sync] Sanitized ${stripped.length} bad value(s) before push:`, stripped.slice(0, 20));
+          }
           suppressNextRemote = true;
           lastPushAt = Date.now();
           // Set syncing flag, re-render status if Settings is open so the user sees the spinner
