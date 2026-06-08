@@ -1230,8 +1230,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.9.0';
+  const APP_VERSION = '1.10.0';
   const CHANGELOG = [
+    { version: '1.10.0', date: '2026-06-02', notes: [
+      'Plan-ahead bakes: start a bake more than 15 min before its scheduled start time, and the app shows a "Prep the Bake" countdown until it\'s time to begin.',
+      'When the prep timer hits zero, the bake auto-advances into the first stage.',
+      'iOS reminders still fire at the scheduled stage times, so you get pinged when it\'s actually time to mix.',
+      'Tap "Start First Stage Now" during prep to skip the countdown and begin immediately.',
+    ]},
     { version: '1.9.0', date: '2026-06-02', notes: [
       'Tap any weight quantity to convert grams ↔ ounces, in the recipe view or active bake checklist.',
       'Grams remain the default; conversions are transient (reset on app reload).',
@@ -2857,6 +2863,19 @@
       _updatedAt: Date.now(),
     };
 
+    // Prep window: if user starts a bake more than 15 minutes BEFORE the planned start
+    // time (e.g. picked "finish by 9am tomorrow" and tapped Start at 6pm tonight),
+    // show a virtual "Prep the Bake" countdown until the real start time. When the
+    // countdown hits zero the bake auto-transitions to stage 1 — no separate marker
+    // needed since prepUntil naturally becomes <= now. iOS reminders for the first
+    // stage still fire at the original scheduled time, so the user gets pinged when
+    // it's time to actually start.
+    const PREP_THRESHOLD_MS = 15 * 60 * 1000;
+    const msUntilStart = startTime.getTime() - Date.now();
+    if (msUntilStart > PREP_THRESHOLD_MS) {
+      newBake.prepUntil = startTime.toISOString();
+    }
+
     // If start time is in the past, auto-complete stages whose planned end has already passed.
     // For wait stages, mark them auto-complete at the planned end. For hands-on stages, we
     // can't know if the user did them or not, so we still mark them done at the planned end
@@ -3199,6 +3218,8 @@
     const ab = bake || getFocusedBake();
     if (!ab) return;
     if (ab.paused) return; // no catchup prompts while paused
+    // No catchup during prep window — nothing's overdue when the bake hasn't started yet
+    if (ab.prepUntil && new Date(ab.prepUntil) > new Date()) return;
     // Capture the ids we care about so we can validate the bake still exists after the dialog
     const bakeId = ab.id;
     const idx = findOverdueHandsOnStage(recipe, ab);
@@ -3451,6 +3472,82 @@
         if (choice === 'yes') endBake(ab.id, false);
       };
       return;
+    }
+
+    // ----------------------------------------------------------
+    // PREP WINDOW: bake was started ahead of its scheduled time
+    // ----------------------------------------------------------
+    // If prepUntil is set and still in the future, show a "Prep the Bake" countdown
+    // instead of stage 1. When the countdown hits zero, prepUntil naturally becomes
+    // <= now and the render falls through to the normal stage view (auto-advance).
+    // We don't gate this on ab.paused — pausing during prep doesn't really make sense
+    // since the timer is anchored to a wall-clock time, not elapsed bake time.
+    if (ab.prepUntil) {
+      const prepEnd = new Date(ab.prepUntil);
+      const msToStart = prepEnd - new Date();
+      if (msToStart > 0) {
+        const firstStage = recipe.stages[0];
+        const fmtCount = formatLongCountdown(msToStart, prepEnd);
+        container.innerHTML = `
+          <div class="bake-banner" style="border-color: ${color.hex}; background: ${color.soft}; color: ${color.hex};">
+            <span class="label"><span class="dot" style="background: ${color.hex};"></span>Prep window</span>
+            <button id="btn-end-bake" style="background: ${color.hex}; color: white; border: none; padding: 6px 14px; border-radius: 100px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;">End Bake</button>
+          </div>
+          <div class="bake-hero waiting" style="--bake-accent: ${color.hex}; --bake-accent-soft: ${color.soft};">
+            <div class="status">Scheduled · ${recipe.stages.length} stages ahead</div>
+            <div class="stage-name">Prep the Bake</div>
+            <div class="stage-detail">Get your ingredients and tools ready. The first stage (${escapeHtml(firstStage.name)}) starts automatically when this timer hits zero.</div>
+            <div class="countdown-box">
+              <div class="countdown-label">Starts</div>
+              <div class="countdown-value">${fmtCount.value}</div>
+              ${fmtCount.when ? `<div class="countdown-when">${fmtCount.when}</div>` : ''}
+            </div>
+          </div>
+          <div class="done-btn">
+            <button class="btn btn-done btn-block" id="btn-skip-prep" style="background: ${color.hex};">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+              Start First Stage Now
+            </button>
+          </div>
+          <p class="help" style="margin-top: 8px; text-align: center;">Tap to skip the prep window and begin ${escapeHtml(firstStage.name)} immediately.</p>
+        `;
+        // Wire the End Bake button (same handler as normal end-bake)
+        document.getElementById('btn-end-bake').onclick = async () => {
+          const choice = await showConfirm({
+            title: 'End this bake?',
+            message: 'It hasn\'t started yet — nothing will be saved to history.',
+            buttons: [
+              { label: 'End bake', style: 'danger', value: 'yes' },
+              { label: 'Cancel', style: 'ghost', value: 'no' },
+            ],
+          });
+          if (choice === 'yes') {
+            haptic('warning');
+            endBake(ab.id, false);
+          }
+        };
+        // "Start First Stage Now" — clears prepUntil and re-anchors startedAt to now,
+        // so the first stage starts immediately rather than at the original future time.
+        document.getElementById('btn-skip-prep').onclick = () => {
+          haptic('medium');
+          delete ab.prepUntil;
+          ab.startedAt = new Date().toISOString();
+          ab._updatedAt = Date.now();
+          // Also clear any reminder cache so old future-time reminders get refreshed
+          ab.needsReminderRefresh = true;
+          saveState();
+          renderActiveBake(recipe, ab);
+        };
+        return;
+      } else {
+        // Prep window has expired — auto-advance by clearing the flag. The render falls
+        // through to the normal stage view below. Save so this clearance persists.
+        delete ab.prepUntil;
+        ab._updatedAt = Date.now();
+        saveState();
+        // Optional gentle haptic since the bake just "began"
+        haptic('success');
+      }
     }
 
     const curStage = recipe.stages[curIdx];
@@ -4928,6 +5025,21 @@ Here is the recipe:
         if (!recipe || recipe._deleted) continue;
         const idx = getCurrentStageIdx(recipe, b);
         if (idx === -1) continue;
+        // Prep window — the "next action" is when stage 1 will actually begin.
+        if (b.prepUntil && new Date(b.prepUntil) > new Date()) {
+          const target = new Date(b.prepUntil);
+          const candidate = {
+            recipe,
+            bake: b,
+            actionName: `Start: ${recipe.stages[0].name}`,
+            target,
+            msAway: target - new Date(),
+            awaitingStart: false,
+            color: getBakeColor(b.color),
+          };
+          if (!best || candidate.msAway < best.msAway) best = candidate;
+          continue;
+        }
         const stage = recipe.stages[idx];
         const curState = b.stageStates[idx];
         const awaitingStart = stage.needsStart && !curState.startedAt;
@@ -4994,6 +5106,12 @@ Here is the recipe:
       if (b.paused) {
         statusLine = `Stage ${curIdx + 1} of ${totalCount} · ${escapeHtml(recipe.stages[curIdx].name)}`;
         countdownLine = '<span style="color: var(--ink-mute); font-weight: 600;">⏸ Paused</span>';
+      } else if (b.prepUntil && new Date(b.prepUntil) > new Date()) {
+        // Prep window: bake was started ahead of its scheduled time. Show countdown to
+        // when stage 1 will actually begin.
+        const msToStart = new Date(b.prepUntil) - new Date();
+        statusLine = `Prep · ${totalCount} stages ahead`;
+        countdownLine = `Starts in ${formatCountdown(msToStart)}`;
       } else if (allDone) {
         statusLine = 'All stages complete';
         countdownLine = '<span style="color: var(--leaven); font-weight: 600;">Ready to save</span>';
