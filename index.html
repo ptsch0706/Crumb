@@ -1259,8 +1259,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.12.0';
+  const APP_VERSION = '1.12.1';
   const CHANGELOG = [
+    { version: '1.12.1', date: '2026-06-02', notes: [
+      'Fix: active bake countdown could freeze after returning from background. The timer now self-heals whenever you view a bake or return to the app.',
+    ]},
     { version: '1.12.0', date: '2026-06-02', notes: [
       'Concurrent timers Part 2: during an active bake, each timer shows its own card with a live countdown, progress bar, and state (pending / running / done).',
       'Audio + haptic alert when a concurrent timer fires, so you don\'t miss the preheat or fold cue.',
@@ -4215,6 +4218,9 @@
       optsBtn.style.display = '';
       optsBtn.classList.toggle('needs-refresh', !!ab.needsReminderRefresh);
     }
+    // Make sure the ticker is running so the countdown keeps updating. Idempotent — no-op
+    // if it's already alive. Recovers from iOS background throttling that can kill setInterval.
+    ensureBakeTickerRunning();
   }
 
   // Tick the countdown every second when a bake is active
@@ -4237,6 +4243,16 @@
       if (key.startsWith(prefix)) alertedStageEnds.delete(key);
     }
   }
+  // Self-healing helper: starts the bake ticker only if it's not already running. Used
+  // anywhere we render bake countdowns to recover from iOS killing the setInterval while
+  // the page was backgrounded. Without this, the timer can stay frozen after the PWA
+  // comes back into view even though the UI is showing the bake.
+  function ensureBakeTickerRunning() {
+    if (!bakeTickerInterval && state.activeBakes && state.activeBakes.length > 0) {
+      startBakeTicker();
+    }
+  }
+
   function startBakeTicker() {
     stopBakeTicker();
     bakeTickerInterval = setInterval(() => {
@@ -5522,6 +5538,8 @@ Here is the recipe:
 
     // Render the starter section after the bake list (it sits below)
     renderStarter();
+    // Idempotent ticker check — see ensureBakeTickerRunning notes.
+    ensureBakeTickerRunning();
   }
 
   // =========================================================
@@ -5813,6 +5831,12 @@ Here is the recipe:
     if (viewId === 'view-history') renderHistory();
     if (viewId === 'view-active-bakes') renderActiveBakes();
     if (viewId === 'view-stats') renderStats();
+    // Safety net: any time we navigate to a view that displays bake countdowns, make sure
+    // the ticker is running. Recovers from cases where iOS killed setInterval in the
+    // background and our other restart paths missed it.
+    if (viewId === 'view-schedule' || viewId === 'view-active-bakes') {
+      ensureBakeTickerRunning();
+    }
   }
 
   // ============================================================
@@ -7638,6 +7662,13 @@ Here is the recipe:
   let _lastResyncAt = 0;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
+
+    // Restart the bake ticker if iOS killed it while we were backgrounded. The
+    // ensureBakeTickerRunning() helper is idempotent — it's a no-op if the ticker
+    // is already alive. This fixes the "countdown freezes after returning from
+    // background" issue where renderActiveBake shows a fresh frame but no further
+    // ticks happen because setInterval was suspended.
+    ensureBakeTickerRunning();
 
     // Force-refresh any visible bake countdowns — they're stale since the ticker skipped
     // re-rendering while we were hidden. Without this, a backgrounded app can show "5m
