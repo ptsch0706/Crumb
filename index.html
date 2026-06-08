@@ -995,6 +995,7 @@
       <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.6;">
         <div><strong>Crumb</strong> · Bread baking workflow</div>
         <div style="margin-top: 4px; color: var(--ink-mute);">Version <span id="app-version">1.0.0</span> · <span id="recipe-count-stat">0</span> recipes · <span id="bake-count-stat">0</span> bakes logged</div>
+        <div style="margin-top: 2px; color: var(--ink-mute); font-size: 11px;">Sync payload: <span id="sync-payload-size">—</span></div>
         <button class="btn btn-ghost btn-sm" id="view-changelog" style="margin-top: 8px; padding: 4px 10px; font-size: 11px;">What's new</button>
       </div>
     </div>
@@ -1268,8 +1269,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.13.0';
+  const APP_VERSION = '1.13.1';
   const CHANGELOG = [
+    { version: '1.13.1', date: '2026-06-02', notes: [
+      'Sync failures now surface the actual Firebase error code in the toast (e.g. "Sync failed: resource-exhausted") instead of a generic "check connection" message.',
+      'Settings \u2192 About now shows current sync payload size and warns when approaching the 1 MiB Firestore limit.',
+    ]},
     { version: '1.13.0', date: '2026-06-02', notes: [
       'Nest a stage into the previous one with a single tap \u2014 turns it into a concurrent timer that ends with the parent. The previous stage auto-converts to a wait if needed.',
       'Useful for moving an existing "Preheat oven" stage into a "Proof" wait so the two end together.',
@@ -6621,6 +6626,17 @@ Here is the recipe:
           // Set syncing flag, re-render status if Settings is open so the user sees the spinner
           syncInFlight = true;
           renderSyncStatus();
+          // Log payload size for diagnostic — Firestore has a 1 MiB per-document limit.
+          // Helps us catch when a household doc has grown too large (often due to photos).
+          try {
+            const sizeBytes = new Blob([JSON.stringify(payload)]).size;
+            const sizeKb = (sizeBytes / 1024).toFixed(1);
+            const pct = ((sizeBytes / (1024 * 1024)) * 100).toFixed(1);
+            console.log(`[sync] Pushing ${sizeKb} KB (${pct}% of 1 MiB Firestore limit)`);
+            if (sizeBytes > 900 * 1024) {
+              console.warn(`[sync] Payload approaching Firestore 1 MiB limit. Consider trimming photos.`);
+            }
+          } catch (e) { /* size calc shouldn't fail the push */ }
           await setDoc(doc(firestoreDb, 'crumb_households', state.syncCode), payload);
           lastSyncAt = Date.now();
           syncInFlight = false;
@@ -6628,6 +6644,18 @@ Here is the recipe:
           resolve(true);
         } catch (e) {
           console.error('Firestore push failed:', e);
+          // Surface the real error code/message so the user can tell us what's wrong.
+          // Common codes:
+          //   - permission-denied: security rule rejected (bad sync code format?)
+          //   - resource-exhausted: hit a quota
+          //   - invalid-argument: payload too large or has invalid types
+          //   - unavailable: transient — server or network
+          //   - failed-precondition: usually a missing index (shouldn't happen for setDoc)
+          const code = e && e.code ? e.code : 'unknown';
+          const msg = e && e.message ? e.message : String(e);
+          toast(`Sync failed: ${code}`);
+          // Log full diagnostic. User can open Safari Web Inspector to see this.
+          console.error(`[sync] code=${code} message=${msg}`);
           suppressNextRemote = false;
           syncInFlight = false;
           renderSyncStatus();
@@ -6947,6 +6975,27 @@ Here is the recipe:
     if (r) r.textContent = liveItems(state.recipes).length;
     if (b) b.textContent = liveItems(state.bakes).length;
     if (v) v.textContent = APP_VERSION;
+    // Estimate sync payload size so the user can spot when they're approaching the
+    // 1 MiB Firestore document limit (typically driven by accumulated photo data).
+    const sizeEl = document.getElementById('sync-payload-size');
+    if (sizeEl) {
+      try {
+        const payload = {
+          recipes: state.recipes || [],
+          bakes: state.bakes || [],
+          categories: state.categories || [],
+          activeBakes: state.activeBakes || [],
+          starter: state.starter || null,
+        };
+        const bytes = new Blob([JSON.stringify(payload)]).size;
+        const kb = bytes / 1024;
+        const pct = ((bytes / (1024 * 1024)) * 100).toFixed(1);
+        const limit = kb > 900 ? ' \u26a0\ufe0f near 1 MiB limit' : '';
+        sizeEl.textContent = `${kb < 1024 ? kb.toFixed(1) + ' KB' : (kb / 1024).toFixed(2) + ' MB'} · ${pct}%${limit}`;
+      } catch (e) {
+        sizeEl.textContent = '—';
+      }
+    }
   }
 
   // Render the changelog modal body from the CHANGELOG constant
