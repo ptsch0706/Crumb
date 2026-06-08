@@ -850,6 +850,17 @@
   </div>
 </div>
 
+<!-- DIAGNOSTICS MODAL -->
+<div class="modal-backdrop" id="modal-diagnostics">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Diagnostics</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body" id="diagnostics-body"></div>
+  </div>
+</div>
+
 <!-- SYNC INFO MODAL -->
 <div class="modal-backdrop" id="modal-sync-info">
   <div class="modal">
@@ -995,9 +1006,10 @@
       <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.6;">
         <div><strong>Crumb</strong> · Bread baking workflow</div>
         <div style="margin-top: 4px; color: var(--ink-mute);">Version <span id="app-version">1.0.0</span> · <span id="recipe-count-stat">0</span> recipes · <span id="bake-count-stat">0</span> bakes logged</div>
-        <div style="margin-top: 2px; color: var(--ink-mute); font-size: 11px;">Sync payload: <span id="sync-payload-size">—</span></div>
-        <div id="sync-payload-breakdown" style="display: none;"></div>
-        <button class="btn btn-ghost btn-sm" id="view-changelog" style="margin-top: 8px; padding: 4px 10px; font-size: 11px;">What's new</button>
+        <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+          <button class="btn btn-ghost btn-sm" id="view-changelog" style="padding: 4px 10px; font-size: 11px;">What's new</button>
+          <button class="btn btn-ghost btn-sm" id="view-diagnostics" style="padding: 4px 10px; font-size: 11px;">Diagnostics</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1270,8 +1282,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.13.3';
+  const APP_VERSION = '1.13.4';
   const CHANGELOG = [
+    { version: '1.13.4', date: '2026-06-02', notes: [
+      'Moved sync payload size and bake-size breakdown into a new "Diagnostics" modal accessible from Settings \u2192 About.',
+      'Diagnostics also shows sync state, data counts, tombstone count pending prune, and localStorage usage.',
+    ]},
     { version: '1.13.3', date: '2026-06-02', notes: [
       'Sync failure toast now tells you specifically when data is too large for Firebase, with a target KB number.',
       'Settings \u2192 About shows the largest photo-heavy bakes when payload size is approaching the limit, so you can trim them.',
@@ -6652,6 +6668,7 @@ Here is the recipe:
             return val;
           };
           const payload = sanitize(rawPayload, '');
+          window.__lastSyncStripped = stripped.length;
           if (stripped.length > 0) {
             console.warn(`[sync] Sanitized ${stripped.length} bad value(s) before push:`, stripped.slice(0, 20));
           }
@@ -7019,59 +7036,116 @@ Here is the recipe:
     if (r) r.textContent = liveItems(state.recipes).length;
     if (b) b.textContent = liveItems(state.bakes).length;
     if (v) v.textContent = APP_VERSION;
-    // Estimate sync payload size so the user can spot when they're approaching the
-    // 1 MiB Firestore document limit (typically driven by accumulated photo data).
-    const sizeEl = document.getElementById('sync-payload-size');
-    if (sizeEl) {
-      try {
-        const payload = {
-          recipes: state.recipes || [],
-          bakes: state.bakes || [],
-          categories: state.categories || [],
-          activeBakes: state.activeBakes || [],
-          starter: state.starter || null,
-        };
-        const bytes = new Blob([JSON.stringify(payload)]).size;
-        const kb = bytes / 1024;
-        const pct = ((bytes / (1024 * 1024)) * 100).toFixed(1);
-        const limit = kb > 900 ? ' \u26a0\ufe0f near 1 MiB limit' : '';
-        sizeEl.textContent = `${kb < 1024 ? kb.toFixed(1) + ' KB' : (kb / 1024).toFixed(2) + ' MB'} · ${pct}%${limit}`;
-        // If large, show a breakdown of biggest bakes by photo data so user can find
-        // and trim them. Sorted descending by bake size, top 5.
-        const breakdownEl = document.getElementById('sync-payload-breakdown');
-        if (breakdownEl) {
-          if (kb > 600) {
-            const bakeSizes = (state.bakes || [])
-              .filter(b => b && !b._deleted)
-              .map(b => {
-                const photoBytes = (b.photos || []).reduce((s, p) => s + (typeof p === 'string' ? p.length : 0), 0);
-                const recipe = state.recipes.find(r => r.id === b.recipeId);
-                const name = recipe ? recipe.name : (b.recipeSnapshot ? b.recipeSnapshot.name : 'Unknown');
-                return { id: b.id, name, photoBytes, photoCount: (b.photos || []).length, date: b.completedAt };
-              })
-              .filter(b => b.photoBytes > 50 * 1024)
-              .sort((a, b) => b.photoBytes - a.photoBytes)
-              .slice(0, 5);
-            if (bakeSizes.length > 0) {
-              breakdownEl.style.display = '';
-              breakdownEl.innerHTML = `
-                <div style="font-size: 11px; color: var(--warn); margin-top: 6px; padding: 8px; background: rgba(184, 92, 42, 0.08); border-radius: 6px;">
-                  <div style="font-weight: 600; margin-bottom: 4px;">Largest bakes (by photo size):</div>
-                  ${bakeSizes.map(b => `<div>· ${escapeHtml(b.name)} (${b.photoCount} photo${b.photoCount === 1 ? '' : 's'}) \u2014 ${Math.round(b.photoBytes / 1024)} KB</div>`).join('')}
-                  <div style="margin-top: 6px; font-style: italic; color: var(--ink-soft);">Tap a bake in History to edit and remove photos if needed.</div>
-                </div>
-              `;
-            } else {
-              breakdownEl.style.display = 'none';
-            }
-          } else {
-            breakdownEl.style.display = 'none';
-          }
-        }
-      } catch (e) {
-        sizeEl.textContent = '—';
+  }
+
+  // Diagnostics modal — surfaces internal stats useful for debugging sync issues,
+  // data growth, and other "why is this happening" questions. Not shown by default
+  // since most users never need it; opened from Settings → About → Diagnostics.
+  function renderDiagnostics() {
+    const body = document.getElementById('diagnostics-body');
+    if (!body) return;
+
+    // Sync payload size + top-N largest bakes
+    let payloadSizeHtml = '<div style="color: var(--ink-mute); font-size: 12px;">Could not compute</div>';
+    let breakdownHtml = '';
+    try {
+      const payload = {
+        recipes: state.recipes || [],
+        bakes: state.bakes || [],
+        categories: state.categories || [],
+        activeBakes: state.activeBakes || [],
+        starter: state.starter || null,
+      };
+      const bytes = new Blob([JSON.stringify(payload)]).size;
+      const kb = bytes / 1024;
+      const pct = ((bytes / (1024 * 1024)) * 100).toFixed(1);
+      const sizeStr = kb < 1024 ? kb.toFixed(1) + ' KB' : (kb / 1024).toFixed(2) + ' MB';
+      const warnColor = kb > 900 ? 'var(--warn)' : kb > 600 ? 'var(--crust-deep)' : 'var(--leaven)';
+      const warnLabel = kb > 900 ? ' \u2014 near 1 MiB limit!' : kb > 600 ? ' \u2014 getting large' : '';
+      payloadSizeHtml = `
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; color: ${warnColor}; font-weight: 600;">${sizeStr} <span style="font-weight: 400; opacity: 0.7;">/ 1 MiB · ${pct}%</span></div>
+        ${warnLabel ? `<div style="font-size: 11px; color: ${warnColor}; margin-top: 2px;">${warnLabel.replace(' \u2014 ', '')}</div>` : ''}
+      `;
+
+      // Breakdown of bakes by photo size, top 5
+      const bakeSizes = (state.bakes || [])
+        .filter(b => b && !b._deleted)
+        .map(b => {
+          const photoBytes = (b.photos || []).reduce((s, p) => s + (typeof p === 'string' ? p.length : 0), 0);
+          const recipe = state.recipes.find(r => r.id === b.recipeId);
+          const name = recipe ? recipe.name : (b.recipeSnapshot ? b.recipeSnapshot.name : 'Unknown');
+          return { id: b.id, name, photoBytes, photoCount: (b.photos || []).length };
+        })
+        .filter(b => b.photoBytes > 10 * 1024)
+        .sort((a, b) => b.photoBytes - a.photoBytes)
+        .slice(0, 5);
+      if (bakeSizes.length > 0) {
+        breakdownHtml = `
+          <div style="margin-top: 14px;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Largest bakes (by photos)</div>
+            ${bakeSizes.map(b => `<div style="font-size: 13px; color: var(--ink-soft); padding: 3px 0; display: flex; justify-content: space-between;"><span>${escapeHtml(b.name)} <span style="color: var(--ink-mute);">(${b.photoCount} photo${b.photoCount === 1 ? '' : 's'})</span></span><span style="font-family: 'JetBrains Mono', monospace; color: var(--ink-mute);">${Math.round(b.photoBytes / 1024)} KB</span></div>`).join('')}
+            <div style="font-size: 11px; color: var(--ink-mute); margin-top: 6px; font-style: italic;">To reduce, edit a bake in History and remove photos.</div>
+          </div>
+        `;
       }
+    } catch (e) {
+      payloadSizeHtml = `<div style="color: var(--warn); font-size: 12px;">Error: ${escapeHtml(String(e))}</div>`;
     }
+
+    // Storage/sync state quick reference
+    const syncCode = state.syncCode || 'Not connected';
+    const lastSyncStr = lastSyncAt > 0 ? new Date(lastSyncAt).toLocaleString() : 'Never';
+    const lastPushStripped = window.__lastSyncStripped || 0;
+    const activeBakesCount = liveActiveBakes().length;
+    const tombstones = (state.recipes || []).filter(r => r._deleted).length
+                     + (state.bakes || []).filter(b => b._deleted).length
+                     + (state.activeBakes || []).filter(b => b._deleted).length;
+
+    body.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 18px;">
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Sync Payload</div>
+          ${payloadSizeHtml}
+          ${breakdownHtml}
+        </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Sync State</div>
+          <div style="font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between;"><span>Sync code</span><span style="font-family: 'JetBrains Mono', monospace;">${escapeHtml(syncCode)}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Last sync</span><span style="color: var(--ink-mute);">${escapeHtml(lastSyncStr)}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Last push sanitized</span><span style="color: var(--ink-mute);">${lastPushStripped} bad value(s)</span></div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Data Counts</div>
+          <div style="font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between;"><span>Recipes</span><span>${liveItems(state.recipes).length}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Bakes (history)</span><span>${liveItems(state.bakes).length}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Categories</span><span>${liveItems(state.categories).length}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Active bakes</span><span>${activeBakesCount}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Tombstones pending prune</span><span>${tombstones}</span></div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">App</div>
+          <div style="font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between;"><span>Version</span><span style="font-family: 'JetBrains Mono', monospace;">${APP_VERSION}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>localStorage used</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-ls-size">—</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+    // Compute localStorage usage (async-ish; just sum string lengths)
+    try {
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        const v = localStorage.getItem(k);
+        total += (k ? k.length : 0) + (v ? v.length : 0);
+      }
+      const el = document.getElementById('diag-ls-size');
+      if (el) el.textContent = `${(total / 1024).toFixed(1)} KB`;
+    } catch (e) { /* ignore */ }
   }
 
   // Render the changelog modal body from the CHANGELOG constant
@@ -7324,6 +7398,15 @@ Here is the recipe:
       changelogBtn.addEventListener('click', () => {
         renderChangelog();
         showModal('modal-changelog');
+      });
+    }
+
+    // Diagnostics viewer
+    const diagBtn = document.getElementById('view-diagnostics');
+    if (diagBtn) {
+      diagBtn.addEventListener('click', () => {
+        renderDiagnostics();
+        showModal('modal-diagnostics');
       });
     }
 
