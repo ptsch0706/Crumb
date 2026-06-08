@@ -373,6 +373,26 @@
   /* "What's next" preview line under the countdown */
   .bake-hero .whats-next { margin-top: 10px; font-size: 12px; opacity: 0.85; display: flex; align-items: center; gap: 6px; }
   .bake-hero .whats-next .arrow { opacity: 0.7; }
+
+  /* Concurrent timers list below the bake hero. Each timer is its own warm card,
+     stacked vertically. Color shifts subtly based on state: pending (muted), running
+     (crust accent + progress fill), done (faded with checkmark). */
+  .ct-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .ct-list-title { font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 4px; margin-bottom: 2px; }
+  .ct-card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; transition: opacity 0.3s, border-color 0.3s; }
+  .ct-card.pending { border-color: var(--line); }
+  .ct-card.running { border-color: var(--crust); border-left: 3px solid var(--crust); background: linear-gradient(135deg, var(--bg-elev), var(--bg-warm)); }
+  .ct-card.done { opacity: 0.55; }
+  .ct-card-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .ct-card-name { font-family: 'Fraunces', serif; font-size: 15px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; }
+  .ct-card-value { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+  .ct-card.running .ct-card-value { color: var(--crust-deep); font-weight: 600; }
+  .ct-card .ct-label { color: var(--ink-mute); }
+  .ct-card .ct-time-val { font-family: 'JetBrains Mono', monospace; }
+  .ct-card .ct-check { color: var(--leaven); font-weight: 700; font-size: 16px; }
+  .ct-card-detail { font-size: 12px; color: var(--ink-soft); margin-top: 4px; line-height: 1.45; }
+  .ct-progress { margin-top: 8px; height: 3px; background: var(--bg-warm); border-radius: 100px; overflow: hidden; }
+  .ct-fill { height: 100%; background: var(--crust); border-radius: 100px; transition: width 0.6s ease; }
   .overdue-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.25); padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
   .overdue-badge::before { content: ''; width: 6px; height: 6px; background: white; border-radius: 50%; animation: pulse 1s ease-in-out infinite; }
 
@@ -1239,8 +1259,13 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.11.0';
+  const APP_VERSION = '1.12.0';
   const CHANGELOG = [
+    { version: '1.12.0', date: '2026-06-02', notes: [
+      'Concurrent timers Part 2: during an active bake, each timer shows its own card with a live countdown, progress bar, and state (pending / running / done).',
+      'Audio + haptic alert when a concurrent timer fires, so you don\'t miss the preheat or fold cue.',
+      'iOS Reminders now include concurrent timers as their own reminders, fired at the right offset within their parent stage.',
+    ]},
     { version: '1.11.0', date: '2026-06-02', notes: [
       'Concurrent timers on wait stages (Part 1 of 2): you can now add side-timers that run alongside a wait stage \u2014 e.g. preheat the oven during the last 45 min of proof.',
       'Edit a wait stage to add concurrent timers with their own name, offset, and duration.',
@@ -3716,6 +3741,59 @@
       whatsNextHtml = `<div class="whats-next"><span class="arrow">↪</span> Next: ${escapeHtml(nextStage.name)} · ${formatDur(nextDur)}</div>`;
     }
 
+    // Concurrent timers: only on the current stage if it's a wait stage and has timers.
+    // Anchor each timer's fire window to the parent stage's actual start time, so if the
+    // user starts the parent late (or it shifts because earlier stages took longer), the
+    // concurrent timers slide along with it. Each timer has 3 visual states:
+    //   - pending: hasn't fired yet (showing time until it does)
+    //   - running: currently in its window (showing time until it ends)
+    //   - done: window has elapsed (faded, with "done" indicator)
+    let concurrentTimersHtml = '';
+    if (!ab.paused && !isAwaitingStart && curStage.isWait && Array.isArray(curStage.concurrentTimers) && curStage.concurrentTimers.length > 0) {
+      const parentStartMs = scheduledStart.getTime();
+      const now = Date.now();
+      const items = curStage.concurrentTimers.map(ct => {
+        const offsetMs = (ct.offsetMin || 0) * 60000;
+        const ctDurMs = (ct.durMin || 0) * 60000;
+        const fireAt = parentStartMs + offsetMs;
+        const endAt = fireAt + ctDurMs;
+        let state, label, value, pct = 0;
+        if (now < fireAt) {
+          state = 'pending';
+          label = 'Starts in';
+          value = formatCountdown(fireAt - now);
+        } else if (now < endAt && ctDurMs > 0) {
+          state = 'running';
+          label = 'Ends in';
+          value = formatCountdown(endAt - now);
+          pct = Math.max(0, Math.min(1, (now - fireAt) / ctDurMs));
+        } else {
+          state = 'done';
+          label = 'Complete';
+          value = '✓';
+          pct = 1;
+        }
+        return { ct, state, label, value, pct };
+      });
+      concurrentTimersHtml = `
+        <div class="ct-list">
+          <div class="ct-list-title">Concurrent timers</div>
+          ${items.map(item => `
+            <div class="ct-card ${item.state}">
+              <div class="ct-card-row">
+                <div class="ct-card-name">${escapeHtml(item.ct.name || 'Timer')}</div>
+                <div class="ct-card-value">${item.state === 'done' ? '<span class="ct-check">✓</span>' : `<span class="ct-label">${item.label}</span> <span class="ct-time-val">${item.value}</span>`}</div>
+              </div>
+              ${item.ct.detail && item.state !== 'done' ? `<div class="ct-card-detail">${escapeHtml(item.ct.detail)}</div>` : ''}
+              ${item.state === 'running' ? `
+                <div class="ct-progress"><div class="ct-fill" style="width: ${(item.pct * 100).toFixed(1)}%;"></div></div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
     container.innerHTML = `
       <div class="bake-banner${ab.paused ? ' paused' : ''}" style="border-color: ${ab.paused ? 'var(--ink-mute)' : color.hex}; background: ${ab.paused ? 'var(--bg-warm)' : color.soft}; color: ${ab.paused ? 'var(--ink-soft)' : color.hex};">
         <span class="label"><span class="dot" style="background: ${ab.paused ? 'var(--ink-mute)' : color.hex};"></span>${ab.paused ? 'Bake paused' : 'Bake in progress'}</span>
@@ -3785,6 +3863,8 @@
         ` : ''}
         ${whatsNextHtml}
       </div>
+
+      ${concurrentTimersHtml}
 
       <div class="done-btn">
         ${isAwaitingStart ? `
@@ -3988,6 +4068,20 @@
           const stage = recipe.stages[i];
           const start = getStageScheduledStart(recipe, i, ab);
           const end = new Date(start.getTime() + stage.durMin * 60000);
+          // Include concurrent timers with absolute fire times so openShortcutModal can
+          // create reminders for them. Timers whose fire time has already passed are
+          // dropped — no point reminding the user about something already due.
+          const cts = (stage.concurrentTimers || [])
+            .map(ct => ({
+              id: ct.id,
+              name: ct.name,
+              detail: ct.detail || '',
+              offsetMin: ct.offsetMin || 0,
+              durMin: ct.durMin || 0,
+              fireAt: new Date(start.getTime() + (ct.offsetMin || 0) * 60000),
+              endAt: new Date(start.getTime() + ((ct.offsetMin || 0) + (ct.durMin || 0)) * 60000),
+            }))
+            .filter(ct => ct.fireAt > new Date());
           remainingTimeline.push({
             idx: i,
             name: stage.name,
@@ -3996,6 +4090,7 @@
             startAt: start,
             endAt: end,
             durMin: stage.durMin,
+            concurrentTimers: cts,
           });
         }
         if (remainingTimeline.length === 0) {
@@ -4016,6 +4111,17 @@
           const stage = recipe.stages[i];
           const start = getStageScheduledStart(recipe, i, ab);
           const end = new Date(start.getTime() + stage.durMin * 60000);
+          const cts = (stage.concurrentTimers || [])
+            .map(ct => ({
+              id: ct.id,
+              name: ct.name,
+              detail: ct.detail || '',
+              offsetMin: ct.offsetMin || 0,
+              durMin: ct.durMin || 0,
+              fireAt: new Date(start.getTime() + (ct.offsetMin || 0) * 60000),
+              endAt: new Date(start.getTime() + ((ct.offsetMin || 0) + (ct.durMin || 0)) * 60000),
+            }))
+            .filter(ct => ct.fireAt > new Date());
           remainingTimeline.push({
             idx: i,
             name: stage.name,
@@ -4024,6 +4130,7 @@
             startAt: start,
             endAt: end,
             durMin: stage.durMin,
+            concurrentTimers: cts,
           });
         }
         if (remainingTimeline.length === 0) {
@@ -4113,7 +4220,9 @@
   // Tick the countdown every second when a bake is active
   let bakeTickerInterval = null;
   // Track which bake stages we've already alerted for, so we don't beep every second.
-  // Key format: `bakeId:stageIdx`. Cleared when the stage is un-done (step back) or bake ends.
+  // Key format: `bakeId:stageIdx` for stage-end, `bakeId:stageIdx:ct:ctId:start` or
+  // `:end` for concurrent timer fire/end events. Cleared when the stage is un-done
+  // (step back) or bake ends.
   const alertedStageEnds = new Set();
   function clearAlertsForBake(bakeId) {
     for (const key of Array.from(alertedStageEnds)) {
@@ -4121,7 +4230,12 @@
     }
   }
   function clearAlertForStage(bakeId, stageIdx) {
+    // Clear the stage-end alert AND any concurrent timer alerts owned by this stage
     alertedStageEnds.delete(`${bakeId}:${stageIdx}`);
+    const prefix = `${bakeId}:${stageIdx}:ct:`;
+    for (const key of Array.from(alertedStageEnds)) {
+      if (key.startsWith(prefix)) alertedStageEnds.delete(key);
+    }
   }
   function startBakeTicker() {
     stopBakeTicker();
@@ -4136,6 +4250,30 @@
         const curIdx = getCurrentStageIdx(recipe, ab);
         if (curIdx === -1) continue;
         const stage = recipe.stages[curIdx];
+        // Concurrent timer fire-time alerts (only relevant on wait stages that have them).
+        // We alert when the timer's fireAt is crossed for the first time. We do NOT alert at
+        // the timer's end — its end is meant to coincide with the parent stage's end (or
+        // earlier), which already produces its own alert via the regular stage-end path.
+        // Skip needsStart wait stages that haven't been started yet (parentStart is meaningless).
+        if (stage.isWait && Array.isArray(stage.concurrentTimers) && stage.concurrentTimers.length > 0) {
+          const awaitingParent = stage.needsStart && !ab.stageStates[curIdx].startedAt;
+          if (!awaitingParent) {
+            const parentStartMs = getStageScheduledStart(recipe, curIdx, ab).getTime();
+            const now = Date.now();
+            for (const ct of stage.concurrentTimers) {
+              const fireAt = parentStartMs + (ct.offsetMin || 0) * 60000;
+              const msToFire = fireAt - now;
+              // Generous 60s grace window like the stage-end alert
+              if (msToFire <= 0 && msToFire > -60000) {
+                const ctKey = `${ab.id}:${curIdx}:ct:${ct.id}:start`;
+                if (!alertedStageEnds.has(ctKey)) {
+                  alertedStageEnds.add(ctKey);
+                  alertStageComplete();
+                }
+              }
+            }
+          }
+        }
         if (stage.isWait) continue; // wait stages alert via autoAdvanceWaitStages
         // Skip needsStart stages that the user hasn't yet started — no countdown is running
         if (stage.needsStart && !ab.stageStates[curIdx].startedAt) continue;
@@ -4815,7 +4953,12 @@ Here is the recipe:
     if (modalTitle) modalTitle.textContent = isRefresh ? 'Refresh Reminders' : 'Send Reminders';
     if (sendBtn) sendBtn.textContent = isRefresh ? 'Refresh Reminders' : 'Send Reminders';
 
-    const milestones = timeline
+    // Build reminder milestones. For each stage we skip wait stages (no action needed)
+    // EXCEPT we extract their concurrent timers as their own reminders — those ARE
+    // user-actionable (preheat, fold, etc.) even though they happen during a wait.
+    // Result order: stage reminders + concurrent timer reminders, sorted by time so the
+    // preview list reads chronologically.
+    const stageMilestones = timeline
       .filter(s => !s.isWait)
       .map(s => {
         const d = s.startAt;
@@ -4828,8 +4971,31 @@ Here is the recipe:
           hour: d.getHours(),
           minute: d.getMinutes(),
           note: s.detail,
+          _sort: d.getTime(),
         };
       });
+    const ctMilestones = [];
+    for (const s of timeline) {
+      if (!Array.isArray(s.concurrentTimers)) continue;
+      for (const ct of s.concurrentTimers) {
+        if (!ct.name || !ct.fireAt) continue;
+        const d = ct.fireAt;
+        ctMilestones.push({
+          title: `${recipe.name}: ${ct.name}`,
+          time: formatForShortcut(d),
+          year: d.getFullYear(),
+          month: d.getMonth() + 1,
+          day: d.getDate(),
+          hour: d.getHours(),
+          minute: d.getMinutes(),
+          note: ct.detail || `During ${s.name}`,
+          _sort: d.getTime(),
+        });
+      }
+    }
+    const milestones = [...stageMilestones, ...ctMilestones]
+      .sort((a, b) => a._sort - b._sort)
+      .map(({ _sort, ...m }) => m); // drop the sort helper before sending
 
     const refreshBanner = isRefresh ? `
       <div class="banner" style="background: var(--leaven-soft); border-color: var(--leaven); color: var(--rye); margin-bottom: 12px;">
