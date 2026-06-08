@@ -193,15 +193,15 @@
   .timeline-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; letter-spacing: -0.01em; margin-top: 2px; color: var(--ink); }
   .timeline-detail { font-size: 13px; color: var(--ink-soft); margin-top: 4px; line-height: 1.45; }
   .timeline-dur { font-size: 11px; color: var(--ink-mute); margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
-  /* Concurrent timers nested under their parent stage. Indented to imply ownership,
-     with a vertical accent line on the left so they read as "inside" the parent. */
-  .timeline-concurrents { margin-top: 10px; padding-top: 8px; padding-left: 12px; border-left: 2px solid var(--crust-soft, var(--line)); display: flex; flex-direction: column; gap: 8px; }
-  .timeline-concurrent { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
-  .timeline-concurrent .ct-time { font-size: 11px; color: var(--ink-mute); flex-shrink: 0; min-width: 56px; padding-top: 1px; }
-  .timeline-concurrent .ct-body { flex: 1; min-width: 0; }
-  .timeline-concurrent .ct-name { font-size: 13px; font-weight: 500; color: var(--ink); }
-  .timeline-concurrent .ct-detail { font-size: 12px; color: var(--ink-soft); margin-top: 2px; line-height: 1.45; }
-  .timeline-concurrent .ct-meta { font-size: 10px; color: var(--ink-mute); margin-top: 4px; letter-spacing: 0.02em; }
+  /* Concurrent timers nested under their parent stage. Each timer is its own card with
+     its own background, padding, and border, so they don't visually compete with the
+     parent stage's content. Indented with a connector line on the left to imply ownership. */
+  .timeline-concurrents { margin-top: 12px; padding-left: 14px; border-left: 2px solid var(--crust-soft, var(--line)); display: flex; flex-direction: column; gap: 8px; }
+  .timeline-concurrent { background: var(--bg-warm); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; }
+  .timeline-concurrent .ct-time { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-mute); font-weight: 500; letter-spacing: -0.02em; }
+  .timeline-concurrent .ct-name { font-family: 'Fraunces', serif; font-size: 15px; font-weight: 500; letter-spacing: -0.01em; margin-top: 2px; color: var(--ink); }
+  .timeline-concurrent .ct-detail { font-size: 12px; color: var(--ink-soft); margin-top: 4px; line-height: 1.45; }
+  .timeline-concurrent .ct-meta { font-size: 10px; color: var(--ink-mute); margin-top: 6px; letter-spacing: 0.02em; font-family: 'JetBrains Mono', monospace; }
 
   /* Toast */
   .toast { position: fixed; bottom: calc(var(--safe-bot) + 92px); left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: white; padding: 12px 22px; border-radius: 100px; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.12); border: 1px solid rgba(255,255,255,0.08); opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); z-index: 200; max-width: calc(100vw - 32px); text-align: center; }
@@ -2775,12 +2775,10 @@
               <div class="timeline-concurrents">
                 ${s.concurrentTimers.map(ct => `
                   <div class="timeline-concurrent">
-                    <div class="ct-time mono">${formatDateTime(ct.fireAt)}</div>
-                    <div class="ct-body">
-                      <div class="ct-name">${escapeHtml(ct.name || 'Timer')}</div>
-                      ${ct.detail ? `<div class="ct-detail">${escapeHtml(ct.detail)}</div>` : ''}
-                      <div class="ct-meta">↪ During ${escapeHtml(s.name)} · ${formatDur(ct.durMin)}</div>
-                    </div>
+                    <div class="ct-time">${formatDateTime(ct.fireAt)}</div>
+                    <div class="ct-name">${escapeHtml(ct.name || 'Timer')}</div>
+                    ${ct.detail ? `<div class="ct-detail">${escapeHtml(ct.detail)}</div>` : ''}
+                    <div class="ct-meta">↪ During ${escapeHtml(s.name)} · ${formatDur(ct.durMin)}</div>
                   </div>
                 `).join('')}
               </div>
