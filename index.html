@@ -193,6 +193,15 @@
   .timeline-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; letter-spacing: -0.01em; margin-top: 2px; color: var(--ink); }
   .timeline-detail { font-size: 13px; color: var(--ink-soft); margin-top: 4px; line-height: 1.45; }
   .timeline-dur { font-size: 11px; color: var(--ink-mute); margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
+  /* Concurrent timers nested under their parent stage. Indented to imply ownership,
+     with a vertical accent line on the left so they read as "inside" the parent. */
+  .timeline-concurrents { margin-top: 10px; padding-top: 8px; padding-left: 12px; border-left: 2px solid var(--crust-soft, var(--line)); display: flex; flex-direction: column; gap: 8px; }
+  .timeline-concurrent { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
+  .timeline-concurrent .ct-time { font-size: 11px; color: var(--ink-mute); flex-shrink: 0; min-width: 56px; padding-top: 1px; }
+  .timeline-concurrent .ct-body { flex: 1; min-width: 0; }
+  .timeline-concurrent .ct-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .timeline-concurrent .ct-detail { font-size: 12px; color: var(--ink-soft); margin-top: 2px; line-height: 1.45; }
+  .timeline-concurrent .ct-meta { font-size: 10px; color: var(--ink-mute); margin-top: 4px; letter-spacing: 0.02em; }
 
   /* Toast */
   .toast { position: fixed; bottom: calc(var(--safe-bot) + 92px); left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: white; padding: 12px 22px; border-radius: 100px; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.12); border: 1px solid rgba(255,255,255,0.08); opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); z-index: 200; max-width: calc(100vw - 32px); text-align: center; }
@@ -1230,8 +1239,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.10.0';
+  const APP_VERSION = '1.11.0';
   const CHANGELOG = [
+    { version: '1.11.0', date: '2026-06-02', notes: [
+      'Concurrent timers on wait stages (Part 1 of 2): you can now add side-timers that run alongside a wait stage \u2014 e.g. preheat the oven during the last 45 min of proof.',
+      'Edit a wait stage to add concurrent timers with their own name, offset, and duration.',
+      'Recipe view shows concurrent timers nested under their parent stage with absolute fire times.',
+      'Part 2 (next update): live countdowns + iOS reminders during the bake.',
+    ]},
     { version: '1.10.0', date: '2026-06-02', notes: [
       'Plan-ahead bakes: start a bake more than 15 min before its scheduled start time, and the app shows a "Prep the Bake" countdown until it\'s time to begin.',
       'When the prep timer hits zero, the bake auto-advances into the first stage.',
@@ -1677,6 +1692,18 @@
       const stage = recipe.stages[i];
       const start = new Date(t);
       const end = new Date(t.getTime() + stage.durMin * 60000);
+      // Build concurrent timers for this stage with absolute clock times. Each timer's
+      // fire window is anchored to the parent's start: fireAt = start + offsetMin,
+      // endAt = fireAt + durMin. We keep the raw offsetMin/durMin too for the bake UI.
+      const concurrents = (stage.concurrentTimers || []).map(ct => ({
+        id: ct.id,
+        name: ct.name,
+        detail: ct.detail || '',
+        offsetMin: ct.offsetMin || 0,
+        durMin: ct.durMin || 0,
+        fireAt: new Date(start.getTime() + (ct.offsetMin || 0) * 60000),
+        endAt: new Date(start.getTime() + ((ct.offsetMin || 0) + (ct.durMin || 0)) * 60000),
+      }));
       items.push({
         idx: i,
         name: stage.name,
@@ -1685,6 +1712,7 @@
         startAt: start,
         endAt: end,
         durMin: stage.durMin,
+        concurrentTimers: concurrents,
       });
       t = end;
     }
@@ -2743,6 +2771,20 @@
             <div class="timeline-name">${escapeHtml(s.name)}</div>
             ${s.detail ? `<div class="timeline-detail">${escapeHtml(s.detail)}</div>` : ''}
             <div class="timeline-dur">${s.isWait ? '⏳ ' : '· '}${formatDur(s.durMin)}${pacingLabel}</div>
+            ${s.concurrentTimers && s.concurrentTimers.length > 0 ? `
+              <div class="timeline-concurrents">
+                ${s.concurrentTimers.map(ct => `
+                  <div class="timeline-concurrent">
+                    <div class="ct-time mono">${formatDateTime(ct.fireAt)}</div>
+                    <div class="ct-body">
+                      <div class="ct-name">${escapeHtml(ct.name || 'Timer')}</div>
+                      ${ct.detail ? `<div class="ct-detail">${escapeHtml(ct.detail)}</div>` : ''}
+                      <div class="ct-meta">↪ During ${escapeHtml(s.name)} · ${formatDur(ct.durMin)}</div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
           </div>
         `;}).join('')}
       </div>
@@ -4461,7 +4503,39 @@
 
   function renderStageEditor() {
     const c = document.getElementById('stage-editor');
-    c.innerHTML = state.editingRecipe.stages.map((s, i) => `
+    c.innerHTML = state.editingRecipe.stages.map((s, i) => {
+      // Concurrent timers section is only visible for wait stages — concurrent timers
+      // anchor to a wait stage's start, so a hands-on stage isn't a sensible parent.
+      // Render existing timers + an "add timer" affordance. Each timer has its own name,
+      // offset (min after parent stage starts), duration, and optional detail text.
+      const cts = s.concurrentTimers || [];
+      const isWait = !!s.isWait;
+      const ctSectionHtml = !isWait ? '' : `
+        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em;">Concurrent Timers</span>
+            <button class="btn btn-sm" data-add-ct="${i}" style="padding: 4px 10px; font-size: 11px;">+ Add</button>
+          </div>
+          ${cts.length === 0 ? `<p class="help" style="margin: 0;">For things you do during this wait — e.g., preheat oven 15 min into proof.</p>` : ''}
+          ${cts.map((t, ti) => `
+            <div style="background: var(--bg-warm); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px; margin-bottom: 6px;">
+              <div style="display: flex; gap: 6px; margin-bottom: 4px;">
+                <input type="text" placeholder="Timer name (e.g. Preheat oven)" value="${escapeAttr(t.name || '')}" data-i="${i}" data-ti="${ti}" data-k="name" style="flex: 1; font-size: 13px;">
+                <button class="delete" data-del-ct="${i}-${ti}" style="font-size: 16px; min-width: 32px; min-height: 32px; padding: 4px 8px;">×</button>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-soft); margin-bottom: 4px;">
+                <span>Starts</span>
+                <input type="text" inputmode="numeric" value="${t.offsetMin != null ? t.offsetMin : 0}" data-i="${i}" data-ti="${ti}" data-k="offsetMin" style="width: 50px; font-size: 12px; padding: 3px 6px;">
+                <span>min into ${escapeHtml(s.name || 'stage')}, runs for</span>
+                <input type="text" inputmode="numeric" value="${t.durMin != null ? t.durMin : 0}" data-i="${i}" data-ti="${ti}" data-k="durMin" style="width: 50px; font-size: 12px; padding: 3px 6px;">
+                <span>min</span>
+              </div>
+              <input type="text" placeholder="Detail (optional)" value="${escapeAttr(t.detail || '')}" data-i="${i}" data-ti="${ti}" data-k="detail" style="font-size: 12px; padding: 4px 8px;">
+            </div>
+          `).join('')}
+        </div>
+      `;
+      return `
       <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 8px;">
         <div style="display: flex; gap: 8px; margin-bottom: 6px;">
           <input type="text" placeholder="Stage name" value="${escapeAttr(s.name)}" data-i="${i}" data-k="name" style="flex: 1;">
@@ -4484,9 +4558,13 @@
             </div>
           ` : ''}
         </div>
+        ${ctSectionHtml}
       </div>
-    `).join('');
-    c.querySelectorAll('input').forEach(inp => {
+      `;
+    }).join('');
+    // Stage-level inputs (existing behavior — name, dur, detail, wait, needsStart, prepBuffer)
+    // Filter to direct inputs only — concurrent timer inputs have data-ti, we handle them below.
+    c.querySelectorAll('input:not([data-ti])').forEach(inp => {
       inp.addEventListener('input', (e) => {
         const i = +e.target.dataset.i, k = e.target.dataset.k;
         if (k === 'durMin' || k === 'prepBufferMin') state.editingRecipe.stages[i][k] = parseInt(e.target.value) || 0;
@@ -4496,9 +4574,53 @@
           if (k === 'needsStart' && e.target.checked && state.editingRecipe.stages[i].prepBufferMin == null) {
             state.editingRecipe.stages[i].prepBufferMin = 5;
           }
-          renderStageEditor(); // re-render to show/hide the prep buffer input
+          // When unchecking isWait, drop any concurrent timers (they're meaningless on a hands-on stage)
+          if (k === 'isWait' && !e.target.checked) {
+            delete state.editingRecipe.stages[i].concurrentTimers;
+          }
+          renderStageEditor(); // re-render to show/hide the prep buffer or timers section
         }
         else state.editingRecipe.stages[i][k] = e.target.value;
+      });
+    });
+    // Concurrent timer inputs — separate handler since they need ti index
+    c.querySelectorAll('input[data-ti]').forEach(inp => {
+      inp.addEventListener('input', (e) => {
+        const i = +e.target.dataset.i, ti = +e.target.dataset.ti, k = e.target.dataset.k;
+        const cts = state.editingRecipe.stages[i].concurrentTimers || [];
+        if (!cts[ti]) return;
+        if (k === 'offsetMin' || k === 'durMin') cts[ti][k] = parseInt(e.target.value) || 0;
+        else cts[ti][k] = e.target.value;
+      });
+    });
+    // "Add Concurrent Timer" buttons — append a fresh timer to the parent stage
+    c.querySelectorAll('[data-add-ct]').forEach(b => {
+      b.addEventListener('click', () => {
+        const i = +b.dataset.addCt;
+        const stage = state.editingRecipe.stages[i];
+        if (!stage.concurrentTimers) stage.concurrentTimers = [];
+        // Sensible default: starts at offset 0 (parent start), duration = parent dur
+        // so the user only has to think about NAME first, then tune timing.
+        stage.concurrentTimers.push({
+          id: uid(),
+          name: '',
+          offsetMin: 0,
+          durMin: stage.durMin || 0,
+          detail: '',
+        });
+        renderStageEditor();
+      });
+    });
+    // Delete-concurrent-timer buttons
+    c.querySelectorAll('[data-del-ct]').forEach(b => {
+      b.addEventListener('click', () => {
+        const [iStr, tiStr] = b.dataset.delCt.split('-');
+        const i = +iStr, ti = +tiStr;
+        const cts = state.editingRecipe.stages[i].concurrentTimers;
+        if (!cts) return;
+        cts.splice(ti, 1);
+        if (cts.length === 0) delete state.editingRecipe.stages[i].concurrentTimers;
+        renderStageEditor();
       });
     });
     c.querySelectorAll('[data-del-stage]').forEach(b => {
