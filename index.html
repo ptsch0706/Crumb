@@ -1268,8 +1268,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.12.2';
+  const APP_VERSION = '1.13.0';
   const CHANGELOG = [
+    { version: '1.13.0', date: '2026-06-02', notes: [
+      'Nest a stage into the previous one with a single tap \u2014 turns it into a concurrent timer that ends with the parent. The previous stage auto-converts to a wait if needed.',
+      'Useful for moving an existing "Preheat oven" stage into a "Proof" wait so the two end together.',
+    ]},
     { version: '1.12.2', date: '2026-06-02', notes: [
       'Fix: a saved bake could come back to life in Active Bakes after sync. Active bake deletions are now tombstoned so they propagate cleanly across devices.',
       'One-time cleanup at boot removes any zombie active bakes that already snuck through.',
@@ -4716,6 +4720,7 @@
         <div style="display: flex; gap: 8px; margin-bottom: 6px;">
           <input type="text" placeholder="Stage name" value="${escapeAttr(s.name)}" data-i="${i}" data-k="name" style="flex: 1;">
           <input type="text" placeholder="Min" value="${s.durMin || ''}" data-i="${i}" data-k="durMin" inputmode="numeric" style="width: 80px;">
+          ${i > 0 ? `<button class="btn btn-sm" data-nest-stage="${i}" title="Nest this stage into the previous one as a concurrent timer" aria-label="Nest into previous" style="padding: 4px 10px; font-size: 14px; line-height: 1; min-width: 36px;">↰</button>` : ''}
           <button class="delete" data-del-stage="${i}">×</button>
         </div>
         <input type="text" placeholder="Detail (optional)" value="${escapeAttr(s.detail || '')}" data-i="${i}" data-k="detail" style="font-size: 13px;">
@@ -4803,6 +4808,92 @@
       b.addEventListener('click', () => {
         state.editingRecipe.stages.splice(+b.dataset.delStage, 1);
         renderStageEditor();
+      });
+    });
+    // "Nest into previous" — convert the current stage into a concurrent timer on the
+    // immediately preceding stage. Common use: a "Preheat oven" stage that should actually
+    // run during the prior "Proof" wait, ending together.
+    //
+    // Behavior:
+    // - Previous stage is converted to a wait stage if it isn't already (concurrent
+    //   timers only make sense on wait stages — they run alongside the wait).
+    // - Offset auto-computed so the new timer ENDS when the parent ends:
+    //   offset = max(0, parent.durMin - this.durMin). If this stage is longer than its
+    //   new parent, offset clamps to 0 and a toast warns the timer will extend past parent.
+    // - Original stage's duration, name, and detail are preserved.
+    // - The original stage's own concurrentTimers (rare; pre-existing) are merged into
+    //   the parent so nothing is lost.
+    // - Other fields (needsStart, prepBufferMin) are dropped — they don't apply to a timer.
+    c.querySelectorAll('[data-nest-stage]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const i = +b.dataset.nestStage;
+        const stages = state.editingRecipe.stages;
+        if (i <= 0 || i >= stages.length) return;
+        const current = stages[i];
+        const previous = stages[i - 1];
+        if (!current.name && !current.durMin) {
+          toast('Nothing to nest \u2014 add a name or duration first');
+          return;
+        }
+        const choice = await showConfirm({
+          title: `Nest "${current.name || 'Stage ' + (i + 1)}" into "${previous.name || 'Stage ' + i}"?`,
+          message: previous.isWait
+            ? `It will become a concurrent timer that ends with the wait.`
+            : `"${previous.name || 'Previous stage'}" will be converted to a wait stage so the timer can run alongside it.`,
+          buttons: [
+            { label: 'Nest', style: 'primary', value: 'yes' },
+            { label: 'Cancel', style: 'ghost', value: 'no' },
+          ],
+        });
+        if (choice !== 'yes') return;
+
+        // Step 1: ensure parent is a wait stage. If we're converting it, drop fields that
+        // become meaningless (needsStart/prepBufferMin are for hands-on stages).
+        if (!previous.isWait) {
+          previous.isWait = true;
+          delete previous.needsStart;
+          delete previous.prepBufferMin;
+        }
+
+        // Step 2: compute offset so the new timer ends with the parent
+        const parentDur = previous.durMin || 0;
+        const currentDur = current.durMin || 0;
+        let offsetMin = parentDur - currentDur;
+        let overflowWarning = '';
+        if (offsetMin < 0) {
+          offsetMin = 0;
+          overflowWarning = `Timer is longer than parent \u2014 it will overflow by ${currentDur - parentDur}m`;
+        }
+
+        // Step 3: build the new concurrent timer
+        if (!Array.isArray(previous.concurrentTimers)) previous.concurrentTimers = [];
+        previous.concurrentTimers.push({
+          id: uid(),
+          name: current.name || 'Timer',
+          offsetMin,
+          durMin: currentDur,
+          detail: current.detail || '',
+        });
+
+        // Step 4: if the converted stage had its own concurrent timers (uncommon), merge
+        // them onto the parent with offsets shifted by our new offsetMin
+        if (Array.isArray(current.concurrentTimers)) {
+          for (const ct of current.concurrentTimers) {
+            previous.concurrentTimers.push({
+              id: uid(),
+              name: ct.name,
+              offsetMin: (ct.offsetMin || 0) + offsetMin,
+              durMin: ct.durMin || 0,
+              detail: ct.detail || '',
+            });
+          }
+        }
+
+        // Step 5: remove the original stage and re-render
+        stages.splice(i, 1);
+        haptic('medium');
+        renderStageEditor();
+        toast(overflowWarning || `Nested into ${previous.name || 'previous stage'}`);
       });
     });
   }
