@@ -1282,8 +1282,15 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.14.2';
+  const APP_VERSION = '1.14.4';
   const CHANGELOG = [
+    { version: '1.14.4', date: '2026-06-02', notes: [
+      'Diagnostic: Send/Refresh Reminders now shows a quick toast with the bake\'s anchor time so you can verify it\'s correct before the iOS Shortcut runs.',
+    ]},
+    { version: '1.14.3', date: '2026-06-02', notes: [
+      'Fix: getCurrentBake now filters tombstones, preventing a stale finalized bake from being used as the source for reminders.',
+      'Added console diagnostics to Send/Refresh Reminders to help debug timing issues.',
+    ]},
     { version: '1.14.2', date: '2026-06-02', notes: [
       'Options button (gear) now appears during the Prep window, so you can send reminders ahead of time.',
       'Pause and Adjust Timer are disabled during prep since no stage is running yet \u2014 Send/Refresh Reminders and End Bake remain available.',
@@ -6066,9 +6073,11 @@ Here is the recipe:
     showModal('modal-bake-options');
   });
 
-  // Helper: get the current bake from state
+  // Helper: get the current bake from state.
+  // Filters tombstones so we don't accidentally pick up a finalized bake whose recipeId
+  // still matches. Also prefers a live bake over a tombstone if both somehow exist.
   function getCurrentBake() {
-    return state.activeBakes.find(b => b.recipeId === state.currentRecipeId) || null;
+    return state.activeBakes.find(b => b.recipeId === state.currentRecipeId && !b._deleted) || null;
   }
   function getCurrentRecipe() {
     const r = state.recipes.find(r => r.id === state.currentRecipeId) || null;
@@ -6081,6 +6090,15 @@ Here is the recipe:
     if (!ab || !recipe) return;
     const timeline = buildRemainingTimeline(recipe, ab);
     if (timeline.length === 0) { toast('No remaining stages to send'); return; }
+    // Diagnostic log: when the user reports wrong reminder times, this trail helps
+    // identify whether the timeline itself is wrong or whether the shortcut payload
+    // builder is misbehaving downstream.
+    console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
+    console.log(`[reminders] First timeline stage: ${timeline[0].name} @ ${timeline[0].startAt.toLocaleString()}`);
+    // Surface a brief visible diagnostic so debugging doesn't require Web Inspector.
+    // Shown as a toast right before the shortcut modal opens. Format keeps it scannable:
+    // "Reminders: Bake @ 5:30 AM tomorrow"
+    toast(`Reminders anchor: ${new Date(ab.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
     ab.remindersSent = true;
     saveState();
     openShortcutModal(recipe, timeline);
@@ -6092,6 +6110,9 @@ Here is the recipe:
     if (!ab || !recipe) return;
     const timeline = buildRemainingTimeline(recipe, ab);
     if (timeline.length === 0) { toast('No remaining stages — nothing to refresh'); return; }
+    console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
+    console.log(`[reminders] First timeline stage: ${timeline[0].name} @ ${timeline[0].startAt.toLocaleString()}`);
+    toast(`Reminders anchor: ${new Date(ab.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
     // Clear the needs-refresh flag once user actually refreshes
     ab.needsReminderRefresh = false;
     ab.remindersSent = true;
