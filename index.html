@@ -1282,8 +1282,13 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.14.5';
+  const APP_VERSION = '1.15.0';
   const CHANGELOG = [
+    { version: '1.15.0', date: '2026-06-02', notes: [
+      'Periodic safety sync every 5 minutes catches any edits that didn\'t make it through the real-time push (silently dropped writes, network blips, iOS backgrounding).',
+      'No-op if nothing changed since the last successful push, so it doesn\'t waste Firestore writes.',
+      'Pauses while the tab is hidden \u2014 next-time-visible sync still works via the existing visibility-change handler.',
+    ]},
     { version: '1.14.5', date: '2026-06-02', notes: [
       'Reminder confirmation toast tweaked: shows "Reminders set from Sat, 5:30 AM" so you can verify at a glance which time the schedule is anchored to.',
     ]},
@@ -1561,8 +1566,11 @@
         }
       }
     }
-    // Push shared data to Firestore if sync is enabled
+    // Push shared data to Firestore if sync is enabled.
+    // Bump dirtyCounter unconditionally so the periodic safety push knows whether
+    // there's anything new to send since the last successful push.
     if (state.syncCode) {
+      dirtyCounter++;
       pushToFirestore();
     }
   }
@@ -6492,6 +6500,15 @@ Here is the recipe:
   let lastPushAt = 0;
   let lastSyncAt = 0; // wall-clock time of the last successful push or pull (for UI display)
   let syncInFlight = false; // true while a push is actively in transit; toggles the status spinner
+  // Safety-push system: every saveState() bumps the dirty counter; every successful push
+  // records the counter value at push time. If they differ, a periodic safety push fires
+  // 5 minutes after the last activity to ensure no edits were silently lost (e.g., from a
+  // dropped Firebase connection that didn't surface an error). Replaces the per-event push
+  // only when belt-and-suspenders is needed, not on every save.
+  let dirtyCounter = 0;
+  let lastPushedDirtyCounter = 0;
+  let safetyPushInterval = null;
+  const SAFETY_PUSH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
   function isFirebaseConfigured() {
     return FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('REPLACE_WITH');
@@ -6798,6 +6815,9 @@ Here is the recipe:
           await batch.commit();
           // Clear dirty tracker — those items are now in sync
           _dirtyItems.clear();
+          // Record dirty counter at successful push time so the safety push knows
+          // whether new edits have happened since.
+          lastPushedDirtyCounter = dirtyCounter;
           lastSyncAt = Date.now();
           syncInFlight = false;
           renderSyncStatus();
@@ -6832,6 +6852,35 @@ Here is the recipe:
         pushDebounceTimer = setTimeout(doPush, 400);
       }
     });
+  }
+
+  // Periodic safety push: every 5 minutes while sync is enabled, check if there are
+  // unsynced edits sitting around. If so, push them. Belt-and-suspenders for cases
+  // where a real-time push failed silently (dropped network, queued but never sent,
+  // iOS backgrounding interrupted the Firebase SDK, etc.).
+  //
+  // Skip conditions (no-op):
+  //   - tab is hidden (iOS will likely throttle / drop the request anyway)
+  //   - sync is already in flight (one is happening, no need to start another)
+  //   - debounced push is pending (it'll fire within 400ms naturally)
+  //   - dirtyCounter == lastPushedDirtyCounter (everything's already synced)
+  function startSafetyPushInterval() {
+    if (safetyPushInterval) clearInterval(safetyPushInterval);
+    safetyPushInterval = setInterval(() => {
+      if (!state.syncCode || !firestoreDb) return;
+      if (document.hidden) return;
+      if (syncInFlight) return;
+      if (pushDebounceTimer) return;
+      if (dirtyCounter === lastPushedDirtyCounter) return; // already up to date
+      console.log(`[sync] Safety push (counter ${lastPushedDirtyCounter} → ${dirtyCounter})`);
+      pushToFirestore({ immediate: true });
+    }, SAFETY_PUSH_INTERVAL_MS);
+  }
+  function stopSafetyPushInterval() {
+    if (safetyPushInterval) {
+      clearInterval(safetyPushInterval);
+      safetyPushInterval = null;
+    }
   }
 
   // Subscribe to remote changes
@@ -7070,6 +7119,7 @@ Here is the recipe:
     saveState();
     await pushToFirestore({ immediate: true });
     startSyncListener();
+    startSafetyPushInterval();
     renderSyncStatus();
     // Re-render views so the freshly merged recipes appear
     renderRecipes();
@@ -7080,6 +7130,7 @@ Here is the recipe:
 
   function disableSync() {
     stopSyncListener();
+    stopSafetyPushInterval();
     state.syncCode = null;
     saveState();
     renderSyncStatus();
@@ -8158,6 +8209,7 @@ Here is the recipe:
     if (state.syncCode && isFirebaseConfigured()) {
       if (ensureFirebaseInit()) {
         startSyncListener();
+        startSafetyPushInterval();
       }
     }
   }
