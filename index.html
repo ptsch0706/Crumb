@@ -1282,8 +1282,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.14.1';
+  const APP_VERSION = '1.14.2';
   const CHANGELOG = [
+    { version: '1.14.2', date: '2026-06-02', notes: [
+      'Options button (gear) now appears during the Prep window, so you can send reminders ahead of time.',
+      'Pause and Adjust Timer are disabled during prep since no stage is running yet \u2014 Send/Refresh Reminders and End Bake remain available.',
+    ]},
     { version: '1.14.1', date: '2026-06-02', notes: [
       'Diagnostics now reflects the new subcollection architecture \u2014 shows largest single doc (the actual sync limit), parent doc size, and total data separately.',
     ]},
@@ -3713,6 +3717,15 @@
             renderActiveBake(recipe, ab);
           });
         });
+        // Show the options button during prep so the user can send/refresh reminders.
+        // Pause/Adjust/Step Back actions are gated inside the options modal handler
+        // (see the prep checks in their handlers below).
+        const optsBtn = document.getElementById('btn-bake-options');
+        if (optsBtn) {
+          optsBtn.style.display = '';
+          optsBtn.classList.toggle('needs-refresh', !!ab.needsReminderRefresh);
+        }
+        ensureBakeTickerRunning();
         return;
       } else {
         // Prep window has expired — auto-advance by clearing the flag. The render falls
@@ -6027,6 +6040,7 @@ Here is the recipe:
   document.getElementById('btn-bake-options').addEventListener('click', () => {
     const ab = state.activeBakes.find(b => b.recipeId === state.currentRecipeId);
     if (!ab) return;
+    const inPrep = ab.prepUntil && new Date(ab.prepUntil) > new Date();
     // Update pause/resume label and refresh-notif dot
     const isPaused = !!ab.paused;
     document.getElementById('opt-pause-label').textContent = isPaused ? 'Resume Bake' : 'Pause Bake';
@@ -6034,11 +6048,21 @@ Here is the recipe:
       ? '<polygon points="6,4 20,12 6,20" fill="currentColor"/>' // play
       : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; // pause bars
     document.getElementById('opt-refresh-dot').style.display = ab.needsReminderRefresh ? '' : 'none';
-    // Disable step-back if at first stage
-    const firstDoneIdx = ab.stageStates.findIndex(s => s.done);
+    // Disable step-back if at first stage. Also disable during prep (no stages have run).
     const anyDone = ab.stageStates.some(s => s.done);
-    document.getElementById('opt-step-back').disabled = !anyDone;
-    document.getElementById('opt-step-back').style.opacity = anyDone ? '1' : '0.4';
+    const stepBack = document.getElementById('opt-step-back');
+    stepBack.disabled = !anyDone || inPrep;
+    stepBack.style.opacity = (anyDone && !inPrep) ? '1' : '0.4';
+    // During prep, the bake hasn't started — pausing/adjusting a running stage doesn't apply.
+    // The remaining options (Send/Refresh Reminders, End Bake) still work.
+    const pauseBtn = document.getElementById('opt-pause-bake');
+    pauseBtn.disabled = inPrep;
+    pauseBtn.style.opacity = inPrep ? '0.4' : '1';
+    const adjustBtn = document.getElementById('opt-adjust-timer');
+    if (adjustBtn) {
+      adjustBtn.disabled = inPrep;
+      adjustBtn.style.opacity = inPrep ? '0.4' : '1';
+    }
     showModal('modal-bake-options');
   });
 
