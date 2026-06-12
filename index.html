@@ -1282,8 +1282,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.14.4';
+  const APP_VERSION = '1.14.5';
   const CHANGELOG = [
+    { version: '1.14.5', date: '2026-06-02', notes: [
+      'Reminder confirmation toast tweaked: shows "Reminders set from Sat, 5:30 AM" so you can verify at a glance which time the schedule is anchored to.',
+    ]},
     { version: '1.14.4', date: '2026-06-02', notes: [
       'Diagnostic: Send/Refresh Reminders now shows a quick toast with the bake\'s anchor time so you can verify it\'s correct before the iOS Shortcut runs.',
     ]},
@@ -6098,7 +6101,7 @@ Here is the recipe:
     // Surface a brief visible diagnostic so debugging doesn't require Web Inspector.
     // Shown as a toast right before the shortcut modal opens. Format keeps it scannable:
     // "Reminders: Bake @ 5:30 AM tomorrow"
-    toast(`Reminders anchor: ${new Date(ab.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+    toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
     ab.remindersSent = true;
     saveState();
     openShortcutModal(recipe, timeline);
@@ -6112,7 +6115,7 @@ Here is the recipe:
     if (timeline.length === 0) { toast('No remaining stages — nothing to refresh'); return; }
     console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
     console.log(`[reminders] First timeline stage: ${timeline[0].name} @ ${timeline[0].startAt.toLocaleString()}`);
-    toast(`Reminders anchor: ${new Date(ab.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+    toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
     // Clear the needs-refresh flag once user actually refreshes
     ab.needsReminderRefresh = false;
     ab.remindersSent = true;
