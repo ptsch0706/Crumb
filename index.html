@@ -987,6 +987,19 @@
         </div>
         <div class="switch-pill"></div>
       </div>
+      <!-- Notifications toggle: OS-level alerts when Crumb is backgrounded.
+           Requires permission on first enable. Independent from Sound & Vibration
+           so user can keep in-app chimes but turn off OS notifications (or vice versa). -->
+      <div class="bake-mode-toggle" id="notifications-toggle" style="margin-top: 8px;">
+        <div>
+          <div class="label">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><line x1="13.73" y1="21" x2="10.27" y2="21"/><circle cx="18" cy="6" r="3" fill="currentColor" stroke="none"/></svg>
+            <span>Notifications <span class="sub" id="notifications-sub" style="display: block;">Show alerts when Crumb is backgrounded</span></span>
+          </div>
+        </div>
+        <div class="switch-pill"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="test-notification-btn" style="margin-top: 8px; padding: 6px 12px; font-size: 12px; display: none;">Send test notification</button>
 
       <div class="section-title">Data</div>
       <button class="btn btn-block" id="export-data" style="margin-bottom: 8px;">
@@ -1076,6 +1089,46 @@
 
 <script>
   // ============================================================
+  // SERVICE WORKER REGISTRATION
+  // ============================================================
+  // Registers /service-worker.js which handles Web Push notifications.
+  // - Phase 1: page can postMessage('show-notification', ...) to display
+  //   a notification when the PWA is backgrounded (stage-end alerts, etc.)
+  // - Phase 2 (future): receives push events from a backend for scheduled
+  //   notifications, removing the dependency on the iOS Shortcut path.
+  //
+  // The SW path uses an absolute origin path so GitHub Pages subdirectory
+  // deployment still works (the service worker file lives at /crumb/service-worker.js
+  // when deployed to <user>.github.io/crumb/).
+  if ('serviceWorker' in navigator) {
+    // Compute scope from the current page location — supports both root and subdirectory deploys
+    const swPath = new URL('service-worker.js', window.location.href).pathname;
+    navigator.serviceWorker.register(swPath)
+      .then((reg) => {
+        window.__sw = reg;
+        console.log('[sw] registered, scope:', reg.scope);
+        // Listen for notification taps relayed from the SW so the page can
+        // navigate to the relevant bake or view.
+        navigator.serviceWorker.addEventListener('message', (e) => {
+          if (e.data?.type === 'notif-open') {
+            // Bring the matching bake into focus if one is referenced in the URL
+            const url = e.data.url || '/';
+            try {
+              const u = new URL(url, window.location.href);
+              const bakeId = u.searchParams.get('bake');
+              if (bakeId && window._handleNotifOpenBake) {
+                window._handleNotifOpenBake(bakeId);
+              }
+            } catch (err) { /* ignore */ }
+          }
+        });
+      })
+      .catch((e) => {
+        console.warn('[sw] registration failed:', e);
+      });
+  }
+
+  // ============================================================
   // STATE
   // ============================================================
   const state = {
@@ -1093,6 +1146,10 @@
     syncCode: null,
     alertsEnabled: true, // beep + vibrate when stages complete
     hapticsEnabled: true, // subtle vibration on taps, toggles, and key actions
+    // Web Push notifications: shows OS-level alerts when the PWA is backgrounded
+    // (Phase 1) or scheduled by a backend (Phase 2). Independent from alertsEnabled —
+    // a user might want audio chimes while in-app but no OS alerts (or vice versa).
+    notificationsEnabled: false, // user opts in; permission requested at toggle-on
     recipeFilter: { text: '', categoryId: null }, // recipe list filter
     recipeSort: 'alpha', // recipe sort mode: 'alpha' | 'recent' | 'mostBaked' | 'duration'
     // Starter feeding schedule. Up to 2 weekly reminders; each independently enabled.
@@ -1170,9 +1227,44 @@
       default:        navigator.vibrate(15);
     }
   }
-  function alertStageComplete() {
+  // Fired when a stage's countdown reaches zero (or a concurrent timer fires).
+  // Triggers audio chime + vibration + (optionally) a system notification when
+  // the page is hidden so the user gets the alert even with Crumb backgrounded.
+  //
+  // ctx = { title?, body?, tag?, bakeId? } — optional for the notification.
+  // Defaults work fine if omitted (existing callers don't pass it yet).
+  function alertStageComplete(ctx) {
     playStageCompleteSound();
     vibrate([200, 100, 200]);
+    maybeSendSystemNotification(ctx);
+  }
+
+  // Sends a notification via the service worker IF:
+  // 1. The page is hidden (no point showing OS notif while user is looking at app)
+  // 2. User has notifications enabled in Settings
+  // 3. Browser permission is granted
+  // 4. Service worker is registered and active
+  // Falls through silently otherwise — the chime + vibrate above are still the
+  // primary signal when the page is foregrounded.
+  function maybeSendSystemNotification(ctx) {
+    if (!document.hidden) return;
+    if (!state.notificationsEnabled) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const sw = window.__sw;
+    if (!sw || !sw.active) return;
+    const c = ctx || {};
+    sw.active.postMessage({
+      type: 'show-notification',
+      title: c.title || 'Crumb · Stage complete',
+      options: {
+        body: c.body || 'A stage is ready',
+        icon: c.icon || new URL('icon.png', window.location.href).pathname,
+        badge: c.badge || new URL('icon.png', window.location.href).pathname,
+        tag: c.tag || (c.bakeId ? `stage-${c.bakeId}` : 'crumb-stage'),
+        data: { url: c.bakeId ? `?bake=${c.bakeId}` : '/', ...(c.data || {}) },
+        requireInteraction: false,
+      },
+    });
   }
   // First click anywhere in the bake view warms up the audio context
   document.addEventListener('click', initAudio, { once: true });
@@ -1282,8 +1374,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.15.0';
+  const APP_VERSION = '1.16.0';
   const CHANGELOG = [
+    { version: '1.16.0', date: '2026-06-02', notes: [
+      'Notifications (Phase 1): Crumb can now show OS-level notifications when stages complete and the app is backgrounded. Enable in Settings \u2192 Alerts.',
+      'Requires the PWA installed to home screen and notification permission granted.',
+      'Tap a notification to jump straight to the relevant bake.',
+      'Future Phase 2 will add scheduled notifications via a backend to replace the iOS Shortcut path.',
+    ]},
     { version: '1.15.0', date: '2026-06-02', notes: [
       'Periodic safety sync every 5 minutes catches any edits that didn\'t make it through the real-time push (silently dropped writes, network blips, iOS backgrounding).',
       'No-op if nothing changed since the last successful push, so it doesn\'t waste Firestore writes.',
@@ -1464,6 +1562,7 @@
       if (!Array.isArray(state.activeBakes)) state.activeBakes = [];
       if (typeof state.alertsEnabled !== 'boolean') state.alertsEnabled = true;
       if (typeof state.hapticsEnabled !== 'boolean') state.hapticsEnabled = true;
+      if (typeof state.notificationsEnabled !== 'boolean') state.notificationsEnabled = false;
       if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null };
       if (!['alpha', 'recent', 'mostBaked', 'duration'].includes(state.recipeSort)) state.recipeSort = 'alpha';
       // Starter schema migration: ensure the object and its 2 reminders exist with valid shape.
@@ -1542,6 +1641,7 @@
       syncCode: state.syncCode,
       alertsEnabled: state.alertsEnabled,
       hapticsEnabled: state.hapticsEnabled,
+      notificationsEnabled: state.notificationsEnabled,
       recipeFilter: state.recipeFilter,
       recipeSort: state.recipeSort,
       starter: state.starter,
@@ -3344,7 +3444,13 @@
     if (changed) {
       // Single beep at the end of the sequence — avoids cascading alerts if multiple
       // wait stages auto-advance in rapid succession (e.g., on page reload after a long pause)
-      alertStageComplete();
+      const nextIdx = bake.stageStates.findIndex(s => !s.done);
+      const nextStage = nextIdx >= 0 ? recipe.stages[nextIdx] : null;
+      alertStageComplete({
+        title: `Crumb · ${recipe.name}`,
+        body: nextStage ? `Next: ${nextStage.name}` : 'All stages complete',
+        bakeId: bake.id,
+      });
       saveState();
     }
     return changed;
@@ -4383,7 +4489,12 @@
                 const ctKey = `${ab.id}:${curIdx}:ct:${ct.id}:start`;
                 if (!alertedStageEnds.has(ctKey)) {
                   alertedStageEnds.add(ctKey);
-                  alertStageComplete();
+                  alertStageComplete({
+                    title: `Crumb · ${recipe.name}`,
+                    body: `${ct.name || 'Timer'} \u2014 time to start`,
+                    bakeId: ab.id,
+                    tag: `ct-${ab.id}-${ct.id}`,
+                  });
                 }
               }
             }
@@ -4399,7 +4510,11 @@
         // so a brief page background/foreground cycle won't cause us to miss it.
         if (msToEnd <= 0 && msToEnd > -60000 && !alertedStageEnds.has(alertKey)) {
           alertedStageEnds.add(alertKey);
-          alertStageComplete();
+          alertStageComplete({
+            title: `Crumb · ${recipe.name}`,
+            body: `${stage.name} is complete`,
+            bakeId: ab.id,
+          });
         }
       }
 
@@ -7190,6 +7305,36 @@ Here is the recipe:
     if (t) t.classList.toggle('on', !!state.alertsEnabled);
     const h = document.getElementById('haptics-toggle');
     if (h) h.classList.toggle('on', !!state.hapticsEnabled);
+    // Notifications toggle reflects both user preference AND permission state.
+    // The pill shows "on" only when both notificationsEnabled is true AND OS
+    // permission is granted — otherwise the toggle visually indicates the
+    // notification path won't fire.
+    const n = document.getElementById('notifications-toggle');
+    if (n) {
+      const permGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+      const effectiveOn = !!state.notificationsEnabled && permGranted;
+      n.classList.toggle('on', effectiveOn);
+      // Update subtext based on permission state so the user understands what's going on
+      const sub = document.getElementById('notifications-sub');
+      if (sub) {
+        if (typeof Notification === 'undefined') {
+          sub.textContent = 'Not supported on this browser';
+        } else if (Notification.permission === 'denied') {
+          sub.textContent = 'Blocked \u2014 enable in iPhone Settings \u2192 Crumb \u2192 Notifications';
+        } else if (Notification.permission === 'default') {
+          sub.textContent = 'Tap to enable OS-level alerts';
+        } else if (state.notificationsEnabled) {
+          sub.textContent = 'Show alerts when Crumb is backgrounded';
+        } else {
+          sub.textContent = 'Permission granted \u2014 tap to enable';
+        }
+      }
+      // Show test button only when permission granted (otherwise it can't fire)
+      const testBtn = document.getElementById('test-notification-btn');
+      if (testBtn) {
+        testBtn.style.display = permGranted ? '' : 'none';
+      }
+    }
   }
 
   function renderSettingsStats() {
@@ -7605,6 +7750,101 @@ Here is the recipe:
         saveState();
         renderAlertsToggle();
         if (state.hapticsEnabled) haptic('medium');
+      });
+    }
+
+    // Notifications toggle. First tap requests permission (browsers require this to be
+    // user-initiated). Subsequent taps just toggle state on/off without re-prompting.
+    // If permission is denied at the OS level, the toggle can't be turned on regardless
+    // of state — user must fix in iPhone Settings first.
+    const notificationsToggle = document.getElementById('notifications-toggle');
+    if (notificationsToggle) {
+      notificationsToggle.addEventListener('click', async () => {
+        if (typeof Notification === 'undefined') {
+          toast('Notifications not supported on this browser');
+          return;
+        }
+        // Detect: was the user trying to turn this ON or OFF?
+        const turningOn = !state.notificationsEnabled;
+        if (turningOn) {
+          // Request permission if not already granted
+          if (Notification.permission === 'denied') {
+            await showConfirm({
+              title: 'Notifications are blocked',
+              message: 'Crumb can\'t request permission once it\'s been denied. Enable notifications in iPhone Settings \u2192 Crumb \u2192 Notifications, then try again.',
+              buttons: [{ label: 'OK', style: 'primary', value: 'ok' }],
+            });
+            return;
+          }
+          if (Notification.permission === 'default') {
+            try {
+              const result = await Notification.requestPermission();
+              if (result !== 'granted') {
+                // User dismissed or denied — don't toggle on
+                renderAlertsToggle();
+                return;
+              }
+            } catch (e) {
+              console.error('Notification permission request failed:', e);
+              toast('Could not request notification permission');
+              return;
+            }
+          }
+          // Permission granted — also check that SW is registered. If not, give the
+          // user a helpful message rather than silently failing.
+          if (!window.__sw || !window.__sw.active) {
+            // SW may still be installing — wait briefly
+            await new Promise(r => setTimeout(r, 500));
+            if (!window.__sw || !window.__sw.active) {
+              toast('Notifications need the service worker (try reloading)');
+              return;
+            }
+          }
+          state.notificationsEnabled = true;
+          saveState();
+          renderAlertsToggle();
+          haptic('success');
+          // Brief confirmation — without firing an actual notification since the page
+          // is foregrounded (which would be filtered out by maybeSendSystemNotification anyway)
+          toast('Notifications enabled');
+        } else {
+          // Turning off — no permission interaction needed
+          state.notificationsEnabled = false;
+          saveState();
+          renderAlertsToggle();
+          haptic('light');
+        }
+      });
+    }
+
+    // Test notification button — directly invokes the SW to show a notification right now.
+    // Useful for verifying that the permission + SW chain is working end-to-end.
+    // Note: iOS PWAs only show the notification when the app is BACKGROUNDED. If you
+    // tap test while looking at the app, you may not see anything until you switch away.
+    const testNotifBtn = document.getElementById('test-notification-btn');
+    if (testNotifBtn) {
+      testNotifBtn.addEventListener('click', () => {
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+          toast('Notifications permission not granted');
+          return;
+        }
+        if (!window.__sw || !window.__sw.active) {
+          toast('Service worker not ready');
+          return;
+        }
+        window.__sw.active.postMessage({
+          type: 'show-notification',
+          title: 'Crumb test',
+          options: {
+            body: 'If you see this, notifications are working. Try backgrounding Crumb for the real-world test.',
+            icon: new URL('icon.png', window.location.href).pathname,
+            badge: new URL('icon.png', window.location.href).pathname,
+            tag: 'crumb-test',
+            data: { url: '/' },
+          },
+        });
+        haptic('light');
+        toast('Test sent \u2014 background the app to see it');
       });
     }
 
@@ -8212,7 +8452,38 @@ Here is the recipe:
         startSafetyPushInterval();
       }
     }
+
+    // After autoconnect, also handle a ?bake=<id> URL param. This fires when the user
+    // taps a notification: the SW opens or focuses the PWA with this URL, and we navigate
+    // straight to that bake. Also wire the global helper for the in-app notif-open path.
+    try {
+      const u = new URL(window.location.href);
+      const bakeParam = u.searchParams.get('bake');
+      if (bakeParam) {
+        focusBakeFromNotification(bakeParam);
+        u.searchParams.delete('bake');
+        try { window.history.replaceState({}, '', u.pathname + (u.search || '')); } catch (e) {}
+      }
+    } catch (e) { /* ignore */ }
   }
+
+  // Helper invoked by service-worker notification taps. Focuses the right bake and
+  // navigates to the bake's recipe schedule view. Safe to call before/after init.
+  function focusBakeFromNotification(bakeId) {
+    if (!bakeId) return;
+    const bake = (state.activeBakes || []).find(b => b.id === bakeId && !b._deleted);
+    if (!bake) {
+      // Bake may have ended/been removed between scheduling the notif and tap. Land on Active tab.
+      switchView('view-active-bakes');
+      return;
+    }
+    state.focusedBakeId = bake.id;
+    state.currentRecipeId = bake.recipeId;
+    saveState();
+    switchView('view-schedule');
+  }
+  // Expose globally so the SW message handler at the top of the script can call this.
+  window._handleNotifOpenBake = focusBakeFromNotification;
   if (window.__firebase) {
     tryAutoConnect();
   } else {
