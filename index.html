@@ -1905,8 +1905,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.19.2';
+  const APP_VERSION = '1.19.3';
   const CHANGELOG = [
+    { version: '1.19.3', date: '2026-06-13', notes: [
+      'Notifications modal: added per-row debug line showing stage index, isWait flag, raw stage start/end ISO, and durMin to trace the 12hr offset bug.',
+    ]},
     { version: '1.19.2', date: '2026-06-13', notes: [
       'Notifications modal: added bake state diagnostic box showing raw startedAt, prepUntil, current time, and timezone offset.',
     ]},
@@ -6878,14 +6881,20 @@ Here is the recipe:
         if (ss && ss.done) continue;
         const stage = recipe.stages[i];
         const stageStart = getStageScheduledStart(recipe, i, ab);
-        const stageDurMs = getStageDur(recipe, i, ab) * 60000;
+        const stageDurMin = getStageDur(recipe, i, ab);
+        const stageDurMs = stageDurMin * 60000;
         const stageEnd = new Date(stageStart.getTime() + stageDurMs);
         // Concurrent timers within wait stages
         if (stage.isWait && Array.isArray(stage.concurrentTimers)) {
           for (const ct of stage.concurrentTimers) {
             const fireAt = stageStart.getTime() + (ct.offsetMin || 0) * 60000;
             if (fireAt <= now) continue;
-            items.push({ fireAt, label: ct.name || 'Timer', sublabel: 'Concurrent timer' });
+            items.push({
+              fireAt,
+              label: ct.name || 'Timer',
+              sublabel: 'Concurrent timer',
+              _debug: `idx=${i} ct stageStart=${stageStart.toISOString()} offsetMin=${ct.offsetMin || 0}`,
+            });
           }
         }
         // Main stage notification
@@ -6900,7 +6909,12 @@ Here is the recipe:
           label = stage.name;
           sublabel = 'Hands-on stage starts';
         }
-        items.push({ fireAt, label, sublabel });
+        items.push({
+          fireAt,
+          label,
+          sublabel,
+          _debug: `idx=${i} isWait=${stage.isWait} stageStart=${stageStart.toISOString()} durMin=${stageDurMin} stageEnd=${stageEnd.toISOString()}`,
+        });
       }
       // Sort by fire time
       items.sort((a, b) => a.fireAt - b.fireAt);
@@ -6959,6 +6973,7 @@ Here is the recipe:
                 <div style="font-size: 12px; color: var(--ink-soft); white-space: nowrap; text-align: right;">
                   ${fmtTime(item.fireAt)}
                   <div style="font-size: 9px; color: var(--ink-mute); font-family: 'JetBrains Mono', monospace; margin-top: 2px; opacity: 0.7;">${new Date(item.fireAt).toLocaleString()}</div>
+                  <div style="font-size: 8px; color: var(--ink-mute); font-family: 'JetBrains Mono', monospace; margin-top: 2px; opacity: 0.6; white-space: normal; max-width: 220px; text-align: right;">${escapeHtml(item._debug || '')}</div>
                 </div>
               </div>
             `).join('')}
