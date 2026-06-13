@@ -746,14 +746,9 @@
       <button class="modal-close" data-close>✕</button>
     </div>
     <div class="modal-body">
-      <button class="btn btn-block opt-btn" id="opt-send-reminders" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        <span style="flex: 1;">Send Reminders</span>
-      </button>
-
-      <button class="btn btn-block opt-btn" id="opt-refresh-reminders" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px; position: relative;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
-        <span style="flex: 1;">Refresh Reminders</span>
+      <button class="btn btn-block opt-btn" id="opt-notifications" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; position: relative;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span style="flex: 1;" id="opt-notifications-label">Notifications</span>
         <span id="opt-refresh-dot" style="display: none; width: 12px; height: 12px; border-radius: 50%; background: #d93636; animation: pulse 1.6s ease-in-out infinite; box-shadow: 0 0 0 1px rgba(217, 54, 54, 0.3);"></span>
       </button>
 
@@ -776,6 +771,19 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         <span style="flex: 1;">Edit Recipe</span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- BAKE NOTIFICATIONS MODAL -->
+<div class="modal-backdrop" id="modal-bake-notifications">
+  <div class="modal" style="max-width: 380px;">
+    <div class="modal-header">
+      <div class="modal-title">Notifications</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="notif-modal-body"><!-- filled dynamically --></div>
     </div>
   </div>
 </div>
@@ -1454,6 +1462,109 @@
     }
   }
 
+  // Starter reminders use the same /schedule endpoint as bakes, but with a synthetic
+  // bake_id ("starter:<reminderId>") so they don't collide with bake schedules and can
+  // be cancelled independently. One full year of weekly occurrences is scheduled at
+  // a time (52 items per reminder).
+  function starterBakeId(reminderId) { return `starter:${reminderId}`; }
+
+  /**
+   * Compute the next firing date for a weekly starter reminder, starting from "now".
+   * dayOfWeek: 0=Sun..6=Sat; hour: 0-23; minute: 0-59.
+   */
+  function nextStarterFireDate(reminder, fromDate) {
+    const from = fromDate || new Date();
+    const d = new Date(from);
+    d.setHours(reminder.hour, reminder.minute, 0, 0);
+    // Advance to the target weekday
+    const todayDow = from.getDay();
+    let daysAhead = ((reminder.dayOfWeek - todayDow) + 7) % 7;
+    // If today is the right day but the time has already passed, jump to next week
+    if (daysAhead === 0 && d <= from) daysAhead = 7;
+    d.setDate(d.getDate() + daysAhead);
+    return d;
+  }
+
+  /**
+   * Schedule (or refresh) push notifications for a starter reminder. Sends 52 weekly
+   * occurrences to the backend in one /schedule call (which REPLACES any existing
+   * schedule under that synthetic bake_id).
+   */
+  async function scheduleStarterReminderToPush(reminder) {
+    if (!IS_INSTALLED_PWA) return { ok: false, error: 'Not installed PWA' };
+    if (!state.notificationsEnabled) return { ok: false, error: 'Notifications disabled' };
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      return { ok: false, error: 'Notification permission not granted' };
+    }
+    if (!state.syncCode || !reminder || !reminder.enabled) {
+      return { ok: false, error: 'Starter reminder not active' };
+    }
+    const pwaBaseUrl = (() => {
+      try {
+        const u = new URL(window.location.href);
+        return u.origin + u.pathname;
+      } catch (e) { return '/'; }
+    })();
+    const STARTER_WEEKS = 52; // 1 year ahead
+    const items = [];
+    let nextDate = nextStarterFireDate(reminder);
+    for (let wk = 0; wk < STARTER_WEEKS; wk++) {
+      const d = new Date(nextDate);
+      d.setDate(nextDate.getDate() + wk * 7);
+      const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][reminder.dayOfWeek];
+      items.push({
+        fireAt: d.getTime(),
+        title: `Feed starter \u00b7 ${dayName}`,
+        body: 'Time for your weekly feed',
+        tag: `starter-${reminder.id}-${d.toISOString().slice(0, 10)}`,
+        url: pwaBaseUrl, // open the PWA home; starter section is in the Active tab
+      });
+    }
+    try {
+      const result = await pushBackendPost('/schedule', {
+        deviceId: getDeviceId(),
+        bakeId: starterBakeId(reminder.id),
+        items,
+      });
+      return { ok: true, scheduled: result.scheduled };
+    } catch (e) {
+      console.error('[push] starter schedule failed:', e);
+      return { ok: false, error: String(e.message || e) };
+    }
+  }
+
+  /**
+   * Cancel push notifications for a starter reminder (when disabled or edited).
+   */
+  async function cancelStarterReminderPush(reminderId) {
+    if (!IS_INSTALLED_PWA) return { ok: false };
+    if (!state.syncCode || !reminderId) return { ok: false };
+    try {
+      await pushBackendPost('/cancel', { deviceId: getDeviceId(), bakeId: starterBakeId(reminderId) });
+      return { ok: true };
+    } catch (e) {
+      console.error('[push] starter cancel failed:', e);
+      return { ok: false, error: String(e.message || e) };
+    }
+  }
+
+  /**
+   * Sync all starter reminders to the push backend: enabled ones get scheduled,
+   * disabled ones get cancelled. Idempotent — safe to call at boot, after toggles,
+   * or after edits.
+   */
+  async function syncAllStarterRemindersToPush() {
+    if (!IS_INSTALLED_PWA || !state.syncCode || !state.notificationsEnabled) return;
+    const reminders = (state.starter && state.starter.reminders) || [];
+    for (const r of reminders) {
+      if (r.enabled) {
+        await scheduleStarterReminderToPush(r);
+      } else {
+        await cancelStarterReminderPush(r.id);
+      }
+    }
+  }
+
   /**
    * Heartbeat — verify the backend still has scheduled notifications for our live bakes.
    * If missing, automatically re-schedule them.
@@ -1794,8 +1905,20 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.17.3';
+  const APP_VERSION = '1.19.0';
   const CHANGELOG = [
+    { version: '1.19.0', date: '2026-06-13', notes: [
+      'Bake Options "Send Reminders" and "Refresh Reminders" consolidated into a single "Notifications" button.',
+      'Notifications modal shows every upcoming notification for the active bake with stage name and exact scheduled time.',
+      'Reschedule button in the modal refreshes push notification times to match current bake progress.',
+      'When push is off, the modal falls back to the iOS Shortcut flow as before.',
+      'Stale-notification dot now shows on the Notifications button label instead of a separate Refresh button.',
+    ]},
+    { version: '1.18.0', date: '2026-06-13', notes: [
+      'Starter reminders now use Web Push instead of the iOS Reminders/Shortcut path. 1 year of weekly feeds scheduled automatically; no more manual "Send Reminders" tap.',
+      'Starter section shows a status indicator when push is active. The Shortcut button is still available as a fallback when notifications are disabled.',
+      'Backend now accepts up to 200 scheduled items per category and up to 13 months in the future (was 100 / 30 days).',
+    ]},
     { version: '1.17.3', date: '2026-06-13', notes: [
       'Generic notifications (no recipe context) no longer include "Crumb" in the title \u2014 iOS already shows "from Crumb" as the source.',
     ]},
@@ -6405,6 +6528,10 @@ Here is the recipe:
     const lastSent = state.starter.remindersSentAt
       ? new Date(state.starter.remindersSentAt).toLocaleDateString([], { month: 'short', day: 'numeric' })
       : null;
+    // Push notifications mode: when active, the backend handles the schedule
+    // automatically. The Shortcut/Reminders button is hidden in favor of a status indicator.
+    const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
+      typeof Notification !== 'undefined' && Notification.permission === 'granted';
     // Compute progress bar data for the soonest upcoming reminder.
     // Progress runs from the most recent past feeding (any slot) to the next upcoming feeding.
     // Hidden when the gap is < 24h, since that indicates we're in the "active feeding window"
@@ -6458,11 +6585,20 @@ Here is the recipe:
         </div>
       </div>
       <div style="display: flex; gap: 8px; margin-top: 4px;">
-        <button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send Reminders'}</button>
+        ${pushActive
+          ? `<div style="flex: 1; padding: 8px 12px; background: var(--bg-warm); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink-soft); text-align: center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><line x1="13.73" y1="21" x2="10.27" y2="21"/></svg>
+              Reminders are sent automatically via push notifications
+            </div>`
+          : `<button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send Reminders'}</button>`
+        }
       </div>
-      ${lastSent ? `<p class="help" style="margin-top: 6px; text-align: center;">Last sent ${escapeHtml(lastSent)}</p>` : '<p class="help" style="margin-top: 6px;">Send to your iPhone Reminders app via the Crumb Timers Shortcut.</p>'}
+      ${pushActive
+        ? '<p class="help" style="margin-top: 6px; text-align: center;">No action needed \u2014 Crumb handles the schedule.</p>'
+        : (lastSent ? `<p class="help" style="margin-top: 6px; text-align: center;">Last sent ${escapeHtml(lastSent)}</p>` : '<p class="help" style="margin-top: 6px;">Send to your iPhone Reminders app via the Crumb Timers Shortcut.</p>')
+      }
     `;
-    // Wire send button
+    // Wire send button (only present in non-push mode)
     const sendBtn = document.getElementById('starter-send-reminders');
     if (sendBtn) sendBtn.addEventListener('click', sendStarterReminders);
   }
@@ -6598,6 +6734,14 @@ Here is the recipe:
     renderStarter();
     haptic('medium');
     toast('Starter Schedule Saved');
+    // Push the new schedule to the backend. Fire-and-forget; failures here just
+    // mean push notifications won't fire (the in-app starter view still works).
+    // syncAll handles enabled→schedule and disabled→cancel cases.
+    if (IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode) {
+      syncAllStarterRemindersToPush().then(() => {
+        console.log('[push] starter reminders synced to backend');
+      }).catch(e => console.warn('[push] starter sync failed:', e));
+    }
   }
 
   function switchView(viewId) {
@@ -6672,6 +6816,7 @@ Here is the recipe:
       ? '<polygon points="6,4 20,12 6,20" fill="currentColor"/>' // play
       : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; // pause bars
     document.getElementById('opt-refresh-dot').style.display = ab.needsReminderRefresh ? '' : 'none';
+    document.getElementById('opt-notifications-label').textContent = ab.needsReminderRefresh ? 'Notifications · needs refresh' : 'Notifications';
     // Disable step-back if at first stage. Also disable during prep (no stages have run).
     const anyDone = ab.stageStates.some(s => s.done);
     const stepBack = document.getElementById('opt-step-back');
@@ -6701,41 +6846,166 @@ Here is the recipe:
     return (r && !r._deleted) ? r : null;
   }
 
-  document.getElementById('opt-send-reminders').addEventListener('click', () => {
+  document.getElementById('opt-notifications').addEventListener('click', () => {
     hideModal('modal-bake-options');
     const ab = getCurrentBake(); const recipe = getCurrentRecipe();
     if (!ab || !recipe) return;
-    const timeline = buildRemainingTimeline(recipe, ab);
-    if (timeline.length === 0) { toast('No remaining stages to send'); return; }
-    // Diagnostic log: when the user reports wrong reminder times, this trail helps
-    // identify whether the timeline itself is wrong or whether the shortcut payload
-    // builder is misbehaving downstream.
-    console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
-    console.log(`[reminders] First timeline stage: ${timeline[0].name} @ ${timeline[0].startAt.toLocaleString()}`);
-    // Surface a brief visible diagnostic so debugging doesn't require Web Inspector.
-    // Shown as a toast right before the shortcut modal opens. Format keeps it scannable:
-    // "Reminders: Bake @ 5:30 AM tomorrow"
-    toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
-    ab.remindersSent = true;
-    saveState();
-    openShortcutModal(recipe, timeline);
+    openBakeNotificationsModal(recipe, ab);
   });
 
-  document.getElementById('opt-refresh-reminders').addEventListener('click', () => {
-    hideModal('modal-bake-options');
-    const ab = getCurrentBake(); const recipe = getCurrentRecipe();
-    if (!ab || !recipe) return;
-    const timeline = buildRemainingTimeline(recipe, ab);
-    if (timeline.length === 0) { toast('No remaining stages — nothing to refresh'); return; }
-    console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
-    console.log(`[reminders] First timeline stage: ${timeline[0].name} @ ${timeline[0].startAt.toLocaleString()}`);
-    toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
-    // Clear the needs-refresh flag once user actually refreshes
-    ab.needsReminderRefresh = false;
-    ab.remindersSent = true;
-    saveState();
-    openShortcutModal(recipe, timeline, { replaceExisting: true });
-  });
+  /**
+   * Opens the Notifications modal for a bake.
+   * When push is active: shows upcoming scheduled notifications with times + a Reschedule button.
+   * When push is off: falls back to the Shortcut flow (Send Reminders).
+   */
+  function openBakeNotificationsModal(recipe, ab) {
+    const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
+      typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    const body = document.getElementById('notif-modal-body');
+    const now = Date.now();
+
+    if (pushActive) {
+      // Build upcoming notifications using the same logic as schedulePushNotificationsForBake
+      const items = [];
+      for (let i = 0; i < recipe.stages.length; i++) {
+        const ss = ab.stageStates[i];
+        if (ss && ss.done) continue;
+        const stage = recipe.stages[i];
+        const stageStart = getStageScheduledStart(recipe, i, ab);
+        const stageDurMs = getStageDur(recipe, i, ab) * 60000;
+        const stageEnd = new Date(stageStart.getTime() + stageDurMs);
+        // Concurrent timers within wait stages
+        if (stage.isWait && Array.isArray(stage.concurrentTimers)) {
+          for (const ct of stage.concurrentTimers) {
+            const fireAt = stageStart.getTime() + (ct.offsetMin || 0) * 60000;
+            if (fireAt <= now) continue;
+            items.push({ fireAt, label: ct.name || 'Timer', sublabel: 'Concurrent timer' });
+          }
+        }
+        // Main stage notification
+        const fireAt = stage.isWait ? stageEnd.getTime() : stageStart.getTime();
+        if (fireAt <= now) continue;
+        let label, sublabel;
+        if (stage.isWait) {
+          const nextStage = recipe.stages[i + 1];
+          label = nextStage ? nextStage.name : 'All stages complete';
+          sublabel = `After ${stage.name}`;
+        } else {
+          label = stage.name;
+          sublabel = 'Hands-on stage starts';
+        }
+        items.push({ fireAt, label, sublabel });
+      }
+      // Sort by fire time
+      items.sort((a, b) => a.fireAt - b.fireAt);
+
+      const stale = !!ab.needsReminderRefresh;
+      const fmtTime = ts => {
+        const d = new Date(ts);
+        const isToday = d.toDateString() === new Date().toDateString();
+        const isTomorrow = d.toDateString() === new Date(now + 86400000).toDateString();
+        const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        if (isToday) return `Today · ${timeStr}`;
+        if (isTomorrow) return `Tomorrow · ${timeStr}`;
+        return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ` · ${timeStr}`;
+      };
+
+      body.innerHTML = `
+        ${stale ? `
+          <div style="display: flex; align-items: center; gap: 10px; background: #fff5f5; border: 1px solid #ffc0c0; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d93636" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5m0 4h.01"/></svg>
+            <span style="font-size: 13px; color: #b52a2a; line-height: 1.4;">Times may be out of date. Tap Reschedule to update.</span>
+          </div>
+        ` : ''}
+        ${items.length === 0 ? `
+          <div style="text-align: center; padding: 24px 0; color: var(--ink-mute); font-size: 14px;">
+            No upcoming notifications for this bake.
+          </div>
+        ` : `
+          <div style="display: flex; flex-direction: column; gap: 2px; margin-bottom: 20px;">
+            ${items.map(item => `
+              <div style="display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line);">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)" stroke-width="1.8" style="flex-shrink: 0;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 14px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(item.label)}</div>
+                  <div style="font-size: 12px; color: var(--ink-mute); margin-top: 1px;">${escapeHtml(item.sublabel)}</div>
+                </div>
+                <div style="font-size: 12px; color: var(--ink-soft); white-space: nowrap; text-align: right;">${fmtTime(item.fireAt)}</div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+        <button class="btn btn-primary btn-block" id="notif-reschedule-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
+          Reschedule Notifications
+        </button>
+        <button class="btn btn-block" id="notif-shortcut-fallback-btn" style="margin-top: 10px; color: var(--ink-mute); font-size: 13px;">
+          Use iOS Shortcut instead
+        </button>
+      `;
+
+      document.getElementById('notif-reschedule-btn').addEventListener('click', async () => {
+        hideModal('modal-bake-notifications');
+        const r = await schedulePushNotificationsForBake(ab, recipe);
+        ab.needsReminderRefresh = false;
+        ab.remindersSent = true;
+        saveState();
+        if (r && r.ok) {
+          toast(`Rescheduled ${r.scheduled ?? ''} notification${r.scheduled === 1 ? '' : 's'}`);
+        } else {
+          toast('Reschedule failed — check your connection');
+        }
+      });
+
+      document.getElementById('notif-shortcut-fallback-btn').addEventListener('click', () => {
+        hideModal('modal-bake-notifications');
+        const timeline = buildRemainingTimeline(recipe, ab);
+        if (timeline.length === 0) { toast('No remaining stages to send'); return; }
+        console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
+        toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
+        ab.remindersSent = true;
+        saveState();
+        openShortcutModal(recipe, timeline);
+      });
+
+    } else {
+      // Push not active — show shortcut flow directly
+      body.innerHTML = `
+        <p style="font-size: 14px; color: var(--ink-soft); margin-bottom: 16px; line-height: 1.5;">
+          Web Push is off. Enable Notifications in Settings to see your schedule here, or use the iOS Shortcut to send reminders manually.
+        </p>
+        <button class="btn btn-primary btn-block" id="notif-send-shortcut-btn">Send Reminders via Shortcut</button>
+        ${ab.remindersSent ? `
+          <button class="btn btn-block" id="notif-refresh-shortcut-btn" style="margin-top: 10px;">Refresh Reminders</button>
+        ` : ''}
+      `;
+      document.getElementById('notif-send-shortcut-btn').addEventListener('click', () => {
+        hideModal('modal-bake-notifications');
+        const timeline = buildRemainingTimeline(recipe, ab);
+        if (timeline.length === 0) { toast('No remaining stages to send'); return; }
+        console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
+        toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
+        ab.remindersSent = true;
+        saveState();
+        openShortcutModal(recipe, timeline);
+      });
+      const refreshBtn = document.getElementById('notif-refresh-shortcut-btn');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+          hideModal('modal-bake-notifications');
+          const timeline = buildRemainingTimeline(recipe, ab);
+          if (timeline.length === 0) { toast('No remaining stages — nothing to refresh'); return; }
+          toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
+          ab.needsReminderRefresh = false;
+          ab.remindersSent = true;
+          saveState();
+          openShortcutModal(recipe, timeline, { replaceExisting: true });
+        });
+      }
+    }
+
+    showModal('modal-bake-notifications');
+  }
 
   document.getElementById('opt-adjust-timer').addEventListener('click', () => {
     hideModal('modal-bake-options');
@@ -8373,6 +8643,8 @@ Here is the recipe:
                   const recipe = state.recipes.find(r => r.id === bake.recipeId);
                   if (recipe) await schedulePushNotificationsForBake(bake, recipe);
                 }
+                // Schedule starter reminders for any that are enabled
+                await syncAllStarterRemindersToPush();
               } else {
                 console.warn('[push] subscribe failed:', result.error);
                 toast(`Push backend unavailable: ${result.error}`);
@@ -9050,6 +9322,11 @@ Here is the recipe:
           startPushHeartbeat();
           // Run an immediate heartbeat to detect any missing schedules
           pushBackendHeartbeat();
+          // Sync starter reminders to the backend. The heartbeat only checks bakes,
+          // so starter reminders need a separate idempotent sync at boot. This also
+          // covers the first-time path where the user enabled notifications in a
+          // prior session but starter reminders never made it to the backend.
+          syncAllStarterRemindersToPush().catch(e => console.warn('[push] starter boot sync failed:', e));
         }
       };
       trySubscribe();
