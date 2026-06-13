@@ -1396,7 +1396,7 @@
           if (fireAt <= now) continue;
           items.push({
             fireAt,
-            title: `Crumb · ${recipe.name}`,
+            title: `Baking · ${recipe.name}`,
             body: `${ct.name || 'Timer'} \u2014 time to start`,
             tag: `ct-${bake.id}-${ct.id}`,
             url: `${pwaBaseUrl}?bake=${bake.id}`,
@@ -1416,7 +1416,7 @@
       }
       items.push({
         fireAt,
-        title: `Crumb · ${recipe.name}`,
+        title: `Baking · ${recipe.name}`,
         body: actionName,
         tag: `stage-${bake.id}-${i}`,
         url: `${pwaBaseUrl}?bake=${bake.id}`,
@@ -1672,7 +1672,10 @@
     const c = ctx || {};
     sw.active.postMessage({
       type: 'show-notification',
-      title: c.title || 'Crumb · Stage complete',
+      // Title — when no recipe context, use empty string. iOS shows "from Crumb"
+      // automatically as the source, so a redundant "Crumb" title is dropped.
+      // Per the Notification API, the title argument is required but may be empty.
+      title: c.title || '',
       options: {
         body: c.body || 'A stage is ready',
         icon: c.icon || new URL('icon.png', window.location.href).pathname,
@@ -1791,8 +1794,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.17.1';
+  const APP_VERSION = '1.17.3';
   const CHANGELOG = [
+    { version: '1.17.3', date: '2026-06-13', notes: [
+      'Generic notifications (no recipe context) no longer include "Crumb" in the title \u2014 iOS already shows "from Crumb" as the source.',
+    ]},
+    { version: '1.17.2', date: '2026-06-13', notes: [
+      'Cleaner notification titles: "Baking \u00b7 [recipe name]" instead of "Crumb \u00b7 [recipe name]". iOS already appends "from Crumb" so the redundant prefix is gone.',
+    ]},
     { version: '1.17.1', date: '2026-06-13', notes: [
       'Fix: tapping a push notification now opens the installed PWA instead of showing the service worker file in Safari. Notification URLs are now full absolute paths anchored to the PWA scope.',
     ]},
@@ -3928,7 +3937,7 @@
       const nextIdx = bake.stageStates.findIndex(s => !s.done);
       const nextStage = nextIdx >= 0 ? recipe.stages[nextIdx] : null;
       alertStageComplete({
-        title: `Crumb · ${recipe.name}`,
+        title: `Baking · ${recipe.name}`,
         body: nextStage ? `Next: ${nextStage.name}` : 'All stages complete',
         bakeId: bake.id,
       });
@@ -4972,7 +4981,7 @@
                 if (!alertedStageEnds.has(ctKey)) {
                   alertedStageEnds.add(ctKey);
                   alertStageComplete({
-                    title: `Crumb · ${recipe.name}`,
+                    title: `Baking · ${recipe.name}`,
                     body: `${ct.name || 'Timer'} \u2014 time to start`,
                     bakeId: ab.id,
                     tag: `ct-${ab.id}-${ct.id}`,
@@ -4993,7 +5002,7 @@
         if (msToEnd <= 0 && msToEnd > -60000 && !alertedStageEnds.has(alertKey)) {
           alertedStageEnds.add(alertKey);
           alertStageComplete({
-            title: `Crumb · ${recipe.name}`,
+            title: `Baking · ${recipe.name}`,
             body: `${stage.name} is complete`,
             bakeId: ab.id,
           });
@@ -8404,7 +8413,7 @@ Here is the recipe:
         }
         window.__sw.active.postMessage({
           type: 'show-notification',
-          title: 'Crumb test',
+          title: 'Test notification',
           options: {
             body: 'If you see this, notifications are working. Try backgrounding Crumb for the real-world test.',
             icon: new URL('icon.png', window.location.href).pathname,
