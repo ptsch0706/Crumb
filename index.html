@@ -1143,6 +1143,19 @@
   }
 
   // ============================================================
+  // PUSH NOTIFICATION BACKEND CONFIG
+  // ============================================================
+  // Push backend URL and VAPID public key.
+  //
+  // The backend is a Cloudflare Worker that stores subscriptions and dispatches
+  // scheduled notifications via Web Push (RFC 8030/8291/8292) every minute via
+  // a cron trigger. The VAPID public key identifies this app to push services
+  // and must be embedded here so the PWA can include it in subscription requests.
+  // See crumb-push/ folder for backend source and setup.
+  const PUSH_BACKEND_URL = 'https://crumb-push.phil-crumb.workers.dev';
+  const VAPID_PUBLIC_KEY = 'BIUw6Xwgi6OdTwQ5HsfFHqjWTbBdzKx3vz8RiivK8ODWQQl_7nWsOeVIBKJeTdEyHfh7nJ-0JN-Fx-Jkn5Itd5s';
+
+  // ============================================================
   // INSTALLED PWA DETECTION
   // ============================================================
   // Detects whether Crumb is running as an installed PWA (home screen icon, full-screen
@@ -1169,6 +1182,359 @@
   // Expose for debugging
   window.__crumbIsPWA = IS_INSTALLED_PWA;
   console.log('[crumb] running as installed PWA:', IS_INSTALLED_PWA);
+
+  // ============================================================
+  // PUSH BACKEND CLIENT
+  // ============================================================
+  // HTTP client for the crumb-push Cloudflare Worker.
+  // Provides: subscribe / unsubscribe / schedule / cancel / heartbeat / health.
+  //
+  // Auth: every request is HMAC-signed with the sync code (must match the backend's
+  // auth.js verification). Without a sync code, push features are inert.
+  //
+  // Device ID: stable per-device identifier so the backend can distinguish
+  // multiple phones / tabs of the same household. Persisted in localStorage under
+  // a separate key so it survives sync data wipes.
+
+  const DEVICE_ID_KEY = 'crumb-device-id';
+  function getDeviceId() {
+    let id = null;
+    try { id = localStorage.getItem(DEVICE_ID_KEY); } catch (e) { /* private mode */ }
+    if (!id) {
+      // 16 random bytes -> hex string, fine for non-cryptographic device identification
+      const arr = new Uint8Array(16);
+      (window.crypto || window.msCrypto).getRandomValues(arr);
+      id = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+      try { localStorage.setItem(DEVICE_ID_KEY, id); } catch (e) { /* ignore */ }
+    }
+    return id;
+  }
+
+  /**
+   * Compute HMAC-SHA256(secret, message) and return as hex.
+   * Secret is derived from sync code matching the backend's auth.js.
+   */
+  async function pushBackendHmac(syncCode, message) {
+    const enc = new TextEncoder();
+    const secretInput = enc.encode(syncCode + '|crumb-push-v1');
+    const secretHash = await crypto.subtle.digest('SHA-256', secretInput);
+    const key = await crypto.subtle.importKey(
+      'raw', secretHash,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false, ['sign']
+    );
+    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
+    return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Make an authenticated POST to the push backend. Returns parsed JSON response.
+   * Throws on network error or non-2xx HTTP status.
+   * @param {string} path — e.g. '/subscribe'
+   * @param {Object} body — JSON-serializable
+   */
+  async function pushBackendPost(path, body) {
+    if (!state.syncCode) throw new Error('Sync code required for push backend');
+    const url = PUSH_BACKEND_URL + path;
+    const bodyText = JSON.stringify(body || {});
+    const timestamp = String(Date.now());
+    const nonce = (() => {
+      const arr = new Uint8Array(16);
+      crypto.getRandomValues(arr);
+      return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+    })();
+    const message = `${timestamp}\n${nonce}\nPOST\n${path}\n${bodyText}`;
+    const hmac = await pushBackendHmac(state.syncCode, message);
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Crumb-Sync-Code': state.syncCode,
+        'X-Crumb-Timestamp': timestamp,
+        'X-Crumb-Nonce': nonce,
+        'X-Crumb-HMAC': hmac,
+      },
+      body: bodyText,
+    });
+    let json;
+    try { json = await resp.json(); } catch (e) { json = {}; }
+    if (!resp.ok) {
+      const msg = json.error || `HTTP ${resp.status}`;
+      throw new Error(msg);
+    }
+    return json;
+  }
+
+  /**
+   * Unauthenticated health check.
+   */
+  async function pushBackendHealthCheck() {
+    try {
+      const resp = await fetch(PUSH_BACKEND_URL + '/health');
+      return resp.ok ? await resp.json() : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Tracks the last push subscription successfully sent to the backend so we don't
+  // re-subscribe redundantly on every PWA launch. Cleared on permission revocation.
+  let _lastPushSubscriptionEndpoint = null;
+
+  /**
+   * Subscribe this device to push notifications.
+   *
+   * Workflow:
+   *   1. Browser permission must be 'granted' (caller's responsibility — typically
+   *      the Notifications toggle in Settings)
+   *   2. Get the active service worker registration (window.__sw)
+   *   3. Call pushManager.subscribe with the VAPID public key
+   *   4. Send subscription details to backend /subscribe with auth
+   *
+   * Returns { ok: boolean, endpoint?, error? }.
+   */
+  async function subscribeToPush() {
+    if (!IS_INSTALLED_PWA) return { ok: false, error: 'Not running as PWA' };
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      return { ok: false, error: 'Notification permission not granted' };
+    }
+    if (!window.__sw || !window.__sw.pushManager) {
+      return { ok: false, error: 'Service worker not ready' };
+    }
+    if (!state.syncCode) {
+      return { ok: false, error: 'Sync code required' };
+    }
+    try {
+      // Try existing subscription first — most browsers preserve it across sessions
+      let sub = await window.__sw.pushManager.getSubscription();
+      if (!sub) {
+        sub = await window.__sw.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+      const subJson = sub.toJSON();
+      // Send to backend
+      await pushBackendPost('/subscribe', {
+        deviceId: getDeviceId(),
+        subscription: {
+          endpoint: subJson.endpoint,
+          keys: subJson.keys, // { p256dh, auth }
+        },
+      });
+      _lastPushSubscriptionEndpoint = subJson.endpoint;
+      return { ok: true, endpoint: subJson.endpoint };
+    } catch (e) {
+      console.error('[push] subscribe failed:', e);
+      return { ok: false, error: String(e.message || e) };
+    }
+  }
+
+  /**
+   * Unsubscribe from push: cancels backend, then unsubscribes locally.
+   */
+  async function unsubscribeFromPush() {
+    if (!state.syncCode) return { ok: false, error: 'Sync code required' };
+    try {
+      // Tell the backend to forget this device — cascades to all scheduled notifications
+      await pushBackendPost('/unsubscribe', { deviceId: getDeviceId() });
+    } catch (e) {
+      // Continue with local cleanup even if backend call fails (offline, etc.)
+      console.warn('[push] backend unsubscribe failed (continuing local cleanup):', e);
+    }
+    if (window.__sw && window.__sw.pushManager) {
+      try {
+        const sub = await window.__sw.pushManager.getSubscription();
+        if (sub) await sub.unsubscribe();
+      } catch (e) { /* ignore */ }
+    }
+    _lastPushSubscriptionEndpoint = null;
+    return { ok: true };
+  }
+
+  /**
+   * Push the scheduled notifications for an active bake to the backend.
+   * Computes future-only milestones from the bake's timeline + concurrent timers
+   * and sends them in one /schedule call (which REPLACES any existing schedule
+   * for the (deviceId, bakeId) pair).
+   *
+   * @param {Object} bake — active bake object (must have id, startedAt, etc.)
+   * @param {Object} recipe — the recipe being baked
+   */
+  async function schedulePushNotificationsForBake(bake, recipe) {
+    if (!IS_INSTALLED_PWA) return { ok: false, error: 'Not installed PWA' };
+    if (!state.notificationsEnabled) return { ok: false, error: 'Notifications disabled' };
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      return { ok: false, error: 'Notification permission not granted' };
+    }
+    if (!state.syncCode || !bake || !recipe) return { ok: false, error: 'Missing data' };
+    const now = Date.now();
+    const items = [];
+    // Iterate stages; skip already-done; for waits, fire when stage END is reached
+    // (the user's next action); for hands-on, fire when stage START is reached.
+    // Also include concurrent timer fires within wait stages.
+    for (let i = 0; i < recipe.stages.length; i++) {
+      const ss = bake.stageStates[i];
+      if (ss && ss.done) continue;
+      const stage = recipe.stages[i];
+      const stageStart = getStageScheduledStart(recipe, i, bake);
+      const stageDurMs = getStageDur(recipe, i, bake) * 60000;
+      const stageEnd = new Date(stageStart.getTime() + stageDurMs);
+      // Concurrent timers (within wait stages)
+      if (stage.isWait && Array.isArray(stage.concurrentTimers)) {
+        for (const ct of stage.concurrentTimers) {
+          const fireAt = stageStart.getTime() + (ct.offsetMin || 0) * 60000;
+          if (fireAt <= now) continue;
+          items.push({
+            fireAt,
+            title: `Crumb · ${recipe.name}`,
+            body: `${ct.name || 'Timer'} \u2014 time to start`,
+            tag: `ct-${bake.id}-${ct.id}`,
+            url: `?bake=${bake.id}`,
+          });
+        }
+      }
+      // Main stage alert: wait stages alert at END (next action), hands-on at START
+      const fireAt = stage.isWait ? stageEnd.getTime() : stageStart.getTime();
+      if (fireAt <= now) continue;
+      // Look ahead to name the action — for wait stages it's the NEXT stage
+      let actionName;
+      if (stage.isWait) {
+        const nextStage = recipe.stages[i + 1];
+        actionName = nextStage ? `Next: ${nextStage.name}` : 'All stages complete';
+      } else {
+        actionName = `${stage.name} starts now`;
+      }
+      items.push({
+        fireAt,
+        title: `Crumb · ${recipe.name}`,
+        body: actionName,
+        tag: `stage-${bake.id}-${i}`,
+        url: `?bake=${bake.id}`,
+      });
+    }
+    if (items.length === 0) {
+      // Nothing in the future — still call /schedule with empty list to clear any
+      // stale entries for this bake on the backend.
+    }
+    try {
+      const result = await pushBackendPost('/schedule', {
+        deviceId: getDeviceId(),
+        bakeId: bake.id,
+        items,
+      });
+      return { ok: true, scheduled: result.scheduled };
+    } catch (e) {
+      console.error('[push] schedule failed:', e);
+      return { ok: false, error: String(e.message || e) };
+    }
+  }
+
+  /**
+   * Cancel scheduled notifications for a bake.
+   */
+  async function cancelPushNotificationsForBake(bakeId) {
+    if (!IS_INSTALLED_PWA) return { ok: false };
+    if (!state.syncCode || !bakeId) return { ok: false };
+    try {
+      await pushBackendPost('/cancel', { deviceId: getDeviceId(), bakeId });
+      return { ok: true };
+    } catch (e) {
+      console.error('[push] cancel failed:', e);
+      return { ok: false, error: String(e.message || e) };
+    }
+  }
+
+  /**
+   * Heartbeat — verify the backend still has scheduled notifications for our live bakes.
+   * If missing, automatically re-schedule them.
+   */
+  async function pushBackendHeartbeat() {
+    if (!IS_INSTALLED_PWA || !state.syncCode || !state.notificationsEnabled) return;
+    const liveBakes = liveActiveBakes();
+    const bakeIds = liveBakes.map(b => b.id);
+    if (bakeIds.length === 0) return;
+    try {
+      const result = await pushBackendPost('/heartbeat', {
+        deviceId: getDeviceId(),
+        bakeIds,
+      });
+      // Re-schedule any bakes the backend doesn't know about
+      if (Array.isArray(result.missingBakes) && result.missingBakes.length > 0) {
+        console.log('[push] heartbeat found missing bakes:', result.missingBakes);
+        for (const bakeId of result.missingBakes) {
+          const bake = liveBakes.find(b => b.id === bakeId);
+          if (!bake) continue;
+          const recipe = state.recipes.find(r => r.id === bake.recipeId);
+          if (!recipe) continue;
+          await schedulePushNotificationsForBake(bake, recipe);
+        }
+      }
+      // If backend doesn't think we're subscribed, re-subscribe
+      if (result.subscribed === false) {
+        console.log('[push] heartbeat: backend lost our subscription, re-subscribing');
+        await subscribeToPush();
+        // Re-schedule everything since the sub_id will have changed
+        for (const bake of liveBakes) {
+          const recipe = state.recipes.find(r => r.id === bake.recipeId);
+          if (recipe) await schedulePushNotificationsForBake(bake, recipe);
+        }
+      }
+    } catch (e) {
+      console.warn('[push] heartbeat failed:', e);
+    }
+  }
+
+  // Convert VAPID base64url public key to Uint8Array as required by pushManager.subscribe
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+    return outputArray;
+  }
+
+  // Heartbeat timer state
+  let _pushHeartbeatInterval = null;
+  function startPushHeartbeat() {
+    if (_pushHeartbeatInterval) clearInterval(_pushHeartbeatInterval);
+    if (!IS_INSTALLED_PWA) return;
+    // 10 minutes — frequent enough to catch issues, rare enough to be inexpensive
+    _pushHeartbeatInterval = setInterval(pushBackendHeartbeat, 10 * 60 * 1000);
+  }
+  function stopPushHeartbeat() {
+    if (_pushHeartbeatInterval) {
+      clearInterval(_pushHeartbeatInterval);
+      _pushHeartbeatInterval = null;
+    }
+  }
+
+  /**
+   * Call this whenever a bake's timeline has shifted (mark done, skip-to-stage,
+   * adjust timer, pause/resume, skip prep). Sets the in-app refresh flag AND
+   * re-pushes the schedule to the push backend. Debounced lightly via setTimeout
+   * because several mutations may happen in a single user action.
+   */
+  const _rescheduleDebounce = new Map(); // bakeId -> timeout id
+  function markBakeRemindersStale(bake) {
+    if (!bake) return;
+    bake.needsReminderRefresh = true;
+    // Re-schedule on the backend after a 500ms quiet period
+    if (!IS_INSTALLED_PWA || !state.notificationsEnabled || !state.syncCode) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const existing = _rescheduleDebounce.get(bake.id);
+    if (existing) clearTimeout(existing);
+    const timeout = setTimeout(() => {
+      _rescheduleDebounce.delete(bake.id);
+      const recipe = state.recipes.find(r => r.id === bake.recipeId);
+      if (!recipe || bake._deleted) return;
+      schedulePushNotificationsForBake(bake, recipe).then(r => {
+        if (r.ok) console.log(`[push] re-scheduled ${r.scheduled} for ${recipe.name}`);
+      });
+    }, 500);
+    _rescheduleDebounce.set(bake.id, timeout);
+  }
 
   // ============================================================
   // STATE
@@ -1416,8 +1782,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.16.3';
+  const APP_VERSION = '1.17.0';
   const CHANGELOG = [
+    { version: '1.17.0', date: '2026-06-13', notes: [
+      'Push notifications now work in the background. Bake schedules are sent to the Crumb push backend; notifications fire at exactly the right times even with the PWA closed.',
+      'Bake start automatically schedules notifications. Bake end, skip-to-stage, pause/resume, and timer adjustments automatically reschedule.',
+      'Periodic heartbeat verifies that the backend still has your schedule; missing schedules auto-restore.',
+      'Diagnostics shows push backend status, subscription state, and pending notification count.',
+    ]},
     { version: '1.16.3', date: '2026-06-13', notes: [
       'Fix: only the installed PWA pushes data to sync now \u2014 browser-tab visits to the Crumb URL run in read-only mode. Prevents an old Safari tab\'s stale localStorage from overwriting the active PWA\'s state.',
       'Settings shows a "Browser-tab mode" indicator when not running as the installed PWA.',
@@ -3231,6 +3603,17 @@
     } else {
       toast('Bake started');
     }
+    // Schedule push notifications for this bake on the backend, if push is enabled.
+    // Fire-and-forget — failures here just mean notifications won't fire; the in-app
+    // alert path (alertStageComplete + maybeSendSystemNotification) still works while
+    // the app is open.
+    if (IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
+        typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      schedulePushNotificationsForBake(newBake, recipe).then(r => {
+        if (r.ok) console.log(`[push] scheduled ${r.scheduled} notifications for ${recipe.name}`);
+        else console.warn('[push] schedule failed:', r.error);
+      });
+    }
   }
 
   // Remove an active bake by id; if it was focused, clear focus.
@@ -3238,6 +3621,12 @@
   // Without tombstones, a remote device that hadn't yet seen the removal would push the
   // bake back into our state during merge, "resurrecting" a finalized/discarded bake.
   function removeActiveBake(bakeId) {
+    // Cancel any push notifications scheduled for this bake on the backend.
+    // Fire-and-forget; the dispatcher would harmlessly skip them anyway since they'd
+    // be tagged as obsolete, but this keeps the backend tidy.
+    if (IS_INSTALLED_PWA && state.syncCode) {
+      cancelPushNotificationsForBake(bakeId).catch(e => console.warn('[push] cancel failed:', e));
+    }
     const idx = state.activeBakes.findIndex(b => b.id === bakeId);
     if (idx !== -1) {
       // Mark as deleted + bump timestamp so sync merge keeps the newer "deleted" state
@@ -3602,7 +3991,7 @@
       const minsAgo = choice === 'now' ? 0 : parseInt(choice, 10);
       currentBake.stageStates[idx].done = true;
       currentBake.stageStates[idx].doneAt = new Date(Date.now() - minsAgo * 60000).toISOString();
-      currentBake.needsReminderRefresh = true; // subsequent stages have shifted
+      markBakeRemindersStale(currentBake); // subsequent stages have shifted
       // Clear any leftover dismissal — the stage is now done, dismissal is no longer relevant
       currentBake.stageStates[idx].catchupDismissedAt = null;
       haptic('medium');
@@ -3713,7 +4102,7 @@
       const newDur = Math.max(0, currentDur + diffMin);
       bake.stageStates[curIdx].durMinOverride = newDur;
       // Don't auto-advance current stage even if it would be "complete" — let the user mark done
-      if (Math.abs(diffMin) > 1) bake.needsReminderRefresh = true;
+      if (Math.abs(diffMin) > 1) markBakeRemindersStale(bake);
       saveState();
       hideModal('modal-adjust-timer');
       renderActiveBake(recipe, bake);
@@ -3904,7 +4293,7 @@
           ab.startedAt = new Date().toISOString();
           ab._updatedAt = Date.now();
           // Also clear any reminder cache so old future-time reminders get refreshed
-          ab.needsReminderRefresh = true;
+          markBakeRemindersStale(ab);
           saveState();
           renderActiveBake(recipe, ab);
         };
@@ -4306,7 +4695,7 @@
         // Record the actual moment the user is starting this stage. The countdown for it
         // (and the start times for all subsequent stages) cascade from here.
         ab.stageStates[curIdx].startedAt = new Date().toISOString();
-        ab.needsReminderRefresh = true; // upcoming stage times have shifted
+        markBakeRemindersStale(ab); // upcoming stage times have shifted
         saveState();
         renderActiveBake(recipe, ab);
         startBakeTicker();
@@ -4457,7 +4846,7 @@
         const plannedEnd = new Date(getStageScheduledStart(recipe, curIdx, ab).getTime() + getStageDur(recipe, curIdx, ab) * 60000);
         const driftMin = Math.abs((Date.now() - plannedEnd.getTime()) / 60000);
         if (driftMin > 5) {
-          ab.needsReminderRefresh = true;
+          markBakeRemindersStale(ab);
         }
         ab.stageStates[curIdx].done = true;
         ab.stageStates[curIdx].doneAt = new Date().toISOString();
@@ -4486,6 +4875,7 @@
               ab.stageStates[i].skipped = true;
             }
           }
+          markBakeRemindersStale(ab); // skipped stages mean upcoming timing has changed
           haptic('medium');
           saveState();
           renderActiveBake(recipe, ab);
@@ -6392,7 +6782,7 @@ Here is the recipe:
       }
       bake.paused = false;
       bake.pausedAt = null;
-      bake.needsReminderRefresh = true; // timeline shifted, reminders are stale
+      markBakeRemindersStale(bake); // timeline shifted, reminders are stale
       saveState();
       startBakeTicker();
       renderActiveBake(recipe, bake);
@@ -6460,7 +6850,7 @@ Here is the recipe:
       }
     }
 
-    bake.needsReminderRefresh = true;
+    markBakeRemindersStale(bake);
     clearAlertForStage(bake.id, lastDoneIdx); // re-allow beep if this stage expires again
     saveState();
     renderActiveBake(recipe, bake);
@@ -7580,6 +7970,15 @@ Here is the recipe:
           </div>
         </div>
         <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Push Backend</div>
+          <div style="font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between;"><span>Status</span><span style="font-family: 'JetBrains Mono', monospace; color: var(--ink-mute);" id="diag-push-status">checking…</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Device ID</span><span style="font-family: 'JetBrains Mono', monospace; color: var(--ink-mute); font-size: 11px;">${getDeviceId().slice(0, 12)}…</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Subscribed</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-push-subscribed">checking…</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Pending notifs</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-push-pending">—</span></div>
+          </div>
+        </div>
+        <div>
           <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">App</div>
           <div style="font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 4px;">
             <div style="display: flex; justify-content: space-between;"><span>Version</span><span style="font-family: 'JetBrains Mono', monospace;">${APP_VERSION}</span></div>
@@ -7600,6 +7999,47 @@ Here is the recipe:
       const el = document.getElementById('diag-ls-size');
       if (el) el.textContent = `${(total / 1024).toFixed(1)} KB`;
     } catch (e) { /* ignore */ }
+
+    // Push backend diagnostic — async since it involves network calls
+    (async () => {
+      const statusEl = document.getElementById('diag-push-status');
+      const subEl = document.getElementById('diag-push-subscribed');
+      const pendingEl = document.getElementById('diag-push-pending');
+      if (!statusEl) return;
+      const health = await pushBackendHealthCheck();
+      if (!health) {
+        statusEl.textContent = 'unreachable';
+        statusEl.style.color = 'var(--warn)';
+        if (subEl) subEl.textContent = '—';
+        if (pendingEl) pendingEl.textContent = '—';
+        return;
+      }
+      statusEl.textContent = 'online';
+      statusEl.style.color = 'var(--leaven)';
+      if (!IS_INSTALLED_PWA || !state.syncCode) {
+        if (subEl) subEl.textContent = IS_INSTALLED_PWA ? '— (no sync)' : '— (not PWA)';
+        if (pendingEl) pendingEl.textContent = '—';
+        return;
+      }
+      try {
+        const liveBakes = liveActiveBakes();
+        const result = await pushBackendPost('/heartbeat', {
+          deviceId: getDeviceId(),
+          bakeIds: liveBakes.map(b => b.id),
+        });
+        if (subEl) {
+          subEl.textContent = result.subscribed ? 'yes' : 'no';
+          subEl.style.color = result.subscribed ? 'var(--leaven)' : 'var(--ink-mute)';
+        }
+        if (pendingEl) {
+          const total = Object.values(result.pendingByBake || {}).reduce((s, n) => s + n, 0);
+          pendingEl.textContent = String(total);
+        }
+      } catch (e) {
+        if (subEl) subEl.textContent = 'error';
+        if (pendingEl) pendingEl.textContent = '—';
+      }
+    })();
   }
 
   // Render the changelog modal body from the CHANGELOG constant
@@ -7897,15 +8337,40 @@ Here is the recipe:
           saveState();
           renderAlertsToggle();
           haptic('success');
-          // Brief confirmation — without firing an actual notification since the page
-          // is foregrounded (which would be filtered out by maybeSendSystemNotification anyway)
           toast('Notifications enabled');
+          // Subscribe to push backend so scheduled notifications can fire.
+          // Only matters if sync is on AND we're the installed PWA; subscribeToPush
+          // checks all preconditions and returns gracefully if any fail.
+          if (IS_INSTALLED_PWA && state.syncCode) {
+            (async () => {
+              const result = await subscribeToPush();
+              if (result.ok) {
+                console.log('[push] subscribed to backend');
+                startPushHeartbeat();
+                // Schedule any in-progress bakes
+                for (const bake of liveActiveBakes()) {
+                  const recipe = state.recipes.find(r => r.id === bake.recipeId);
+                  if (recipe) await schedulePushNotificationsForBake(bake, recipe);
+                }
+              } else {
+                console.warn('[push] subscribe failed:', result.error);
+                toast(`Push backend unavailable: ${result.error}`);
+              }
+            })();
+          }
         } else {
-          // Turning off — no permission interaction needed
+          // Turning off — also unsubscribe from backend so we stop receiving
+          // scheduled notifications
           state.notificationsEnabled = false;
           saveState();
           renderAlertsToggle();
           haptic('light');
+          if (IS_INSTALLED_PWA && state.syncCode) {
+            (async () => {
+              await unsubscribeFromPush();
+              stopPushHeartbeat();
+            })();
+          }
         }
       });
     }
@@ -8544,6 +9009,29 @@ Here is the recipe:
         startSyncListener();
         startSafetyPushInterval();
       }
+    }
+
+    // Push backend setup at boot — only matters for the installed PWA with sync + permission
+    // already granted from a prior session. The first-time path runs in the Notifications
+    // toggle handler.
+    if (IS_INSTALLED_PWA && state.syncCode && state.notificationsEnabled &&
+        typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      // Wait for SW to be ready before subscribing. We chain off the existing window.__sw
+      // promise pattern; if the SW isn't registered yet, the subscribe call would fail
+      // gracefully so we just retry after a short delay.
+      const trySubscribe = async () => {
+        if (!window.__sw || !window.__sw.active) {
+          setTimeout(trySubscribe, 500);
+          return;
+        }
+        const result = await subscribeToPush();
+        if (result.ok) {
+          startPushHeartbeat();
+          // Run an immediate heartbeat to detect any missing schedules
+          pushBackendHeartbeat();
+        }
+      };
+      trySubscribe();
     }
 
     // After autoconnect, also handle a ?bake=<id> URL param. This fires when the user
