@@ -42,20 +42,43 @@ self.addEventListener('push', (event) => {
 
 // Notification tap: focus the existing PWA window or open one.
 // Posts a message to the page so it can navigate to the relevant view.
+//
+// iOS quirk: openWindow() with a relative URL or a URL without the full PWA scope
+// can launch Safari instead of the installed PWA, which then renders the service
+// worker file itself or a "404"-looking page. To force iOS to use the installed
+// PWA we resolve the target URL against the SW's REGISTRATION scope (which is the
+// PWA's origin) and ensure it's a full absolute URL pointing INSIDE that scope.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || '/';
+  const rawUrl = event.notification.data?.url || '/';
+
+  // Resolve to an absolute URL within the SW's scope. If the data URL is already
+  // absolute, this preserves it; if it's a relative path or just "?bake=xxx",
+  // it gets anchored to the registration's scope (the PWA root).
+  let targetUrl;
+  try {
+    // self.registration.scope is the URL the SW was registered at, e.g.
+    // "https://yourname.github.io/crumb/". Resolving relative URLs against it
+    // produces a URL inside the PWA's controlled area, which iOS recognizes
+    // as the installed PWA's launch URL.
+    targetUrl = new URL(rawUrl, self.registration.scope).href;
+  } catch (e) {
+    targetUrl = self.registration.scope;
+  }
+
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
-      // Prefer focusing an existing window over opening a new one
-      const existing = wins.find((w) => w.url.includes(self.location.origin));
+      // Prefer focusing an existing PWA window over opening a new one
+      const scopeOrigin = new URL(self.registration.scope).origin;
+      const existing = wins.find((w) => w.url.startsWith(scopeOrigin));
       if (existing) {
         existing.focus();
         existing.postMessage({ type: 'notif-open', url: targetUrl, data: event.notification.data });
-      } else {
-        // No window open — launch a new one
-        self.clients.openWindow(targetUrl);
+        return;
       }
+      // No window open — launch a new one. Pass the full absolute URL so iOS
+      // resolves it to the installed PWA rather than opening Safari.
+      return self.clients.openWindow(targetUrl);
     })
   );
 });

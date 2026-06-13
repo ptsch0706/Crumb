@@ -1369,6 +1369,15 @@
     }
     if (!state.syncCode || !bake || !recipe) return { ok: false, error: 'Missing data' };
     const now = Date.now();
+    // Build the deep-link URL for notification taps. Use the PWA's current origin + path
+    // so iOS opens the installed PWA when the user taps, not Safari. We strip any existing
+    // query/hash and append ?bake=<id> so the boot handler can route to that bake.
+    const pwaBaseUrl = (() => {
+      try {
+        const u = new URL(window.location.href);
+        return u.origin + u.pathname;
+      } catch (e) { return '/'; }
+    })();
     const items = [];
     // Iterate stages; skip already-done; for waits, fire when stage END is reached
     // (the user's next action); for hands-on, fire when stage START is reached.
@@ -1390,7 +1399,7 @@
             title: `Crumb · ${recipe.name}`,
             body: `${ct.name || 'Timer'} \u2014 time to start`,
             tag: `ct-${bake.id}-${ct.id}`,
-            url: `?bake=${bake.id}`,
+            url: `${pwaBaseUrl}?bake=${bake.id}`,
           });
         }
       }
@@ -1410,7 +1419,7 @@
         title: `Crumb · ${recipe.name}`,
         body: actionName,
         tag: `stage-${bake.id}-${i}`,
-        url: `?bake=${bake.id}`,
+        url: `${pwaBaseUrl}?bake=${bake.id}`,
       });
     }
     if (items.length === 0) {
@@ -1782,8 +1791,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.17.0';
+  const APP_VERSION = '1.17.1';
   const CHANGELOG = [
+    { version: '1.17.1', date: '2026-06-13', notes: [
+      'Fix: tapping a push notification now opens the installed PWA instead of showing the service worker file in Safari. Notification URLs are now full absolute paths anchored to the PWA scope.',
+    ]},
     { version: '1.17.0', date: '2026-06-13', notes: [
       'Push notifications now work in the background. Bake schedules are sent to the Crumb push backend; notifications fire at exactly the right times even with the PWA closed.',
       'Bake start automatically schedules notifications. Bake end, skip-to-stage, pause/resume, and timer adjustments automatically reschedule.',
