@@ -1905,8 +1905,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.19.0';
+  const APP_VERSION = '1.19.1';
   const CHANGELOG = [
+    { version: '1.19.1', date: '2026-06-13', notes: [
+      'Notifications modal: diagnostic raw ISO timestamp shown under each time to debug date display issues.',
+    ]},
     { version: '1.19.0', date: '2026-06-13', notes: [
       'Bake Options "Send Reminders" and "Refresh Reminders" consolidated into a single "Notifications" button.',
       'Notifications modal shows every upcoming notification for the active bake with stage name and exact scheduled time.',
@@ -6937,7 +6940,10 @@ Here is the recipe:
                   <div style="font-size: 14px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(item.label)}</div>
                   <div style="font-size: 12px; color: var(--ink-mute); margin-top: 1px;">${escapeHtml(item.sublabel)}</div>
                 </div>
-                <div style="font-size: 12px; color: var(--ink-soft); white-space: nowrap; text-align: right;">${fmtTime(item.fireAt)}</div>
+                <div style="font-size: 12px; color: var(--ink-soft); white-space: nowrap; text-align: right;">
+                  ${fmtTime(item.fireAt)}
+                  <div style="font-size: 9px; color: var(--ink-mute); font-family: 'JetBrains Mono', monospace; margin-top: 2px; opacity: 0.7;">${new Date(item.fireAt).toLocaleString()}</div>
+                </div>
               </div>
             `).join('')}
           </div>
