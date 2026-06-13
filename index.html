@@ -1143,6 +1143,34 @@
   }
 
   // ============================================================
+  // INSTALLED PWA DETECTION
+  // ============================================================
+  // Detects whether Crumb is running as an installed PWA (home screen icon, full-screen
+  // standalone mode) versus a regular browser tab. Used to gate sync writes.
+  //
+  // Why this matters: Safari preserves localStorage across visits. If a user opens
+  // the Crumb URL in Safari (to check the URL, share it, etc.), Safari's tab has its
+  // own stale localStorage that includes the sync code and an old active bake state.
+  // When the tab boots, it auto-connects to sync and can push that stale state to
+  // Firestore, overwriting fresher state from the installed PWA. The result is the
+  // user sees their bake "revert" to an old stage after reinstall.
+  //
+  // Fix: when NOT running as an installed PWA, run in READ-ONLY mode. The page can
+  // still display data and listen for remote changes, but never writes back to
+  // Firestore. The installed PWA is the only writer.
+  const IS_INSTALLED_PWA = (() => {
+    // iOS Safari sets window.navigator.standalone when launched from home screen
+    if (typeof window.navigator.standalone === 'boolean' && window.navigator.standalone) return true;
+    // Other platforms expose display-mode media query
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+    if (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return true;
+    return false;
+  })();
+  // Expose for debugging
+  window.__crumbIsPWA = IS_INSTALLED_PWA;
+  console.log('[crumb] running as installed PWA:', IS_INSTALLED_PWA);
+
+  // ============================================================
   // STATE
   // ============================================================
   const state = {
@@ -1388,8 +1416,13 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.16.2';
+  const APP_VERSION = '1.16.3';
   const CHANGELOG = [
+    { version: '1.16.3', date: '2026-06-13', notes: [
+      'Fix: only the installed PWA pushes data to sync now \u2014 browser-tab visits to the Crumb URL run in read-only mode. Prevents an old Safari tab\'s stale localStorage from overwriting the active PWA\'s state.',
+      'Settings shows a "Browser-tab mode" indicator when not running as the installed PWA.',
+      'Diagnostics shows the runtime mode (Installed PWA vs Browser tab).',
+    ]},
     { version: '1.16.2', date: '2026-06-13', notes: [
       'Fix: stage progress could appear to revert when multiple Crumb instances (Safari tab + installed PWA) were both syncing. saveState now bumps a bake\'s timestamp only when the bake actually changed, so an idle instance can no longer overwrite an active one\'s progress.',
     ]},
@@ -1711,10 +1744,12 @@
         }
       }
     }
-    // Push shared data to Firestore if sync is enabled.
+    // Push shared data to Firestore if sync is enabled AND we're the installed PWA.
+    // Non-PWA contexts (Safari tab) run read-only to prevent stale data from
+    // overwriting the active PWA's state. See IS_INSTALLED_PWA above.
     // Bump dirtyCounter unconditionally so the periodic safety push knows whether
     // there's anything new to send since the last successful push.
-    if (state.syncCode) {
+    if (state.syncCode && IS_INSTALLED_PWA) {
       dirtyCounter++;
       pushToFirestore();
     }
@@ -6878,6 +6913,12 @@ Here is the recipe:
 
   function pushToFirestore({ immediate = false } = {}) {
     if (!state.syncCode || !firestoreDb) return Promise.resolve();
+    // READ-ONLY GUARD: Safari-tab instances of Crumb must never write to Firestore.
+    // Only the installed PWA pushes. See IS_INSTALLED_PWA notes above.
+    if (!IS_INSTALLED_PWA) {
+      console.log('[sync] push skipped — not running as installed PWA');
+      return Promise.resolve();
+    }
     clearTimeout(pushDebounceTimer);
     return new Promise((resolve) => {
       const doPush = async () => {
@@ -7025,6 +7066,8 @@ Here is the recipe:
   //   - debounced push is pending (it'll fire within 400ms naturally)
   //   - dirtyCounter == lastPushedDirtyCounter (everything's already synced)
   function startSafetyPushInterval() {
+    // Non-PWA contexts don't push at all (read-only mode), so no point running this.
+    if (!IS_INSTALLED_PWA) return;
     if (safetyPushInterval) clearInterval(safetyPushInterval);
     safetyPushInterval = setInterval(() => {
       if (!state.syncCode || !firestoreDb) return;
@@ -7317,7 +7360,11 @@ Here is the recipe:
       dot.style.background = syncInFlight ? 'var(--crust)' : 'var(--leaven)';
       dot.style.animation = syncInFlight ? 'syncPulse 0.9s ease-in-out infinite' : 'none';
       label.textContent = syncInFlight ? 'Syncing…' : 'Sync enabled';
-      detail.textContent = 'Recipes, bakes, and active baking state sync across devices.';
+      // Distinguish PWA (read+write) from browser tab (read-only) so the user understands
+      // why changes here may not propagate to the installed PWA.
+      detail.textContent = IS_INSTALLED_PWA
+        ? 'Recipes, bakes, and active baking state sync across devices.'
+        : '⚠️ Browser-tab mode — read-only. Use the installed PWA to make changes that sync.';
       offPane.style.display = 'none';
       onPane.style.display = '';
       codeDisplay.textContent = state.syncCode;
@@ -7536,6 +7583,7 @@ Here is the recipe:
           <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">App</div>
           <div style="font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 4px;">
             <div style="display: flex; justify-content: space-between;"><span>Version</span><span style="font-family: 'JetBrains Mono', monospace;">${APP_VERSION}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Running as</span><span style="font-family: 'JetBrains Mono', monospace; color: ${IS_INSTALLED_PWA ? 'var(--leaven)' : 'var(--warn)'};">${IS_INSTALLED_PWA ? 'Installed PWA' : 'Browser tab (read-only)'}</span></div>
             <div style="display: flex; justify-content: space-between;"><span>localStorage used</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-ls-size">—</span></div>
           </div>
         </div>
