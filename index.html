@@ -1100,32 +1100,46 @@
   // The SW path uses an absolute origin path so GitHub Pages subdirectory
   // deployment still works (the service worker file lives at /crumb/service-worker.js
   // when deployed to <user>.github.io/crumb/).
-  if ('serviceWorker' in navigator) {
-    // Compute scope from the current page location — supports both root and subdirectory deploys
-    const swPath = new URL('service-worker.js', window.location.href).pathname;
-    navigator.serviceWorker.register(swPath)
-      .then((reg) => {
-        window.__sw = reg;
-        console.log('[sw] registered, scope:', reg.scope);
-        // Listen for notification taps relayed from the SW so the page can
-        // navigate to the relevant bake or view.
-        navigator.serviceWorker.addEventListener('message', (e) => {
-          if (e.data?.type === 'notif-open') {
-            // Bring the matching bake into focus if one is referenced in the URL
-            const url = e.data.url || '/';
-            try {
-              const u = new URL(url, window.location.href);
-              const bakeId = u.searchParams.get('bake');
-              if (bakeId && window._handleNotifOpenBake) {
-                window._handleNotifOpenBake(bakeId);
-              }
-            } catch (err) { /* ignore */ }
-          }
+  //
+  // Wrapped in a try/catch because some environments (in-app web views like the
+  // Claude app sandbox, certain iframe contexts, Safari private mode) throw
+  // synchronously on register() rather than rejecting the promise. Crumb should
+  // still load and work in those environments — just without notification support.
+  try {
+    // Guard: serviceWorker may exist but be unusable in restricted contexts.
+    // Also require https:// (or localhost) since SWs only work on secure origins.
+    const isSecure = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if ('serviceWorker' in navigator && isSecure) {
+      const swPath = new URL('service-worker.js', window.location.href).pathname;
+      navigator.serviceWorker.register(swPath)
+        .then((reg) => {
+          window.__sw = reg;
+          console.log('[sw] registered, scope:', reg.scope);
+          // Listen for notification taps relayed from the SW so the page can
+          // navigate to the relevant bake or view.
+          navigator.serviceWorker.addEventListener('message', (e) => {
+            if (e.data?.type === 'notif-open') {
+              const url = e.data.url || '/';
+              try {
+                const u = new URL(url, window.location.href);
+                const bakeId = u.searchParams.get('bake');
+                if (bakeId && window._handleNotifOpenBake) {
+                  window._handleNotifOpenBake(bakeId);
+                }
+              } catch (err) { /* ignore */ }
+            }
+          });
+        })
+        .catch((e) => {
+          console.warn('[sw] registration failed:', e);
         });
-      })
-      .catch((e) => {
-        console.warn('[sw] registration failed:', e);
-      });
+    } else {
+      console.log('[sw] skipped (not a secure context or no SW support)');
+    }
+  } catch (e) {
+    // Some environments throw synchronously on register() — caught and ignored
+    // so the rest of the app initializes normally.
+    console.warn('[sw] registration threw synchronously:', e);
   }
 
   // ============================================================
@@ -1374,8 +1388,15 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.16.0';
+  const APP_VERSION = '1.16.2';
   const CHANGELOG = [
+    { version: '1.16.2', date: '2026-06-13', notes: [
+      'Fix: stage progress could appear to revert when multiple Crumb instances (Safari tab + installed PWA) were both syncing. saveState now bumps a bake\'s timestamp only when the bake actually changed, so an idle instance can no longer overwrite an active one\'s progress.',
+    ]},
+    { version: '1.16.1', date: '2026-06-02', notes: [
+      'Fix: service worker registration is now wrapped in try/catch so restricted environments (in-app web views, iframes) don\'t throw uncaught errors at boot.',
+      'Crumb still works in those environments \u2014 just without notification support.',
+    ]},
     { version: '1.16.0', date: '2026-06-02', notes: [
       'Notifications (Phase 1): Crumb can now show OS-level notifications when stages complete and the app is backgrounded. Enable in Settings \u2192 Alerts.',
       'Requires the PWA installed to home screen and notification permission granted.',
@@ -1618,13 +1639,37 @@
   // opening the recipe schedule view.
   let bulkSelectMode = false;
   const bulkSelectedIds = new Set();
+  // Snapshot of each active bake's serialized state at the last save. Used to detect
+  // which bakes ACTUALLY changed between saves — only those get their _updatedAt bumped.
+  // Without this, every saveState() call refreshed every bake's timestamp, which broke
+  // last-write-wins sync: an idle tab could "win" timestamp wars over an active one
+  // just by saving (e.g. changing a setting), causing stale stageStates to resurrect.
+  const _bakeSnapshots = new Map(); // id -> JSON string of bake as last saved
+
   function saveState() {
-    // Touch active bakes (they change frequently — mark-done, pause, adjust timer, etc.)
-    // so the per-object merge logic picks our version on conflict.
     const now = Date.now();
     if (Array.isArray(state.activeBakes)) {
       for (const b of state.activeBakes) {
-        if (b && typeof b === 'object') b._updatedAt = now;
+        if (!b || typeof b !== 'object' || !b.id) continue;
+        // Serialize the bake WITHOUT its _updatedAt so a previously-applied timestamp
+        // bump doesn't itself look like a change. This makes the comparison reflect
+        // semantic content only.
+        const { _updatedAt: _prevTs, ...semantic } = b;
+        const sig = JSON.stringify(semantic);
+        const lastSig = _bakeSnapshots.get(b.id);
+        if (sig !== lastSig) {
+          // Real change — bump timestamp and record new snapshot for next save
+          b._updatedAt = now;
+          _bakeSnapshots.set(b.id, sig);
+        }
+        // Else: no semantic change, leave _updatedAt as-is so another instance's
+        // recent edit won the LWW comparison stays the winner.
+      }
+      // Clean up snapshots for bakes that no longer exist (ended, discarded, etc.)
+      for (const id of Array.from(_bakeSnapshots.keys())) {
+        if (!state.activeBakes.some(b => b && b.id === id)) {
+          _bakeSnapshots.delete(id);
+        }
       }
     }
     const payload = {
