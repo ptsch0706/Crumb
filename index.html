@@ -6902,11 +6902,18 @@ Here is the recipe:
       const stale = !!ab.needsReminderRefresh;
       const fmtTime = ts => {
         const d = new Date(ts);
-        const isToday = d.toDateString() === new Date().toDateString();
-        const isTomorrow = d.toDateString() === new Date(now + 86400000).toDateString();
-        const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-        if (isToday) return `Today · ${timeStr}`;
-        if (isTomorrow) return `Tomorrow · ${timeStr}`;
+        const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+        // Compare calendar dates using local midnight boundaries to avoid DST / 24h-offset bugs
+        const localMidnight = (date) => {
+          const t = new Date(date);
+          t.setHours(0, 0, 0, 0);
+          return t.getTime();
+        };
+        const dDay = localMidnight(d);
+        const todayDay = localMidnight(new Date());
+        const tomorrowDay = todayDay + 86400000;
+        if (dDay === todayDay) return `Today · ${timeStr}`;
+        if (dDay === tomorrowDay) return `Tomorrow · ${timeStr}`;
         return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ` · ${timeStr}`;
       };
 
