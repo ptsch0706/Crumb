@@ -632,86 +632,6 @@
 </div>
 
 <!-- IMPORT MODAL -->
-<!-- SHORTCUT MODAL -->
-<div class="modal-backdrop" id="modal-shortcut">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title" id="modal-shortcut-title">Send Reminders</div>
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <button class="modal-close" id="info-shortcut" aria-label="Setup info">i</button>
-        <button class="modal-close" data-close>✕</button>
-      </div>
-    </div>
-    <div class="modal-body">
-      <div id="shortcut-payload-preview"></div>
-      <button class="btn btn-primary btn-block" id="send-to-shortcut" style="margin-top: 12px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        Send Reminders
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- SHORTCUT SETUP INFO MODAL -->
-<div class="modal-backdrop" id="modal-shortcut-info">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title">Shortcut Setup</div>
-      <button class="modal-close" data-close>✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="banner crust">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-        <div>You only need to do this once. Crumb copies your schedule to the clipboard and opens the <strong>Crumb Timers</strong> Shortcut, which reads the clipboard and creates iOS reminders for every milestone.</div>
-      </div>
-
-      <div class="section-title" style="margin-top: 16px;">Build the Shortcut</div>
-      <ol style="font-size: 14px; line-height: 1.6; color: var(--ink-soft); padding-left: 20px;">
-        <li style="margin-bottom: 8px;">Open the <strong>Shortcuts</strong> app → tap <strong>+</strong></li>
-        <li style="margin-bottom: 8px;">Name it exactly <strong>Crumb Timers</strong></li>
-        <li style="margin-bottom: 8px;">Add these actions in order:</li>
-      </ol>
-
-      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; font-size: 13px; line-height: 1.6;">
-        <div style="font-weight: 600; color: var(--ink); margin-bottom: 6px;">1 · Get Clipboard</div>
-        <div style="color: var(--ink-soft); margin-bottom: 12px;">Reads the JSON Crumb just copied.</div>
-
-        <div style="font-weight: 600; color: var(--ink); margin-bottom: 6px;">2 · Get Dictionary from Input</div>
-        <div style="color: var(--ink-soft); margin-bottom: 12px;">Parses the clipboard text into a dictionary.</div>
-
-        <div style="font-weight: 600; color: var(--ink); margin-bottom: 6px;">3 · Get Dictionary Value</div>
-        <div style="color: var(--ink-soft); margin-bottom: 12px;">Key: <span class="mono">milestones</span></div>
-
-        <div style="font-weight: 600; color: var(--ink); margin-bottom: 6px;">4 · Repeat with Each</div>
-        <div style="color: var(--ink-soft); margin-bottom: 12px;">Iterates over the milestones list. The next actions go <em>inside</em> this block.</div>
-
-        <div style="border-left: 3px solid var(--crust); padding-left: 12px; margin-left: 4px;">
-          <div style="font-weight: 600; color: var(--ink); margin-bottom: 6px;">5 · Get Dictionary Value</div>
-          <div style="color: var(--ink-soft); margin-bottom: 12px;">Key: <span class="mono">title</span> · Dictionary: Repeat Item</div>
-
-          <div style="font-weight: 600; color: var(--ink); margin-bottom: 6px;">6 · Get Dictionary Value</div>
-          <div style="color: var(--ink-soft); margin-bottom: 12px;">Key: <span class="mono">time</span> · Dictionary: Repeat Item</div>
-
-          <div style="font-weight: 600; color: var(--ink); margin-bottom: 6px;">7 · Get Dictionary Value</div>
-          <div style="color: var(--ink-soft); margin-bottom: 12px;">Key: <span class="mono">note</span> · Dictionary: Repeat Item</div>
-
-          <div style="font-weight: 600; color: var(--ink); margin-bottom: 6px;">8 · Add New Reminder</div>
-          <div style="color: var(--ink-soft);">
-            Reminder: title value<br>
-            List: any (e.g. Bread)<br>
-            Alert → At a Time → time value<br>
-            Notes: note value
-          </div>
-        </div>
-      </div>
-
-      <div class="banner" style="margin-top: 16px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2 2 22h20L12 2zM12 9v4m0 4h.01"/></svg>
-        <div>If reminders don't appear, make sure you don't have a leftover Text action at the top of the Shortcut — it would override the clipboard.</div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- CONFIRM MODAL (replaces native confirm() which is blocked in in-app browsers) -->
 <div class="modal-backdrop" id="modal-confirm">
@@ -918,7 +838,7 @@
       <button class="modal-close" data-close>✕</button>
     </div>
     <div class="modal-body">
-      <p class="help" style="margin-bottom: 14px;">Set up to two weekly feedings. Reminders sync to iOS via the Crumb Timers Shortcut.</p>
+      <p class="help" style="margin-bottom: 14px;">Set up to two weekly feedings. Reminders are delivered via push notifications.</p>
       <div id="starter-editor"></div>
       <div style="margin-top: 16px; display: flex; gap: 8px;">
         <button class="btn btn-primary btn-block" id="starter-save">Save</button>
@@ -1905,8 +1825,22 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.19.3';
+  const APP_VERSION = '1.20.0';
   const CHANGELOG = [
+    { version: '1.20.0', date: '2026-06-13', notes: [
+      'iOS Reminders / Shortcut integration removed entirely. Bake and starter reminders now exclusively use push notifications.',
+      'Removed: Send Reminders modal, Shortcut Setup instructions modal, pre-bake clock icon button, and all related click handlers.',
+      'Removed: openShortcutModal, sendStarterReminders, and formatForShortcut functions.',
+      'Bake Options "Notifications" button is hidden when push notifications are off (no fallback path remains).',
+      'Notifications modal, when opened without push enabled, shows an "Enable Notifications in Settings" prompt instead of a Shortcut fallback.',
+      'Starter section shows push status when on, or a prompt to enable notifications when off.',
+      'endBake simplified — push cancellation already happens in removeActiveBake; the Shortcut cleanup path was redundant.',
+    ]},
+    { version: '1.19.4', date: '2026-06-13', notes: [
+      'Notifications modal: wait stages now labeled with both ends and next stage (e.g. "Bulk Ferment ends → Shape").',
+      'Past notifications now shown with a "Sent" indicator and dimmed, so you can see what already fired.',
+      'Diagnostic debug rows removed — modal is now production-clean.',
+    ]},
     { version: '1.19.3', date: '2026-06-13', notes: [
       'Notifications modal: added per-row debug line showing stage index, isWait flag, raw stage start/end ISO, and durMin to trace the 12hr offset bug.',
     ]},
@@ -3509,13 +3443,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
         Start Bake
       </button>
-      <!-- Secondary actions: Send Reminders + Edit Recipe as compact icon-only buttons side by side.
-           They are secondary to Start Bake, so de-emphasizing them with icons keeps the visual
-           hierarchy clean. aria-label keeps them accessible for VoiceOver. -->
+      <!-- Edit Recipe as a secondary action. Notifications are scheduled automatically
+           when a bake starts, so no pre-bake reminders button is needed. -->
       <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: center;">
-        <button class="btn" id="btn-shortcut" aria-label="Send Reminders" title="Send Reminders" style="padding: 12px 36px;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin: 0;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        </button>
         <button class="btn" id="btn-edit-recipe" aria-label="Edit Recipe" title="Edit Recipe" style="padding: 12px 36px;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin: 0;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
@@ -3632,7 +3562,6 @@
     document.getElementById('btn-edit-recipe').addEventListener('click', () => {
       openRecipeEditor(recipe);
     });
-    document.getElementById('btn-shortcut').addEventListener('click', () => openShortcutModal(recipe, timeline));
     document.getElementById('btn-start-bake').addEventListener('click', () => {
       // If user changed the time but didn't blur, pick up the latest value
       if (_timeChanged) onTimeChange();
@@ -3797,42 +3726,19 @@
   function endBake(bakeOrId, save = true) {
     const bake = typeof bakeOrId === 'string' ? getActiveBakeById(bakeOrId) : bakeOrId;
     if (!bake) return;
-
-    // If reminders were sent for this bake, offer to clear them from iOS Reminders
-    const cleanupAndContinue = () => {
-      if (save) {
-        openBakeNotes(null, bake);
-      } else {
-        removeActiveBake(bake.id);
-        saveState();
-        const stillBaking = liveActiveBakes().length > 0;
-        if (!stillBaking) stopBakeTicker();
-        renderRecipes();
-        renderSchedule();
-        if (document.getElementById('view-active-bakes').classList.contains('active')) renderActiveBakes();
-        updateActiveTabBadge();
-        toast('Bake discarded');
-      }
-    };
-
-    if (bake.remindersSent) {
-      const recipe = state.recipes.find(r => r.id === bake.recipeId);
-      if (recipe) {
-        // Send a cleanup payload to the Shortcut: replaceExisting=true with no milestones.
-        // The Shortcut deletes existing reminders for this recipe, adds nothing new.
-        const payload = JSON.stringify({
-          recipe: recipe.name,
-          milestones: [],
-          replaceExisting: true,
-        });
-        navigator.clipboard.writeText(payload).then(() => {
-          window.location.href = 'shortcuts://run-shortcut?name=Crumb%20Timers';
-          setTimeout(cleanupAndContinue, 600);
-        }).catch(cleanupAndContinue);
-        return;
-      }
+    if (save) {
+      openBakeNotes(null, bake);
+    } else {
+      removeActiveBake(bake.id);
+      saveState();
+      const stillBaking = liveActiveBakes().length > 0;
+      if (!stillBaking) stopBakeTicker();
+      renderRecipes();
+      renderSchedule();
+      if (document.getElementById('view-active-bakes').classList.contains('active')) renderActiveBakes();
+      updateActiveTabBadge();
+      toast('Bake discarded');
     }
-    cleanupAndContinue();
   }
 
   // Finalize the save after notes modal closes
@@ -4709,8 +4615,6 @@
         `}
       </div>
 
-      <button class="btn btn-block" id="btn-shortcut-active" style="display: none;"></button>
-      <button class="btn btn-block" id="btn-refresh-reminders" style="display: none;"></button>
       <button class="btn btn-block" id="btn-adjust-timer" style="display: none;"></button>
       <button class="btn btn-block" id="btn-edit-recipe-active" style="display: none;"></button>
 
@@ -4799,8 +4703,6 @@
       const doneBtn = e.target.closest('#btn-mark-done');
       const startBtn = e.target.closest('#btn-start-stage');
       const skipBtn = e.target.closest('[data-skip-to]');
-      const shortcutBtn = e.target.closest('#btn-shortcut-active');
-      const refreshRemindersBtn = e.target.closest('#btn-refresh-reminders');
       const editBtn = e.target.closest('[data-edit-stage]');
       const editRecipeBtn = e.target.closest('#btn-edit-recipe-active');
       const adjustTimerBtn = e.target.closest('#btn-adjust-timer');
@@ -4886,89 +4788,6 @@
       if (editBtn) {
         stopBakeTicker();
         openStageEditor(recipe, +editBtn.dataset.editStage, ab);
-        return;
-      }
-
-      if (shortcutBtn) {
-        stopBakeTicker();
-        const remainingTimeline = [];
-        for (let i = 0; i < recipe.stages.length; i++) {
-          if (ab.stageStates[i].done) continue;
-          const stage = recipe.stages[i];
-          const start = getStageScheduledStart(recipe, i, ab);
-          const end = new Date(start.getTime() + stage.durMin * 60000);
-          // Include concurrent timers with absolute fire times so openShortcutModal can
-          // create reminders for them. Timers whose fire time has already passed are
-          // dropped — no point reminding the user about something already due.
-          const cts = (stage.concurrentTimers || [])
-            .map(ct => ({
-              id: ct.id,
-              name: ct.name,
-              detail: ct.detail || '',
-              offsetMin: ct.offsetMin || 0,
-              durMin: ct.durMin || 0,
-              fireAt: new Date(start.getTime() + (ct.offsetMin || 0) * 60000),
-              endAt: new Date(start.getTime() + ((ct.offsetMin || 0) + (ct.durMin || 0)) * 60000),
-            }))
-            .filter(ct => ct.fireAt > new Date());
-          remainingTimeline.push({
-            idx: i,
-            name: stage.name,
-            detail: stage.detail || '',
-            isWait: !!stage.isWait,
-            startAt: start,
-            endAt: end,
-            durMin: stage.durMin,
-            concurrentTimers: cts,
-          });
-        }
-        if (remainingTimeline.length === 0) {
-          toast('No remaining stages to send');
-          startBakeTicker();
-          return;
-        }
-        openShortcutModal(recipe, remainingTimeline);
-        startBakeTicker();
-        return;
-      }
-
-      if (refreshRemindersBtn) {
-        stopBakeTicker();
-        const remainingTimeline = [];
-        for (let i = 0; i < recipe.stages.length; i++) {
-          if (ab.stageStates[i].done) continue;
-          const stage = recipe.stages[i];
-          const start = getStageScheduledStart(recipe, i, ab);
-          const end = new Date(start.getTime() + stage.durMin * 60000);
-          const cts = (stage.concurrentTimers || [])
-            .map(ct => ({
-              id: ct.id,
-              name: ct.name,
-              detail: ct.detail || '',
-              offsetMin: ct.offsetMin || 0,
-              durMin: ct.durMin || 0,
-              fireAt: new Date(start.getTime() + (ct.offsetMin || 0) * 60000),
-              endAt: new Date(start.getTime() + ((ct.offsetMin || 0) + (ct.durMin || 0)) * 60000),
-            }))
-            .filter(ct => ct.fireAt > new Date());
-          remainingTimeline.push({
-            idx: i,
-            name: stage.name,
-            detail: stage.detail || '',
-            isWait: !!stage.isWait,
-            startAt: start,
-            endAt: end,
-            durMin: stage.durMin,
-            concurrentTimers: cts,
-          });
-        }
-        if (remainingTimeline.length === 0) {
-          toast('No remaining stages — nothing to refresh');
-          startBakeTicker();
-          return;
-        }
-        openShortcutModal(recipe, remainingTimeline, { replaceExisting: true });
-        startBakeTicker();
         return;
       }
 
@@ -5883,102 +5702,6 @@ Here is the recipe:
   let importAppendMode = false; // when true, merge parsed JSON into state.editingRecipe instead of opening editor
 
   // ============================================================
-  // SHORTCUT INTEGRATION
-  // ============================================================
-  function openShortcutModal(recipe, timeline, options = {}) {
-    const preview = document.getElementById('shortcut-payload-preview');
-    const modalTitle = document.getElementById('modal-shortcut-title');
-    const sendBtn = document.getElementById('send-to-shortcut');
-    const isRefresh = !!options.replaceExisting;
-    if (modalTitle) modalTitle.textContent = isRefresh ? 'Refresh Reminders' : 'Send Reminders';
-    if (sendBtn) sendBtn.textContent = isRefresh ? 'Refresh Reminders' : 'Send Reminders';
-
-    // Build reminder milestones. For each stage we skip wait stages (no action needed)
-    // EXCEPT we extract their concurrent timers as their own reminders — those ARE
-    // user-actionable (preheat, fold, etc.) even though they happen during a wait.
-    // Result order: stage reminders + concurrent timer reminders, sorted by time so the
-    // preview list reads chronologically.
-    const stageMilestones = timeline
-      .filter(s => !s.isWait)
-      .map(s => {
-        const d = s.startAt;
-        return {
-          title: `${recipe.name}: ${s.name}`,
-          time: formatForShortcut(d),
-          year: d.getFullYear(),
-          month: d.getMonth() + 1,
-          day: d.getDate(),
-          hour: d.getHours(),
-          minute: d.getMinutes(),
-          note: s.detail,
-          _sort: d.getTime(),
-        };
-      });
-    const ctMilestones = [];
-    for (const s of timeline) {
-      if (!Array.isArray(s.concurrentTimers)) continue;
-      for (const ct of s.concurrentTimers) {
-        if (!ct.name || !ct.fireAt) continue;
-        const d = ct.fireAt;
-        ctMilestones.push({
-          title: `${recipe.name}: ${ct.name}`,
-          time: formatForShortcut(d),
-          year: d.getFullYear(),
-          month: d.getMonth() + 1,
-          day: d.getDate(),
-          hour: d.getHours(),
-          minute: d.getMinutes(),
-          note: ct.detail || `During ${s.name}`,
-          _sort: d.getTime(),
-        });
-      }
-    }
-    const milestones = [...stageMilestones, ...ctMilestones]
-      .sort((a, b) => a._sort - b._sort)
-      .map(({ _sort, ...m }) => m); // drop the sort helper before sending
-
-    const refreshBanner = isRefresh ? `
-      <div class="banner" style="background: var(--leaven-soft); border-color: var(--leaven); color: var(--rye); margin-bottom: 12px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-        <div>Any existing reminders starting with <strong>"${escapeHtml(recipe.name)}"</strong> will be deleted and recreated with the new times.</div>
-      </div>
-    ` : '';
-
-    preview.innerHTML = `
-      ${refreshBanner}
-      <div class="section-title" style="margin-top: 0;">${milestones.length} Reminders to ${isRefresh ? 'replace' : 'create'}</div>
-      <div style="max-height: 240px; overflow-y: auto; background: var(--bg-elev); border-radius: var(--radius); border: 1px solid var(--line);">
-        ${milestones.map(m => `
-          <div style="padding: 10px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13px;">
-            <div class="mono" style="color: var(--ink-mute); font-size: 11px;">${escapeHtml(m.time)}</div>
-            <div style="margin-top: 2px;">${escapeHtml(m.title)}</div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-
-    document.getElementById('send-to-shortcut').onclick = async () => {
-      const payload = {
-        recipe: recipe.name,
-        milestones,
-        replaceExisting: isRefresh,
-      };
-      const json = JSON.stringify(payload);
-      try {
-        await navigator.clipboard.writeText(json);
-      } catch (e) {
-        toast('Clipboard copy failed — check browser permissions');
-        return;
-      }
-      const url = `shortcuts://run-shortcut?name=Crumb%20Timers`;
-      window.location.href = url;
-      setTimeout(() => toast(isRefresh ? 'Refreshing reminders…' : 'Schedule sent to Shortcuts'), 400);
-    };
-
-    showModal('modal-shortcut');
-  }
-
-  // ============================================================
   // UTILITIES
   // ============================================================
   function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -6115,11 +5838,6 @@ Here is the recipe:
   function formatDateTimeLocal(d) {
     const pad = n => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-  function formatForShortcut(d) {
-    // "2026-05-28 15:00" — local time, space separated, no timezone, no seconds
-    const pad = n => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   let toastTimer;
@@ -6534,11 +6252,8 @@ Here is the recipe:
       reminder: r,
       next: nextStarterDate(r),
     })).sort((a, b) => a.next - b.next);
-    const lastSent = state.starter.remindersSentAt
-      ? new Date(state.starter.remindersSentAt).toLocaleDateString([], { month: 'short', day: 'numeric' })
-      : null;
     // Push notifications mode: when active, the backend handles the schedule
-    // automatically. The Shortcut/Reminders button is hidden in favor of a status indicator.
+    // automatically. Otherwise, the user is prompted to enable notifications.
     const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
       typeof Notification !== 'undefined' && Notification.permission === 'granted';
     // Compute progress bar data for the soonest upcoming reminder.
@@ -6599,90 +6314,17 @@ Here is the recipe:
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><line x1="13.73" y1="21" x2="10.27" y2="21"/></svg>
               Reminders are sent automatically via push notifications
             </div>`
-          : `<button class="btn btn-sm btn-block" id="starter-send-reminders" style="flex: 1;">${lastSent ? 'Refresh Reminders' : 'Send Reminders'}</button>`
+          : `<div style="flex: 1; padding: 8px 12px; background: var(--bg-warm); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink-soft); text-align: center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              Enable Notifications in Settings to get reminders
+            </div>`
         }
       </div>
       ${pushActive
         ? '<p class="help" style="margin-top: 6px; text-align: center;">No action needed \u2014 Crumb handles the schedule.</p>'
-        : (lastSent ? `<p class="help" style="margin-top: 6px; text-align: center;">Last sent ${escapeHtml(lastSent)}</p>` : '<p class="help" style="margin-top: 6px;">Send to your iPhone Reminders app via the Crumb Timers Shortcut.</p>')
+        : '<p class="help" style="margin-top: 6px; text-align: center;">Starter feedings only show as reminders when push notifications are on.</p>'
       }
     `;
-    // Wire send button (only present in non-push mode)
-    const sendBtn = document.getElementById('starter-send-reminders');
-    if (sendBtn) sendBtn.addEventListener('click', sendStarterReminders);
-  }
-
-  // Build and send the starter reminder payload to the Crumb Timers Shortcut.
-  // Pushes 12 weeks of one-shot reminders per enabled feeding slot, plus a refresh nudge
-  // the day after the last feeding (so the user knows to come back and push the next batch).
-  // Each title has a unique date suffix and "[Crumb Starter]" tag for clean cleanup.
-  async function sendStarterReminders() {
-    const reminders = (state.starter && state.starter.reminders || []).filter(r => r.enabled);
-    if (reminders.length === 0) {
-      toast('Enable a Reminder First');
-      return;
-    }
-    // Push 12 weeks of starter feeding reminders per enabled slot. iOS doesn't reliably
-    // support setting Repeat=Weekly via Shortcuts on iOS 18+, so we push each occurrence
-    // as its own one-shot reminder. 12 weeks ≈ 3 months between manual refreshes.
-    const STARTER_WEEKS = 12;
-    const milestones = [];
-    // Track the latest reminder time so we can schedule a self-refresh nudge after it
-    let latestTime = null;
-    for (const r of reminders) {
-      const firstDate = nextStarterDate(r);
-      for (let wk = 0; wk < STARTER_WEEKS; wk++) {
-        const d = new Date(firstDate);
-        d.setDate(firstDate.getDate() + wk * 7);
-        milestones.push({
-          title: r.name,
-          time: formatForShortcut(d),
-          year: d.getFullYear(),
-          month: d.getMonth() + 1,
-          day: d.getDate(),
-          hour: d.getHours(),
-          minute: d.getMinutes(),
-          note: `Starter feeding (week ${wk + 1} of ${STARTER_WEEKS})`,
-        });
-        if (!latestTime || d > latestTime) latestTime = d;
-      }
-    }
-    // Add a self-refresh nudge reminder — fires the day after the last feeding at 9 AM.
-    // This reminds the user to come back into Crumb and re-push the next batch.
-    if (latestTime) {
-      const refreshNudge = new Date(latestTime);
-      refreshNudge.setDate(latestTime.getDate() + 1);
-      refreshNudge.setHours(9, 0, 0, 0);
-      milestones.push({
-        title: 'Refresh Crumb starter reminders',
-        time: formatForShortcut(refreshNudge),
-        year: refreshNudge.getFullYear(),
-        month: refreshNudge.getMonth() + 1,
-        day: refreshNudge.getDate(),
-        hour: refreshNudge.getHours(),
-        minute: refreshNudge.getMinutes(),
-        note: 'Open Crumb → Active tab → Starter → tap Refresh Reminders to push the next 12 weeks',
-      });
-    }
-    const payload = {
-      recipe: 'Starter',
-      milestones,
-      replaceExisting: true, // always replace previous starter reminders to avoid duplicates
-    };
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(payload));
-    } catch (e) {
-      toast('Clipboard copy failed');
-      return;
-    }
-    state.starter.remindersSentAt = new Date().toISOString();
-    saveState();
-    // Launch the Shortcut (same mechanism as bake reminders)
-    const url = `shortcuts://run-shortcut?name=${encodeURIComponent('Crumb Timers')}`;
-    window.location.href = url;
-    renderStarter();
-    haptic('medium');
-    toast(`Sent ${milestones.length} reminders`);
   }
 
   // Open the starter schedule editor modal — renders the form, wires events.
@@ -6826,6 +6468,12 @@ Here is the recipe:
       : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; // pause bars
     document.getElementById('opt-refresh-dot').style.display = ab.needsReminderRefresh ? '' : 'none';
     document.getElementById('opt-notifications-label').textContent = ab.needsReminderRefresh ? 'Notifications · needs refresh' : 'Notifications';
+    // Hide the Notifications button entirely when push isn't usable. The app no longer has
+    // a fallback path (the iOS Shortcut integration was removed in v1.20.0), so showing the
+    // option with no working backend would just confuse the user.
+    const pushUsable = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
+      typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    document.getElementById('opt-notifications').style.display = pushUsable ? '' : 'none';
     // Disable step-back if at first stage. Also disable during prep (no stages have run).
     const anyDone = ab.stageStates.some(s => s.done);
     const stepBack = document.getElementById('opt-step-back');
@@ -6888,33 +6536,31 @@ Here is the recipe:
         if (stage.isWait && Array.isArray(stage.concurrentTimers)) {
           for (const ct of stage.concurrentTimers) {
             const fireAt = stageStart.getTime() + (ct.offsetMin || 0) * 60000;
-            if (fireAt <= now) continue;
             items.push({
               fireAt,
               label: ct.name || 'Timer',
-              sublabel: 'Concurrent timer',
-              _debug: `idx=${i} ct stageStart=${stageStart.toISOString()} offsetMin=${ct.offsetMin || 0}`,
+              sublabel: `Concurrent timer in ${stage.name}`,
+              isPast: fireAt <= now,
             });
           }
         }
-        // Main stage notification
+        // Main stage notification — wait stages fire at end, hands-on fire at start
         const fireAt = stage.isWait ? stageEnd.getTime() : stageStart.getTime();
-        if (fireAt <= now) continue;
         let label, sublabel;
         if (stage.isWait) {
           const nextStage = recipe.stages[i + 1];
-          label = nextStage ? nextStage.name : 'All stages complete';
-          sublabel = `After ${stage.name}`;
+          if (nextStage) {
+            label = `${stage.name} ends → ${nextStage.name}`;
+            sublabel = `${formatDur(stageDurMin)} wait ends`;
+          } else {
+            label = `${stage.name} ends`;
+            sublabel = 'Bake complete';
+          }
         } else {
-          label = stage.name;
-          sublabel = 'Hands-on stage starts';
+          label = `${stage.name} starts`;
+          sublabel = 'Hands-on stage';
         }
-        items.push({
-          fireAt,
-          label,
-          sublabel,
-          _debug: `idx=${i} isWait=${stage.isWait} stageStart=${stageStart.toISOString()} durMin=${stageDurMin} stageEnd=${stageEnd.toISOString()}`,
-        });
+        items.push({ fireAt, label, sublabel, isPast: fireAt <= now });
       }
       // Sort by fire time
       items.sort((a, b) => a.fireAt - b.fireAt);
@@ -6938,19 +6584,6 @@ Here is the recipe:
       };
 
       body.innerHTML = `
-        <div style="background: #f5f5f0; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-soft); line-height: 1.5;">
-          <div><strong>Bake startedAt</strong></div>
-          <div>raw: ${ab.startedAt || '(none)'}</div>
-          <div>local: ${ab.startedAt ? new Date(ab.startedAt).toLocaleString() : '—'}</div>
-          ${ab.prepUntil ? `
-            <div style="margin-top: 6px;"><strong>prepUntil</strong></div>
-            <div>raw: ${ab.prepUntil}</div>
-            <div>local: ${new Date(ab.prepUntil).toLocaleString()}</div>
-          ` : ''}
-          <div style="margin-top: 6px;"><strong>now</strong></div>
-          <div>${new Date().toLocaleString()}</div>
-          <div style="margin-top: 6px;"><strong>TZ offset</strong>: ${new Date().getTimezoneOffset()} min</div>
-        </div>
         ${stale ? `
           <div style="display: flex; align-items: center; gap: 10px; background: #fff5f5; border: 1px solid #ffc0c0; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d93636" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5m0 4h.01"/></svg>
@@ -6964,17 +6597,19 @@ Here is the recipe:
         ` : `
           <div style="display: flex; flex-direction: column; gap: 2px; margin-bottom: 20px;">
             ${items.map(item => `
-              <div style="display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line);">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)" stroke-width="1.8" style="flex-shrink: 0;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <div style="display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); opacity: ${item.isPast ? '0.55' : '1'};">
+                ${item.isPast ? `
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)" stroke-width="2" style="flex-shrink: 0;"><path d="M5 13l4 4L19 7"/></svg>
+                ` : `
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)" stroke-width="1.8" style="flex-shrink: 0;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                `}
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-size: 14px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(item.label)}</div>
-                  <div style="font-size: 12px; color: var(--ink-mute); margin-top: 1px;">${escapeHtml(item.sublabel)}</div>
+                  <div style="font-size: 12px; color: var(--ink-mute); margin-top: 1px;">
+                    ${item.isPast ? `<span style="color: var(--ink-mute); font-weight: 500;">Sent</span> · ` : ''}${escapeHtml(item.sublabel)}
+                  </div>
                 </div>
-                <div style="font-size: 12px; color: var(--ink-soft); white-space: nowrap; text-align: right;">
-                  ${fmtTime(item.fireAt)}
-                  <div style="font-size: 9px; color: var(--ink-mute); font-family: 'JetBrains Mono', monospace; margin-top: 2px; opacity: 0.7;">${new Date(item.fireAt).toLocaleString()}</div>
-                  <div style="font-size: 8px; color: var(--ink-mute); font-family: 'JetBrains Mono', monospace; margin-top: 2px; opacity: 0.6; white-space: normal; max-width: 220px; text-align: right;">${escapeHtml(item._debug || '')}</div>
-                </div>
+                <div style="font-size: 12px; color: var(--ink-soft); white-space: nowrap; text-align: right;">${fmtTime(item.fireAt)}</div>
               </div>
             `).join('')}
           </div>
@@ -6983,16 +6618,12 @@ Here is the recipe:
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
           Reschedule Notifications
         </button>
-        <button class="btn btn-block" id="notif-shortcut-fallback-btn" style="margin-top: 10px; color: var(--ink-mute); font-size: 13px;">
-          Use iOS Shortcut instead
-        </button>
       `;
 
       document.getElementById('notif-reschedule-btn').addEventListener('click', async () => {
         hideModal('modal-bake-notifications');
         const r = await schedulePushNotificationsForBake(ab, recipe);
         ab.needsReminderRefresh = false;
-        ab.remindersSent = true;
         saveState();
         if (r && r.ok) {
           toast(`Rescheduled ${r.scheduled ?? ''} notification${r.scheduled === 1 ? '' : 's'}`);
@@ -7001,51 +6632,22 @@ Here is the recipe:
         }
       });
 
-      document.getElementById('notif-shortcut-fallback-btn').addEventListener('click', () => {
-        hideModal('modal-bake-notifications');
-        const timeline = buildRemainingTimeline(recipe, ab);
-        if (timeline.length === 0) { toast('No remaining stages to send'); return; }
-        console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
-        toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
-        ab.remindersSent = true;
-        saveState();
-        openShortcutModal(recipe, timeline);
-      });
-
     } else {
-      // Push not active — show shortcut flow directly
+      // Push not active — guide the user to enable it. There's no fallback path.
       body.innerHTML = `
-        <p style="font-size: 14px; color: var(--ink-soft); margin-bottom: 16px; line-height: 1.5;">
-          Web Push is off. Enable Notifications in Settings to see your schedule here, or use the iOS Shortcut to send reminders manually.
-        </p>
-        <button class="btn btn-primary btn-block" id="notif-send-shortcut-btn">Send Reminders via Shortcut</button>
-        ${ab.remindersSent ? `
-          <button class="btn btn-block" id="notif-refresh-shortcut-btn" style="margin-top: 10px;">Refresh Reminders</button>
-        ` : ''}
+        <div style="text-align: center; padding: 8px 0 16px;">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)" stroke-width="1.5" style="margin-bottom: 12px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          <div style="font-family: 'Fraunces', serif; font-size: 18px; color: var(--ink); margin-bottom: 6px;">Notifications are off</div>
+          <p style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; margin: 0 8px;">
+            Turn on Notifications in Settings to get push alerts for every stage of your bake — automatically.
+          </p>
+        </div>
+        <button class="btn btn-primary btn-block" id="notif-open-settings-btn">Open Settings</button>
       `;
-      document.getElementById('notif-send-shortcut-btn').addEventListener('click', () => {
+      document.getElementById('notif-open-settings-btn').addEventListener('click', () => {
         hideModal('modal-bake-notifications');
-        const timeline = buildRemainingTimeline(recipe, ab);
-        if (timeline.length === 0) { toast('No remaining stages to send'); return; }
-        console.log(`[reminders] Bake startedAt: ${ab.startedAt}, prepUntil: ${ab.prepUntil || 'none'}`);
-        toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
-        ab.remindersSent = true;
-        saveState();
-        openShortcutModal(recipe, timeline);
+        showModal('modal-settings');
       });
-      const refreshBtn = document.getElementById('notif-refresh-shortcut-btn');
-      if (refreshBtn) {
-        refreshBtn.addEventListener('click', () => {
-          hideModal('modal-bake-notifications');
-          const timeline = buildRemainingTimeline(recipe, ab);
-          if (timeline.length === 0) { toast('No remaining stages — nothing to refresh'); return; }
-          toast(`Reminders set from ${new Date(ab.startedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`);
-          ab.needsReminderRefresh = false;
-          ab.remindersSent = true;
-          saveState();
-          openShortcutModal(recipe, timeline, { replaceExisting: true });
-        });
-      }
     }
 
     showModal('modal-bake-notifications');
@@ -7339,10 +6941,6 @@ Here is the recipe:
         }
       }
     });
-  });
-
-  document.getElementById('info-shortcut').addEventListener('click', () => {
-    showModal('modal-shortcut-info');
   });
 
   // Bake notes modal wiring
