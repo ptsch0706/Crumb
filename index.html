@@ -1980,8 +1980,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.27.1';
+  const APP_VERSION = '1.27.2';
   const CHANGELOG = [
+    { version: '1.27.2', date: '2026-06-14', notes: [
+      'Sync: 30-second timeout on Firestore batch commits. Previously the Firebase SDK could hang silently on certain failures (network drop mid-write, oversized doc, security rule issue), leaving sync stuck "in flight" forever. Now it errors out with a "timeout" code so you can see what\'s wrong.',
+      'Diagnostics: added "Reset Sync State" button to manually clear a stuck in-flight flag. Use after a timeout if Force Sync still won\'t fire.',
+    ]},
     { version: '1.27.1', date: '2026-06-14', notes: [
       'Diagnostics: added a Sync (Firestore) section showing Firebase config status, sync code, last successful push timestamp, in-flight state, and the most recent error code + message.',
       'Diagnostics: added a "Force Sync Now" button that fires an immediate push and shows the result inline. Useful for debugging when the sync indicator stays orange.',
@@ -7673,7 +7677,20 @@ Here is the recipe:
           syncInFlight = true;
           renderSyncStatus();
           console.log(`[sync] Batch push: ${itemWrites} item(s) + parent doc${writeAll ? ' (full sync)' : ''}`);
-          await batch.commit();
+          // Wrap batch.commit in a 30s timeout. The Firestore SDK can hang
+          // indefinitely on certain failure modes (network interruption mid-write,
+          // misbehaving security rules, oversized doc on slow connection) without
+          // ever resolving or rejecting. Without a timeout, syncInFlight gets
+          // stuck true and every subsequent push waits behind it forever, which
+          // looks to the user like "syncing forever" with no error.
+          const commitWithTimeout = Promise.race([
+            batch.commit(),
+            new Promise((_, reject) => setTimeout(
+              () => reject(Object.assign(new Error('Sync timed out after 30s. Check your connection or Firestore rules.'), { code: 'timeout' })),
+              30000
+            )),
+          ]);
+          await commitWithTimeout;
           // Clear dirty tracker — those items are now in sync
           _dirtyItems.clear();
           // Record dirty counter at successful push time so the safety push knows
@@ -8416,6 +8433,11 @@ Here is the recipe:
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
             Force Sync Now
           </button>
+          <button class="btn btn-sm btn-block" id="diag-reset-sync" style="margin-top: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+            Reset Sync State
+          </button>
+          <p class="help" style="margin: 6px 0 0; text-align: center; font-size: 11px;">If sync is stuck "syncing" forever, tap Reset to clear the in-flight flag, then Force Sync Now.</p>
         </div>
         <div>
           <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Maintenance</div>
@@ -8462,6 +8484,25 @@ Here is the recipe:
         }
         // Refresh the whole diagnostics view so all the updated fields render
         renderDiagnostics();
+      });
+    }
+
+    // Wire "Reset Sync State" — manually clears the in-flight flag and any
+    // stuck error state. Useful if the Firestore SDK has hung silently and the
+    // UI is stuck showing "syncing forever". After resetting, the user can hit
+    // Force Sync Now to start clean.
+    const resetBtn = document.getElementById('diag-reset-sync');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        syncInFlight = false;
+        suppressNextRemote = 0;
+        window.__lastSyncError = null;
+        window.__lastSyncErrorMsg = null;
+        // Clear any pending debounce so it doesn't kick off another stuck push
+        if (pushDebounceTimer) { clearTimeout(pushDebounceTimer); pushDebounceTimer = null; }
+        renderSyncStatus();
+        renderDiagnostics();
+        toast('Sync state reset', 'info');
       });
     }
 
