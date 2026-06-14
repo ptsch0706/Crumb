@@ -143,6 +143,113 @@
   /* Section headers — uppercase eyebrow style, used for sub-sections within a page */
   .section-title { font-size: 12px; font-weight: 600; color: var(--ink-mute); letter-spacing: 0.1em; text-transform: uppercase; margin: 24px 0 10px; padding: 0 4px; }
 
+  /* =========================================================================
+     SETTINGS sub-page architecture
+     =========================================================================
+     Used on the Settings tab landing and its sub-views. iOS-style grouped list
+     with rows that drill into focused screens.
+  ========================================================================= */
+
+  /* Landing list: vertical stack of category rows */
+  .settings-list { display: flex; flex-direction: column; gap: 0; margin-top: 16px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .settings-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line-soft, var(--line));
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--ink);
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.12s;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row:active { background: var(--bg-warm); }
+  .settings-row-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .settings-row-icon svg { width: 18px; height: 18px; stroke-width: 2; }
+  .settings-row-content { flex: 1; min-width: 0; }
+  .settings-row-title { font-size: 15px; font-weight: 500; color: var(--ink); }
+  .settings-row-sub { font-size: 12px; color: var(--ink-mute); margin-top: 2px; line-height: 1.3; }
+  .settings-row-chev { width: 14px; height: 14px; color: var(--ink-mute); flex-shrink: 0; }
+
+  /* Sub-page header — replaces the page-header h1 on detail screens.
+     Three-column layout: back button left, title center, optional action right. */
+  .settings-subpage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 18px 0 20px;
+    padding: 0 4px;
+  }
+  .settings-subpage-title {
+    font-family: 'Fraunces', serif;
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    flex: 1;
+    text-align: center;
+  }
+  .settings-back {
+    background: none;
+    border: none;
+    color: var(--crust-deep);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 4px 8px 4px 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    -webkit-tap-highlight-color: transparent;
+    min-width: 0;
+  }
+  .settings-back svg { width: 18px; height: 18px; stroke-width: 2.2; }
+  .settings-back:active { opacity: 0.6; }
+  .settings-subpage-info {
+    background: var(--bg-warm);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* Grouped card used inside sub-pages — wraps a set of related controls
+     in a bordered rectangle with internal dividers. iOS-style grouped list. */
+  .settings-card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .settings-card-row { border-radius: 0 !important; border: none !important; border-bottom: 1px solid var(--line-soft, var(--line)) !important; margin-top: 0 !important; background: transparent !important; }
+  .settings-card-row:last-child { border-bottom: none !important; }
+  /* Toggle rows inside a card don't get their own background tint when "on" —
+     the card already provides the container. Just color the switch + icon. */
+  .settings-card-row.bake-mode-toggle.on { background: transparent !important; border-color: var(--line-soft, var(--line)) !important; }
+
+  /* Destructive button treatment — used for Disconnect Sync, Delete All Data.
+     iOS pattern: red outline + red text on neutral background. */
+  .btn-danger { background: var(--bg-elev); color: var(--warn); border-color: rgba(196, 90, 74, 0.4); }
+  .btn-danger:active { background: rgba(196, 90, 74, 0.08); }
+  .btn-danger svg { color: var(--warn); }
+
   /* Page header — the top-of-view title block. One per view, always at the top.
      Larger Fraunces serif, no uppercase, optionally paired with an action button. */
   .page-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 24px 0 18px; padding: 0 4px; }
@@ -166,6 +273,9 @@
   /* Category headers in recipe list */
   .cat-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink); margin: 18px 4px 8px; }
   .cat-header:first-child { margin-top: 4px; }
+  /* Recipe count tucked after the category name. Smaller and muted so it reads as
+     metadata, not headline content — proper visual hierarchy. */
+  .cat-count { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; color: var(--ink-mute); letter-spacing: 0; margin-left: 4px; }
   .cat-rename { background: none; border: none; padding: 6px; cursor: pointer; color: var(--ink-mute); display: flex; align-items: center; border-radius: 6px; }
   .cat-rename:active { background: var(--bg-warm); }
 
@@ -176,20 +286,54 @@
   .empty .body { font-size: 14px; max-width: 280px; margin: 0 auto 20px; line-height: 1.5; }
 
   /* Recipe list */
-  .recipe-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
+  /* Recipe category filter chips. Use a soft mask-image fade at the right edge
+     when the row overflows so users see "there's more here, scroll right" — iOS
+     hides scrollbars on horizontal containers, so without this cue the overflow
+     is invisible. The fade is applied only on the right side since the row scrolls
+     from left, and we use mask-image (with -webkit prefix for Safari support). */
+  #recipe-category-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+    mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  }
+  #recipe-category-chips::-webkit-scrollbar { display: none; }
+  .recipe-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; cursor: pointer; transition: all 0.15s; position: relative; }
   .recipe-item:active { transform: scale(0.99); background: var(--bg-warm); }
+  /* Active bake state: thicker accent border on the left plus a soft fill to make
+     "this recipe is currently baking" unmissable on a busy list. Uses --bake-accent
+     CSS var so each bake's chosen color flows through. */
+  .recipe-item.is-baking { border-left: 4px solid var(--bake-accent); background: linear-gradient(to right, color-mix(in srgb, var(--bake-accent) 6%, var(--bg-elev)), var(--bg-elev) 40%); }
+  /* Baking pill (inline with the recipe name) */
+  .baking-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: white; padding: 2px 8px; border-radius: 100px; font-family: Inter, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; vertical-align: middle; margin-left: 6px; }
+  .baking-pill-dot { width: 5px; height: 5px; background: white; border-radius: 50%; display: inline-block; animation: pulse 1.6s ease-in-out infinite; }
   /* Compact density: smaller thumb, tighter padding, hide secondary info. Useful when
-     you have 30+ recipes and want to scan the list faster. Toggled via the sort menu. */
+     you have 30+ recipes and want to scan the list faster. Toggled via the sort menu.
+     In compact mode we hide all .recipe-sub except the FIRST one (stages/duration info).
+     Using a sibling selector instead of :first-of-type so adding/removing sub lines
+     doesn't accidentally swap which one shows. */
   #recipe-list.compact .recipe-item { padding: 10px 14px; gap: 10px; margin-bottom: 6px; border-radius: var(--radius-sm); }
   #recipe-list.compact .recipe-thumb { width: 32px; height: 32px; border-radius: 8px; padding: 2px; }
   #recipe-list.compact .recipe-name { font-size: 15px; }
-  #recipe-list.compact .recipe-sub { display: none; }
-  #recipe-list.compact .recipe-sub:first-of-type { display: block; font-size: 11px; margin-top: 1px; }
+  #recipe-list.compact .recipe-sub { font-size: 11px; margin-top: 1px; }
+  /* Hide every .recipe-sub that has another .recipe-sub before it */
+  #recipe-list.compact .recipe-sub ~ .recipe-sub { display: none; }
+  #recipe-list.compact .recipe-last-baked { font-size: 10px; }
   .recipe-thumb { width: 48px; height: 48px; border-radius: 12px; background: var(--bg-warm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--line); padding: 4px; }
   .recipe-meta { flex: 1; min-width: 0; }
   .recipe-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; }
   .recipe-sub { font-size: 12px; color: var(--ink-mute); margin-top: 2px; }
-  .recipe-chev { color: var(--ink-mute); }
+  /* Trailing slot on each recipe row — holds last-baked date + chevron arrow.
+     Vertically centered. The last-baked uses Inter at 11px to feel like metadata,
+     not primary content. */
+  .recipe-trailing { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .recipe-last-baked { font-size: 11px; color: var(--ink-mute); font-weight: 500; white-space: nowrap; }
+  /* SVG chevron replaces the typographic ›. Renders consistently across iOS versions
+     and fonts. Sized to match iOS list disclosure indicators. */
+  .recipe-chev { color: var(--ink-mute); width: 14px; height: 14px; flex-shrink: 0; }
   /* Bulk select mode */
   .recipe-checkbox { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--ink-mute); flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-elev); transition: all 0.15s; }
   .recipe-item.selected { background: var(--bg-warm); border-color: var(--crust); }
@@ -485,6 +629,14 @@
      across the room can read the remaining time. Mono digits keep the layout stable
      while the value ticks. */
   .bake-hero .countdown-box { background: transparent; padding: 0; }
+  /* When the in-card ingredient checklist sits directly above the countdown, the
+     two blocks read as cramped without extra space — the countdown's "Done by"
+     label appears glued to the bottom edge of the ingredients box. Add explicit
+     space below the ingredients block AND a fallback top margin on countdown when
+     they're siblings. The base layout (no ingredients) is unaffected because the
+     fallback rule only applies when the sibling relationship exists. */
+  .bake-hero .stage-ingredients { margin-bottom: 28px; }
+  .bake-hero .stage-ingredients + .countdown-box { margin-top: 0; }
   .bake-hero .countdown-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.8; font-weight: 600; }
   .bake-hero .countdown-value { font-family: 'JetBrains Mono', monospace; font-size: 64px; font-weight: 500; letter-spacing: -0.04em; line-height: 1; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .bake-hero .countdown-when { font-size: 12px; opacity: 0.85; margin-top: 8px; }
@@ -579,7 +731,10 @@
     <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
       <div style="position: relative; flex: 1;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ink-mute); pointer-events: none;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="recipe-search" placeholder="Search recipes" style="width: 100%; padding: 8px 12px 8px 36px; border-radius: 100px; border: 1px solid var(--line); background: var(--bg-elev); font-family: inherit; font-size: 14px;">
+        <input type="text" id="recipe-search" placeholder="Search recipes" style="width: 100%; padding: 8px 36px 8px 36px; border-radius: 100px; border: 1px solid var(--line); background: var(--bg-elev); font-family: inherit; font-size: 14px;">
+        <button id="recipe-search-clear" aria-label="Clear search" style="display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: var(--ink-mute); border: none; width: 18px; height: 18px; border-radius: 50%; padding: 0; cursor: pointer; align-items: center; justify-content: center; color: white;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 10px; height: 10px;"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
       </div>
       <button class="btn btn-ghost btn-xs" id="recipe-sort-btn" title="Sort recipes" style="flex-shrink: 0;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
@@ -588,7 +743,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17l2.5 2.5L21 15"/></svg>
       </button>
     </div>
-    <div id="recipe-category-chips" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;"></div>
+    <div id="recipe-category-chips"></div>
   </div>
   <div id="recipe-list"></div>
   <div id="bulk-action-bar" class="bulk-action-bar" style="display: none;">
@@ -599,7 +754,6 @@
       <button id="bulk-cancel-btn">Cancel</button>
     </div>
   </div>
-  <div class="wheat-deco">·  ·  ·</div>
 </section>
 
 <!-- Pull-to-refresh indicator (global, repositioned/animated via JS during drag) -->
@@ -918,16 +1072,9 @@
   </div>
 </div>
 
-<!-- DIAGNOSTICS MODAL -->
-<div class="modal-backdrop" id="modal-diagnostics">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title">Diagnostics</div>
-      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-    </div>
-    <div class="modal-body" id="diagnostics-body"></div>
-  </div>
-</div>
+<!-- DIAGNOSTICS — promoted from modal to sub-page (view-settings-diag).
+     The renderDiagnostics() function writes into #diagnostics-body, which
+     now lives inside the sub-page view. -->
 
 <!-- SYNC INFO MODAL -->
 <div class="modal-backdrop" id="modal-sync-info">
@@ -988,107 +1135,258 @@
 </div>
 
 <!-- SETTINGS VIEW -->
+<!-- =========================================================================
+     SETTINGS — Sub-page architecture
+     =========================================================================
+     The Settings tab is structured as a navigable list rather than one long
+     scroll. The landing view (view-settings) shows a clean list of category
+     rows that navigate into focused sub-views. This matches iOS Settings,
+     Slack, banking apps, and other professional tools — each sub-page is a
+     focused single-purpose screen with a back arrow.
+
+     Sub-pages:
+       view-settings           — landing list
+       view-settings-sync      — Cloud Sync (status, code, sync now, disconnect)
+       view-settings-alerts    — Notifications & Alerts (all three toggles)
+       view-settings-data      — Data & Backup (export, import, delete)
+       view-settings-diag      — Diagnostics (promoted from modal)
+       view-settings-about     — About (version, what's new, credits)
+
+     The Settings tab in the bottom nav highlights for ALL of these sub-pages
+     (handled in switchView's tabViewId logic).
+========================================================================= -->
+
+<!-- SETTINGS LANDING VIEW -->
 <section class="view" id="view-settings">
   <div class="page-header"><h1>Settings</h1></div>
-      <div class="section-title" style="margin-top: 0; display: flex; align-items: center; gap: 8px;">
-        <span>Cloud Sync</span>
-        <button id="sync-info-btn" aria-label="About sync" style="background: var(--bg-warm); border: 1px solid var(--line); color: var(--ink-soft); width: 22px; height: 22px; border-radius: 50%; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-        </button>
+  <div class="settings-list">
+    <button class="settings-row" data-settings-page="view-settings-sync">
+      <div class="settings-row-icon" style="background: rgba(201, 123, 60, 0.12); color: var(--crust-deep);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z"/><path d="M3 12h18M12 3a14.5 14.5 0 0 1 0 18M12 3a14.5 14.5 0 0 0 0 18"/></svg>
       </div>
+      <div class="settings-row-content">
+        <div class="settings-row-title">Cloud Sync</div>
+        <div class="settings-row-sub" id="settings-row-sync-sub">Off · device-only</div>
+      </div>
+      <svg class="settings-row-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <button class="settings-row" data-settings-page="view-settings-alerts">
+      <div class="settings-row-icon" style="background: rgba(122, 141, 92, 0.14); color: var(--leaven);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </div>
+      <div class="settings-row-content">
+        <div class="settings-row-title">Notifications &amp; Alerts</div>
+        <div class="settings-row-sub" id="settings-row-alerts-sub">Sound, vibration, and OS alerts</div>
+      </div>
+      <svg class="settings-row-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <button class="settings-row" data-settings-page="view-settings-data">
+      <div class="settings-row-icon" style="background: rgba(96, 116, 156, 0.14); color: #607496;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      </div>
+      <div class="settings-row-content">
+        <div class="settings-row-title">Data &amp; Backup</div>
+        <div class="settings-row-sub">Export, import, and manage your data</div>
+      </div>
+      <svg class="settings-row-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <button class="settings-row" data-settings-page="view-settings-diag">
+      <div class="settings-row-icon" style="background: rgba(140, 100, 60, 0.14); color: #8c643c;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 3a8 8 0 1 0 8 8M11 3l4 4-4 4M21 12h-4"/></svg>
+      </div>
+      <div class="settings-row-content">
+        <div class="settings-row-title">Diagnostics</div>
+        <div class="settings-row-sub">Sync state, troubleshooting, and maintenance</div>
+      </div>
+      <svg class="settings-row-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <button class="settings-row" data-settings-page="view-settings-about">
+      <div class="settings-row-icon" style="background: var(--bg-warm); color: var(--ink-soft);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      </div>
+      <div class="settings-row-content">
+        <div class="settings-row-title">About</div>
+        <div class="settings-row-sub" id="settings-row-about-sub">Version 1.31.0</div>
+      </div>
+      <svg class="settings-row-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+  </div>
+</section>
 
-      <div id="sync-status-card" style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px;">
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-          <span id="sync-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--ink-mute);"></span>
-          <span id="sync-status-label" style="font-weight: 500; font-size: 14px;">Sync disabled</span>
-        </div>
-        <div id="sync-status-detail" style="font-size: 12px; color: var(--ink-mute);">Recipes and bakes stay on this device only.</div>
-      </div>
+<!-- SETTINGS · CLOUD SYNC -->
+<section class="view" id="view-settings-sync">
+  <div class="settings-subpage-header">
+    <button class="settings-back" data-settings-back aria-label="Back to Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+      Settings
+    </button>
+    <div class="settings-subpage-title">Cloud Sync</div>
+    <button id="sync-info-btn" aria-label="About sync" class="settings-subpage-info">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    </button>
+  </div>
 
-      <!-- When sync is OFF -->
-      <div id="sync-off-pane">
-        <div class="banner crust">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-          <div>Enable cloud sync to share recipes, bakes, and active baking state across your devices. Works offline — changes sync when you're back online.</div>
-        </div>
-        <button class="btn btn-primary btn-block" id="enable-sync">Enable Sync (new sync code)</button>
-        <button class="btn btn-block" id="join-sync" style="margin-top: 8px;">Connect with Existing Code</button>
-      </div>
+  <div id="sync-status-card" class="settings-card" style="padding: 14px 16px; margin-bottom: 14px;">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+      <span id="sync-status-dot" style="width: 12px; height: 12px; border-radius: 50%; background: var(--ink-mute); flex-shrink: 0;"></span>
+      <span id="sync-status-label" style="font-weight: 500; font-size: 14px;">Sync disabled</span>
+    </div>
+    <div id="sync-status-detail" style="font-size: 12px; color: var(--ink-mute); padding-left: 22px;">Recipes and bakes stay on this device only.</div>
+  </div>
 
-      <!-- When sync is ON -->
-      <div id="sync-on-pane" style="display: none;">
-        <div class="field">
-          <label>Your Sync Code</label>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <div id="sync-code-display" class="mono" style="font-size: 22px; font-weight: 600; letter-spacing: 0.1em; color: var(--crust-deep); background: var(--bg-warm); padding: 10px 14px; border-radius: var(--radius-sm); flex: 1; text-align: center;">------</div>
-            <button class="btn btn-sm" id="copy-sync-code" style="flex-shrink: 0;">Copy</button>
-          </div>
-          <p class="help" style="margin-top: 8px;">Enter this code on another device to connect.</p>
-        </div>
-        <button class="btn btn-primary btn-block" id="sync-now" style="margin-top: 12px;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5"/></svg>
-          Sync Now
-        </button>
-        <div id="sync-last-info" style="font-size: 11px; color: var(--ink-mute); margin-top: 6px; text-align: center;"></div>
-        <button class="btn btn-block btn-ghost" id="disable-sync" style="color: var(--warn); margin-top: 16px;">Disconnect Sync</button>
-      </div>
+  <!-- When sync is OFF -->
+  <div id="sync-off-pane">
+    <div class="banner crust">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+      <div>Enable cloud sync to share recipes, bakes, and active baking state across your devices. Works offline — changes sync when you're back online.</div>
+    </div>
+    <button class="btn btn-primary btn-block" id="enable-sync">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14m-7-7h14"/></svg>
+      Enable Sync (new sync code)
+    </button>
+    <button class="btn btn-block" id="join-sync" style="margin-top: 8px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5"/><path d="m9 12 2 2 4-4"/></svg>
+      Connect with Existing Code
+    </button>
+  </div>
 
-      <div class="section-title">Alerts</div>
-      <div class="bake-mode-toggle" id="alerts-toggle">
-        <div>
-          <div class="label">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span>Sound &amp; Vibration <span class="sub" style="display: block;">Beep and vibrate when stages complete</span></span>
-          </div>
-        </div>
-        <div class="switch-pill"></div>
+  <!-- When sync is ON -->
+  <div id="sync-on-pane" style="display: none;">
+    <div class="field">
+      <label>Your Sync Code</label>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <div id="sync-code-display" class="mono" style="font-size: 22px; font-weight: 600; letter-spacing: 0.1em; color: var(--crust-deep); background: var(--bg-warm); padding: 10px 14px; border-radius: var(--radius-sm); flex: 1; text-align: center;">------</div>
+        <button class="btn btn-sm" id="copy-sync-code" style="flex-shrink: 0;">Copy</button>
       </div>
-      <div class="bake-mode-toggle" id="haptics-toggle" style="margin-top: 8px;">
-        <div>
-          <div class="label">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/><circle cx="12" cy="12" r="4"/></svg>
-            <span>Haptic Feedback <span class="sub" style="display: block;">Subtle vibration on taps and key actions</span></span>
-          </div>
-        </div>
-        <div class="switch-pill"></div>
-      </div>
-      <!-- Notifications toggle: OS-level alerts when Crumb is backgrounded.
-           Requires permission on first enable. Independent from Sound & Vibration
-           so user can keep in-app chimes but turn off OS notifications (or vice versa). -->
-      <div class="bake-mode-toggle" id="notifications-toggle" style="margin-top: 8px;">
-        <div>
-          <div class="label">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><line x1="13.73" y1="21" x2="10.27" y2="21"/><circle cx="18" cy="6" r="3" fill="currentColor" stroke="none"/></svg>
-            <span>Notifications <span class="sub" id="notifications-sub" style="display: block;">Show alerts when Crumb is backgrounded</span></span>
-          </div>
-        </div>
-        <div class="switch-pill"></div>
-      </div>
-      <button class="btn btn-ghost btn-xs" id="test-notification-btn" style="margin-top: 8px; display: none;">Send test notification</button>
+      <p class="help" style="margin-top: 8px;">Enter this code on another device to connect.</p>
+    </div>
+    <button class="btn btn-primary btn-block" id="sync-now" style="margin-top: 12px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5"/></svg>
+      Sync Now
+    </button>
+    <div id="sync-last-info" style="font-size: 11px; color: var(--ink-mute); margin-top: 6px; text-align: center;"></div>
+    <button class="btn btn-block btn-danger" id="disable-sync" style="margin-top: 16px;">Disconnect Sync</button>
+  </div>
+</section>
 
-      <div class="section-title">Data</div>
-      <button class="btn btn-block" id="export-data" style="margin-bottom: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        Export All Data (JSON)
-      </button>
-      <button class="btn btn-block" id="import-data">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-        Import Data (JSON)
-      </button>
-      <input type="file" id="import-data-file" accept="application/json,.json" style="display: none;">
-      <p class="help" style="margin-top: 8px;">Export gives you a JSON backup file. Import merges into your current data. Use this to back up to iCloud Drive or migrate between devices without sync.</p>
+<!-- SETTINGS · NOTIFICATIONS & ALERTS -->
+<section class="view" id="view-settings-alerts">
+  <div class="settings-subpage-header">
+    <button class="settings-back" data-settings-back aria-label="Back to Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+      Settings
+    </button>
+    <div class="settings-subpage-title">Notifications &amp; Alerts</div>
+    <div style="width: 24px;"></div>
+  </div>
 
-      <button class="btn btn-block btn-ghost" id="delete-all-data-btn" style="color: var(--warn); margin-top: 16px;">Delete All Data</button>
-
-      <div class="section-title">About</div>
-      <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.6;">
-        <div><strong>Crumb</strong> · Bread baking workflow</div>
-        <div style="margin-top: 4px; color: var(--ink-mute);">Version <span id="app-version">1.0.0</span> · <span id="recipe-count-stat">0</span> recipes · <span id="bake-count-stat">0</span> bakes logged</div>
-        <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-          <button class="btn btn-ghost btn-xs" id="view-changelog">What's new</button>
-          <button class="btn btn-ghost btn-xs" id="view-diagnostics">Diagnostics</button>
+  <div class="settings-card">
+    <div class="bake-mode-toggle settings-card-row" id="alerts-toggle">
+      <div>
+        <div class="label">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span>Sound &amp; Vibration <span class="sub" style="display: block;">Beep and vibrate when stages complete</span></span>
         </div>
       </div>
+      <div class="switch-pill"></div>
+    </div>
+    <div class="bake-mode-toggle settings-card-row" id="haptics-toggle">
+      <div>
+        <div class="label">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/><circle cx="12" cy="12" r="4"/></svg>
+          <span>Haptic Feedback <span class="sub" style="display: block;">Subtle vibration on taps and key actions</span></span>
+        </div>
+      </div>
+      <div class="switch-pill"></div>
+    </div>
+    <div class="bake-mode-toggle settings-card-row" id="notifications-toggle">
+      <div>
+        <div class="label">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><line x1="13.73" y1="21" x2="10.27" y2="21"/><circle cx="18" cy="6" r="3" fill="currentColor" stroke="none"/></svg>
+          <span>Notifications <span class="sub" id="notifications-sub" style="display: block;">Show alerts when Crumb is backgrounded</span></span>
+        </div>
+      </div>
+      <div class="switch-pill"></div>
+    </div>
+  </div>
+  <p class="help" style="margin: 12px 4px 0;">Sound & Vibration plays in-app when a stage completes. Notifications fire OS-level alerts when Crumb is backgrounded — useful for long fermentation steps.</p>
+  <button class="btn btn-ghost btn-sm" id="test-notification-btn" style="margin-top: 12px; display: none; width: 100%;">Send test notification</button>
+</section>
+
+<!-- SETTINGS · DATA & BACKUP -->
+<section class="view" id="view-settings-data">
+  <div class="settings-subpage-header">
+    <button class="settings-back" data-settings-back aria-label="Back to Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+      Settings
+    </button>
+    <div class="settings-subpage-title">Data &amp; Backup</div>
+    <div style="width: 24px;"></div>
+  </div>
+
+  <button class="btn btn-block" id="export-data" style="margin-bottom: 8px;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+    Export All Data (JSON)
+  </button>
+  <button class="btn btn-block" id="import-data">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+    Import Data (JSON)
+  </button>
+  <input type="file" id="import-data-file" accept="application/json,.json" style="display: none;">
+  <p class="help" style="margin-top: 8px;">Export gives you a JSON backup file. Import merges into your current data. Use this to back up to iCloud Drive or migrate between devices without sync.</p>
+
+  <button class="btn btn-block btn-danger" id="delete-all-data-btn" style="margin-top: 24px;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    Delete All Data
+  </button>
+</section>
+
+<!-- SETTINGS · DIAGNOSTICS (promoted from modal) -->
+<section class="view" id="view-settings-diag">
+  <div class="settings-subpage-header">
+    <button class="settings-back" data-settings-back aria-label="Back to Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+      Settings
+    </button>
+    <div class="settings-subpage-title">Diagnostics</div>
+    <div style="width: 24px;"></div>
+  </div>
+  <!-- Body filled by renderDiagnostics() — same content as the old modal -->
+  <div id="diagnostics-body"></div>
+</section>
+
+<!-- SETTINGS · ABOUT -->
+<section class="view" id="view-settings-about">
+  <div class="settings-subpage-header">
+    <button class="settings-back" data-settings-back aria-label="Back to Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+      Settings
+    </button>
+    <div class="settings-subpage-title">About</div>
+    <div style="width: 24px;"></div>
+  </div>
+
+  <div class="settings-card" style="padding: 18px 16px; text-align: center;">
+    <div style="font-family: 'Fraunces', serif; font-size: 28px; font-weight: 500; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 4px;">Crumb</div>
+    <div style="font-size: 13px; color: var(--ink-mute); margin-bottom: 12px;">Bread baking workflow</div>
+    <div style="font-size: 12px; color: var(--ink-mute); font-family: 'JetBrains Mono', monospace;">Version <span id="app-version">1.0.0</span></div>
+  </div>
+
+  <div class="settings-card" style="margin-top: 12px;">
+    <div class="settings-card-row" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px;">
+      <span style="font-size: 14px; color: var(--ink);">Recipes saved</span>
+      <span style="font-size: 14px; color: var(--ink-mute); font-family: 'JetBrains Mono', monospace;"><span id="recipe-count-stat">0</span></span>
+    </div>
+    <div class="settings-card-row" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px;">
+      <span style="font-size: 14px; color: var(--ink);">Bakes logged</span>
+      <span style="font-size: 14px; color: var(--ink-mute); font-family: 'JetBrains Mono', monospace;"><span id="bake-count-stat">0</span></span>
+    </div>
+  </div>
+
+  <button class="btn btn-block" id="view-changelog" style="margin-top: 16px;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 8v4l3 3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+    What's New
+  </button>
 </section>
 
 <!-- BAKE NOTES MODAL -->
@@ -1749,7 +2047,35 @@
       const recipe = state.recipes.find(r => r.id === bake.recipeId);
       if (!recipe || bake._deleted) return;
       schedulePushNotificationsForBake(bake, recipe).then(r => {
-        if (r.ok) console.log(`[push] re-scheduled ${r.scheduled} for ${recipe.name}`);
+        if (r && r.ok) {
+          console.log(`[push] re-scheduled ${r.scheduled} for ${recipe.name}`);
+          // Clear the stale flag — notifications are now current. Without this clear,
+          // the "Needs Refresh" indicator would stick on forever even though the backend
+          // already has the latest schedule, defeating the auto-reschedule's purpose.
+          // Re-find the bake by id in case state has changed between the setTimeout fire
+          // and the schedulePush resolving (e.g. user switched bakes).
+          const b = state.bakes.find(x => x.id === bake.id) || bake;
+          if (b.needsReminderRefresh) {
+            b.needsReminderRefresh = false;
+            saveState();
+            // Refresh any open UI that shows the flag. The Bake Options modal sets
+            // labels inline when it opens, so if it's currently visible we update
+            // those elements directly. The top-bar "needs-refresh" dot is class-based
+            // (on .options-btn) so we toggle that too.
+            const refreshDot = document.getElementById('opt-refresh-dot');
+            const notifLabel = document.getElementById('opt-notifications-label');
+            if (refreshDot) refreshDot.style.display = 'none';
+            if (notifLabel) notifLabel.textContent = 'Notifications';
+            // Top-bar pulsing dot is controlled by the 'needs-refresh' class on the
+            // options button. Remove it now that the schedule is in sync.
+            document.querySelectorAll('.bake-topbar .options-btn').forEach(btn => {
+              btn.classList.remove('needs-refresh');
+            });
+          }
+        } else {
+          // Failed — leave the flag set so the user knows to tap Reschedule manually
+          console.warn(`[push] auto-reschedule failed for ${recipe.name}; flag stays set`);
+        }
       });
     }, 500);
     _rescheduleDebounce.set(bake.id, timeout);
@@ -2004,8 +2330,41 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.30.0';
+  const APP_VERSION = '1.32.0';
   const CHANGELOG = [
+    { version: '1.32.0', date: '2026-06-14', notes: [
+      'Settings reorganized into iOS-style sub-pages. The landing screen is a clean list of five categories — Cloud Sync, Notifications & Alerts, Data & Backup, Diagnostics, About — each with a tinted icon, title, and current-state subtitle (e.g. "Connected · ABC234" or "Sound · Haptics · Notifications"). Tapping a row drills into a focused sub-page with a back button.',
+      'Diagnostics promoted from modal to a proper sub-page. Same content, more room to breathe.',
+      'About sub-page redesigned: large Crumb title, version in mono, and a clean grouped card showing recipe count and bake count.',
+      'Toasts now use color variants: Sync Now success is green, sync failures are warn-red, export shows "Backup downloaded" in green.',
+      'Notifications toggle subtitle wording improved: clearer states for "blocked", "tap to allow", "fires when backgrounded", and "off — tap to enable".',
+      'Test Notification button only appears when both permission is granted AND the toggle is on (was: only checked permission, so could appear with toggle off).',
+      'Buttons get consistent icons: Enable Sync gets a plus, Connect with Existing Code gets a code/check icon.',
+      'Destructive buttons (Disconnect Sync, Delete All Data) use a new .btn-danger style with red text and red outline — iOS standard treatment.',
+      'Toggle rows now sit inside a grouped card with internal dividers — no more inline margin-top hacks between sibling toggles.',
+    ]},
+    { version: '1.31.0', date: '2026-06-14', notes: [
+      'Recipes tab audit pass: 10 bugs fixed and 6 features/refinements.',
+      'Bug fixes: search no longer saves state on every keystroke (was triggering a Firestore push per character); bulk action toasts use the success color variant; removed the wheat-deco footer from Recipes; the category filter row hides entirely when no real categories exist; long category names truncate with ellipsis; the no-matches empty state now has a "Clear filter" button; compact-density CSS selector made more robust; active-category chip uses a stronger orange-filled treatment so the filtered state is obvious.',
+      'New: Favorites. Tap the star next to a recipe name in the schedule view to favorite it. Favorites pin to the top of their category regardless of sort mode. Marked with a small orange star icon on the recipe list.',
+      'New: Last-baked date appears on each recipe card (e.g. "2d ago", "3w ago", "yesterday"). Hidden during an active bake (the Baking pill takes that slot).',
+      'UI: SVG chevron icon replaces the typographic "›" character on recipe rows — renders consistently across iOS versions.',
+      'UI: Filter chips row now has a soft right-edge fade to signal horizontal scrolling.',
+      'UI: Recipe count after category name is now smaller and muted, creating proper visual hierarchy.',
+      'UI: Inline × clear button on the search input. Tap to clear the search instead of backspacing.',
+      'UI: Active-bake recipe rows have a thicker accent border and subtle color wash, making them unmissable.',
+    ]},
+    { version: '1.30.3', date: '2026-06-14', notes: [
+      'Fixed: Bake Options → Notifications no longer says "Needs Refresh" forever. Two bugs were causing this: (1) the automatic re-schedule that runs after any bake change (mark done, skip, adjust) never cleared the flag, so the indicator stuck on; (2) manual Reschedule cleared the flag even when the reschedule failed, hiding real errors. Both fixed.',
+      'Capitalized "Needs Refresh" so it reads as a proper status label.',
+      'Toasts on reschedule now use the success/error color variants for clearer feedback.',
+    ]},
+    { version: '1.30.2', date: '2026-06-14', notes: [
+      'Active bake: bumped the spacing between the in-card ingredients checklist and the "Done by" countdown from 18px to 28px. The previous spacing still felt cramped. Layout for bakes without an ingredients block is unchanged.',
+    ]},
+    { version: '1.30.1', date: '2026-06-14', notes: [
+      'Active bake: added 18px breathing room between the in-card ingredients checklist and the "Done by" countdown. They were running too close together visually. Layout for bakes without an ingredients block is unchanged.',
+    ]},
     { version: '1.30.0', date: '2026-06-14', notes: [
       'Fixed: duplicate notifications at the same moment. Previously a wait stage ending and the next stage starting would BOTH fire — same timestamp, two buzzes. Now only ONE notification fires per stage, at the start of that stage.',
       'New rule: one notification per stage start. The first stage is skipped (you just tapped Start Bake, no reminder needed). Recipes ending on a wait stage get a final "[recipe] is ready" alert so you know to take your bread out.',
@@ -2808,15 +3167,35 @@
     if (searchInput && document.activeElement !== searchInput) {
       searchInput.value = f.text || '';
     }
+    // Keep the inline clear button in sync with the current search value.
+    const clearBtn = document.getElementById('recipe-search-clear');
+    if (clearBtn) {
+      clearBtn.style.display = (f.text && f.text.length > 0) ? 'inline-flex' : 'none';
+    }
     const chipsContainer = document.getElementById('recipe-category-chips');
     if (!chipsContainer) return;
-    // Build chips: "All" + each category that has live recipes
+    // Build chips: "All" + each category that has live recipes. If the user
+    // hasn't set up any categories yet, hide the row entirely — a lone "All"
+    // chip with nothing to filter against is just noise.
     const usedCategories = new Set();
     liveItems(state.recipes).forEach(r => { if (r.categoryId) usedCategories.add(r.categoryId); });
-    const chips = [{ id: null, name: 'All' }, ...liveItems(state.categories).filter(c => usedCategories.has(c.id))];
+    const liveCats = liveItems(state.categories).filter(c => usedCategories.has(c.id));
+    if (liveCats.length === 0) {
+      chipsContainer.style.display = 'none';
+      chipsContainer.innerHTML = '';
+      return;
+    }
+    chipsContainer.style.display = '';
+    const chips = [{ id: null, name: 'All' }, ...liveCats];
     chipsContainer.innerHTML = chips.map(c => {
       const active = (f.categoryId || null) === (c.id || null);
-      return `<button class="cat-chip${active ? ' active' : ''}" data-chip-cat="${c.id || ''}" style="flex-shrink: 0; padding: 6px 12px; border-radius: 100px; border: 1px solid ${active ? 'var(--crust)' : 'var(--line)'}; background: ${active ? 'var(--bg-warm)' : 'var(--bg-elev)'}; color: ${active ? 'var(--crust-deep)' : 'var(--ink-soft)'}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;">${escapeHtml(c.name)}</button>`;
+      // Active chip uses filled crust treatment (orange background + white text)
+      // so a non-zero filter state is immediately obvious — the previous "warm bg
+      // with deep-crust text" was too subtle. Inactive chips stay neutral.
+      const styles = active
+        ? 'background: var(--crust); color: white; border: 1px solid var(--crust);'
+        : 'background: var(--bg-elev); color: var(--ink-soft); border: 1px solid var(--line);';
+      return `<button class="cat-chip${active ? ' active' : ''}" data-chip-cat="${c.id || ''}" style="flex-shrink: 0; padding: 6px 12px; border-radius: 100px; ${styles} font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(c.name)}</button>`;
     }).join('');
   }
 
@@ -2888,11 +3267,23 @@
     }
 
     if (filtered.length === 0) {
+      const hasActiveFilter = !!(searchText || categoryFilter);
       list.innerHTML = `
         <div class="empty" style="padding: 32px 16px;">
           <div class="title">No matches</div>
           <div class="body">Try a different search term or category.</div>
+          ${hasActiveFilter ? `<button class="btn btn-sm" id="empty-clear-filter" style="margin-top: 8px;">Clear ${searchText && categoryFilter ? 'filters' : 'filter'}</button>` : ''}
         </div>`;
+      const clearBtn = document.getElementById('empty-clear-filter');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          state.recipeFilter = { text: '', categoryId: null };
+          const searchInput = document.getElementById('recipe-search');
+          if (searchInput) searchInput.value = '';
+          saveState();
+          renderRecipes();
+        });
+      }
       return;
     }
 
@@ -2923,11 +3314,32 @@
         if (ts > prev) recipeLastBaked.set(b.recipeId, ts);
       }
     }
+    // recipeLastBakedAll is used by every render (regardless of sort mode) to power
+    // the "2d ago" indicator on each recipe card. Computed once per render. We use
+    // completedAt when present (preferred) and fall back to startedAt.
+    const recipeLastBakedAll = new Map();
+    for (const b of liveItems(state.bakes)) {
+      if (!b.recipeId) continue;
+      const ts = new Date(b.completedAt || b.startedAt || 0).getTime();
+      if (!ts) continue;
+      const prev = recipeLastBakedAll.get(b.recipeId) || 0;
+      if (ts > prev) recipeLastBakedAll.set(b.recipeId, ts);
+    }
     const alphaCompare = (a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    // Favorites pin to the top of each category regardless of sort mode. This is a
+    // primary-key sort: favorites first, then ties broken by the user's chosen sort
+    // (alpha / recent / mostBaked / duration). A user can mark their go-to recipes
+    // and have them always at the top without changing sort modes.
+    const favCompare = (a, b) => {
+      const aFav = a.favorite ? 1 : 0;
+      const bFav = b.favorite ? 1 : 0;
+      return bFav - aFav; // favorites (1) come before non-favorites (0)
+    };
     for (const recipes of groups.values()) {
       if (sortMode === 'recent') {
         // Recently baked first; recipes never baked go to the end alphabetically
         recipes.sort((a, b) => {
+          const f = favCompare(a, b); if (f !== 0) return f;
           const aTs = recipeLastBaked.get(a.id) || 0;
           const bTs = recipeLastBaked.get(b.id) || 0;
           if (aTs !== bTs) return bTs - aTs;
@@ -2935,6 +3347,7 @@
         });
       } else if (sortMode === 'mostBaked') {
         recipes.sort((a, b) => {
+          const f = favCompare(a, b); if (f !== 0) return f;
           const aC = recipeBakeCount.get(a.id) || 0;
           const bC = recipeBakeCount.get(b.id) || 0;
           if (aC !== bC) return bC - aC;
@@ -2943,6 +3356,7 @@
       } else if (sortMode === 'duration') {
         // Shortest total duration first
         recipes.sort((a, b) => {
+          const f = favCompare(a, b); if (f !== 0) return f;
           const aD = totalMinutes(a) || 0;
           const bD = totalMinutes(b) || 0;
           if (aD !== bD) return aD - bD;
@@ -2950,7 +3364,10 @@
         });
       } else {
         // 'alpha' (default): case-insensitive, locale-aware
-        recipes.sort(alphaCompare);
+        recipes.sort((a, b) => {
+          const f = favCompare(a, b); if (f !== 0) return f;
+          return alphaCompare(a, b);
+        });
       }
     }
 
@@ -2967,15 +3384,27 @@
       const isSelected = bulkSelectMode && bulkSelectedIds.has(r.id);
       const classes = ['recipe-item'];
       if (isSelected) classes.push('selected');
+      if (isBaking && !bulkSelectMode) classes.push('is-baking');
+      // Last-baked timestamp for the F3 indicator (only shown when no active bake)
+      const lastBakeTs = !isBaking ? (recipeLastBakedAll.get(r.id) || 0) : 0;
+      const lastBakeStr = lastBakeTs > 0 ? formatRelativeShort(lastBakeTs) : '';
+      const isFavorite = !!r.favorite;
       return `
-        <div class="${classes.join(' ')}" data-id="${r.id}"${isBaking && !bulkSelectMode ? ` style="border-left: 3px solid ${c.hex};"` : ''}>
+        <div class="${classes.join(' ')}" data-id="${r.id}"${isBaking && !bulkSelectMode ? ` style="--bake-accent: ${c.hex};"` : ''}>
           ${bulkSelectMode ? '<div class="recipe-checkbox"></div>' : `<div class="recipe-thumb">${renderRecipeIcon(r.icon, 40)}</div>`}
           <div class="recipe-meta">
-            <div class="recipe-name">${escapeHtml(r.name)}${isBaking && !bulkSelectMode ? ` <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;background:${c.hex};color:white;padding:2px 8px;border-radius:100px;font-family:Inter;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;vertical-align:middle;margin-left:6px;"><span style="width:5px;height:5px;background:white;border-radius:50%;display:inline-block;animation:pulse 1.6s ease-in-out infinite;"></span>Baking</span>` : ''}</div>
+            <div class="recipe-name">
+              ${isFavorite && !bulkSelectMode ? '<svg class="favorite-star-inline" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width: 13px; height: 13px; margin-right: 4px; vertical-align: -1px; color: var(--crust);"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>' : ''}${escapeHtml(r.name)}${isBaking && !bulkSelectMode ? ` <span class="baking-pill" style="background:${c.hex};"><span class="baking-pill-dot"></span>Baking</span>` : ''}
+            </div>
             <div class="recipe-sub">${r.stages.length} stages · ${formatDur(totalMinutes(r))} total</div>
             ${source ? `<div class="recipe-sub">${escapeHtml(source)}</div>` : ''}
           </div>
-          ${bulkSelectMode ? '' : '<div class="recipe-chev">›</div>'}
+          ${bulkSelectMode ? '' : `
+            <div class="recipe-trailing">
+              ${lastBakeStr ? `<div class="recipe-last-baked">${escapeHtml(lastBakeStr)}</div>` : ''}
+              <svg class="recipe-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+            </div>
+          `}
         </div>`;
     };
 
@@ -2990,7 +3419,7 @@
         const renameBtn = cat.id ? `<button class="cat-rename" data-rename-cat="${cat.id}" aria-label="Rename ${escapeHtml(cat.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>` : '';
         return `
           <div class="cat-header">
-            <span>${escapeHtml(cat.name)} · ${recipes.length}</span>
+            <span>${escapeHtml(cat.name)} <span class="cat-count">${recipes.length}</span></span>
             ${renameBtn}
           </div>
           ${recipes.map(renderItem).join('')}
@@ -3732,7 +4161,7 @@
 
     container.innerHTML = `
       <div class="schedule-header">
-        <div class="schedule-title" style="display: flex; align-items: center; gap: 10px;">${renderRecipeIcon(recipe.icon, 36)}<span>${escapeHtml(recipe.name)}</span></div>
+        <div class="schedule-title" style="display: flex; align-items: center; gap: 10px;">${renderRecipeIcon(recipe.icon, 36)}<span style="flex: 1;">${escapeHtml(recipe.name)}</span><button class="favorite-toggle" id="btn-favorite-toggle" aria-label="${recipe.favorite ? 'Remove from favorites' : 'Add to favorites'}" title="${recipe.favorite ? 'Remove from favorites' : 'Add to favorites'}" style="background: none; border: none; padding: 4px; cursor: pointer; flex-shrink: 0; color: ${recipe.favorite ? 'var(--crust)' : 'var(--ink-mute)'};"><svg viewBox="0 0 24 24" fill="${recipe.favorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" style="width: 22px; height: 22px;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></button></div>
         <div class="schedule-meta">${recipe.stages.length} stages · ${formatDur(totalMinutes(recipe))} total · finishes ${formatRelativeDay(finishTime)}</div>
         ${(() => {
           const yieldText = recipe.yield ? escapeHtml(recipe.yield) : '';
@@ -3892,6 +4321,20 @@
     document.getElementById('btn-edit-recipe').addEventListener('click', () => {
       openRecipeEditor(recipe);
     });
+    // Wire the favorite-toggle star. Toggles recipe.favorite, saves, and re-renders
+    // both the schedule view (to update the star color) and the recipes list (so
+    // the recipe pops to the top of its category next time the tab is opened).
+    const favBtn = document.getElementById('btn-favorite-toggle');
+    if (favBtn) {
+      favBtn.addEventListener('click', () => {
+        recipe.favorite = !recipe.favorite;
+        touchUpdated(recipe);
+        saveState();
+        haptic('light');
+        toast(recipe.favorite ? 'Added to favorites' : 'Removed from favorites', recipe.favorite ? 'success' : 'info');
+        renderSchedule();
+      });
+    }
     document.getElementById('btn-start-bake').addEventListener('click', () => {
       // If user changed the time but didn't blur, pick up the latest value
       if (_timeChanged) onTimeChange();
@@ -6214,6 +6657,36 @@ Here is the recipe:
     if (days < 7) return `${d.toLocaleDateString([], { weekday: 'long' })} ${time}`;
     return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
   }
+  /**
+   * Compact relative-time string for the recipe card's "last baked" indicator.
+   * Returns things like "2h ago", "3d ago", "2w ago", or "Jan 15" for dates beyond
+   * a few months. Tuned to be brief enough to fit in a list-item trailing slot
+   * without wrapping.
+   */
+  function formatRelativeShort(ts) {
+    if (!ts) return '';
+    const now = Date.now();
+    const diffMs = now - ts;
+    if (diffMs < 0) return ''; // future timestamps (shouldn't happen for completed bakes)
+    const min = Math.floor(diffMs / 60000);
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const days = Math.floor(hr / 24);
+    if (days === 1) return 'yesterday';
+    if (days < 7) return `${days}d ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks < 5) return `${weeks}w ago`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}mo ago`;
+    // Beyond a year — use month/day for context. Year omitted unless it's >1 year out.
+    const d = new Date(ts);
+    const sameYear = d.getFullYear() === new Date().getFullYear();
+    return d.toLocaleDateString([], sameYear
+      ? { month: 'short', day: 'numeric' }
+      : { month: 'short', year: 'numeric' });
+  }
   function formatDateTimeLocal(d) {
     const pad = n => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -6808,8 +7281,11 @@ Here is the recipe:
   function switchView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
-    // Schedule is a sub-view of Recipes — keep the Recipes tab highlighted
-    const tabViewId = viewId === 'view-schedule' ? 'view-recipes' : viewId;
+    // Some views are sub-views of a top-level tab — they should still highlight
+    // their parent tab in the bottom nav. Map each sub-view to its parent tab id.
+    let tabViewId = viewId;
+    if (viewId === 'view-schedule') tabViewId = 'view-recipes';
+    else if (viewId.startsWith('view-settings-')) tabViewId = 'view-settings';
     document.querySelectorAll('nav.tabs button').forEach(b => {
       b.classList.toggle('active', b.dataset.view === tabViewId);
     });
@@ -6828,10 +7304,29 @@ Here is the recipe:
     if (viewId === 'view-history') renderHistory();
     if (viewId === 'view-active-bakes') renderActiveBakes();
     if (viewId === 'view-stats') renderStats();
+    // Settings sub-pages each call the render functions they need. The landing
+    // view also refreshes status so the row subtitles are accurate.
     if (viewId === 'view-settings') {
       renderSyncStatus();
+      renderSettingsLandingSubs();
+    }
+    if (viewId === 'view-settings-sync') {
+      renderSyncStatus();
+    }
+    if (viewId === 'view-settings-alerts') {
       renderAlertsToggle();
+    }
+    if (viewId === 'view-settings-data') {
+      // No specific render needed; static content
+    }
+    if (viewId === 'view-settings-diag') {
+      renderDiagnostics();
+    }
+    if (viewId === 'view-settings-about') {
       renderSettingsStats();
+      // Show current version in About
+      const v = document.getElementById('app-version');
+      if (v) v.textContent = APP_VERSION;
     }
     // Safety net: any time we navigate to a view that displays bake countdowns, make sure
     // the ticker is running. Recovers from cases where iOS killed setInterval in the
@@ -6846,6 +7341,21 @@ Here is the recipe:
   // ============================================================
   document.querySelectorAll('nav.tabs button').forEach(b => {
     b.addEventListener('click', () => switchView(b.dataset.view));
+  });
+
+  // Settings sub-page navigation. Each .settings-row in the landing view has a
+  // data-settings-page attribute that maps to a view id. Tapping the row routes
+  // through switchView so the standard tab-highlight logic + render hooks fire.
+  // Back buttons on every sub-page return to view-settings.
+  document.querySelectorAll('[data-settings-page]').forEach(row => {
+    row.addEventListener('click', () => {
+      switchView(row.dataset.settingsPage);
+    });
+  });
+  document.querySelectorAll('[data-settings-back]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      switchView('view-settings');
+    });
   });
   // Set which pane is showing in the recipe modal (json or manual)
   function setRecipeMode(mode) {
@@ -6882,7 +7392,7 @@ Here is the recipe:
       ? '<polygon points="6,4 20,12 6,20" fill="currentColor"/>' // play
       : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; // pause bars
     document.getElementById('opt-refresh-dot').style.display = ab.needsReminderRefresh ? '' : 'none';
-    document.getElementById('opt-notifications-label').textContent = ab.needsReminderRefresh ? 'Notifications · needs refresh' : 'Notifications';
+    document.getElementById('opt-notifications-label').textContent = ab.needsReminderRefresh ? 'Notifications · Needs Refresh' : 'Notifications';
     // Hide the Notifications button entirely when push isn't usable. The app no longer has
     // a fallback path (the iOS Shortcut integration was removed in v1.20.0), so showing the
     // option with no working backend would just confuse the user.
@@ -7046,12 +7556,16 @@ Here is the recipe:
         rescheduleBtn.addEventListener('click', async () => {
           hideModal('modal-bake-notifications');
           const r = await schedulePushNotificationsForBake(ab, recipe);
-          ab.needsReminderRefresh = false;
-          saveState();
           if (r && r.ok) {
-            toast(`Rescheduled ${r.scheduled ?? ''} notification${r.scheduled === 1 ? '' : 's'}`);
+            // Only clear the stale flag if the backend actually accepted the new
+            // schedule. Otherwise the flag must persist so the user sees the
+            // "Needs Refresh" indicator and knows to retry once their connection
+            // is back.
+            ab.needsReminderRefresh = false;
+            saveState();
+            toast(`Rescheduled ${r.scheduled ?? ''} notification${r.scheduled === 1 ? '' : 's'}`, 'success');
           } else {
-            toast('Reschedule failed — check your connection');
+            toast('Reschedule failed — check your connection', 'error');
           }
         });
       }
@@ -8241,17 +8755,21 @@ Here is the recipe:
         } else if (Notification.permission === 'denied') {
           sub.textContent = 'Blocked \u2014 enable in iPhone Settings \u2192 Crumb \u2192 Notifications';
         } else if (Notification.permission === 'default') {
-          sub.textContent = 'Tap to enable OS-level alerts';
+          sub.textContent = 'Tap to allow OS-level alerts';
         } else if (state.notificationsEnabled) {
-          sub.textContent = 'Show alerts when Crumb is backgrounded';
+          sub.textContent = 'Alerts fire when Crumb is backgrounded';
         } else {
-          sub.textContent = 'Permission granted \u2014 tap to enable';
+          // Permission already granted, just toggle off — no re-prompt on tap
+          sub.textContent = 'Off \u2014 tap to enable alerts';
         }
       }
-      // Show test button only when permission granted (otherwise it can't fire)
+      // Show test button only when permission granted AND notifications are toggled on.
+      // Hiding it when the toggle is off avoids the confusing case where the user
+      // can fire a test alert for a feature they've turned off.
       const testBtn = document.getElementById('test-notification-btn');
       if (testBtn) {
-        testBtn.style.display = permGranted ? '' : 'none';
+        const showTest = permGranted && !!state.notificationsEnabled;
+        testBtn.style.display = showTest ? '' : 'none';
       }
     }
   }
@@ -8263,6 +8781,39 @@ Here is the recipe:
     if (r) r.textContent = liveItems(state.recipes).length;
     if (b) b.textContent = liveItems(state.bakes).length;
     if (v) v.textContent = APP_VERSION;
+  }
+
+  /**
+   * Populate the row subtitles on the Settings landing view so each row reflects
+   * its current state — Cloud Sync shows "Connected · CODE" or "Off · device-only",
+   * Notifications & Alerts shows which alert paths are on, About shows version.
+   * Called when the landing view is shown.
+   */
+  function renderSettingsLandingSubs() {
+    // Cloud Sync row subtitle
+    const syncSub = document.getElementById('settings-row-sync-sub');
+    if (syncSub) {
+      if (state.syncCode) {
+        syncSub.textContent = `Connected · ${state.syncCode}`;
+      } else {
+        syncSub.textContent = 'Off · device-only';
+      }
+    }
+    // Alerts row subtitle — summarize which paths are on
+    const alertsSub = document.getElementById('settings-row-alerts-sub');
+    if (alertsSub) {
+      const parts = [];
+      if (state.alertsEnabled) parts.push('Sound');
+      if (state.hapticsEnabled) parts.push('Haptics');
+      const permGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+      if (state.notificationsEnabled && permGranted) parts.push('Notifications');
+      alertsSub.textContent = parts.length > 0 ? parts.join(' · ') : 'All off';
+    }
+    // About row subtitle — version number
+    const aboutSub = document.getElementById('settings-row-about-sub');
+    if (aboutSub) {
+      aboutSub.textContent = `Version ${APP_VERSION}`;
+    }
   }
 
   // Diagnostics modal — surfaces internal stats useful for debugging sync issues,
@@ -9090,15 +9641,6 @@ Here is the recipe:
       });
     }
 
-    // Diagnostics viewer
-    const diagBtn = document.getElementById('view-diagnostics');
-    if (diagBtn) {
-      diagBtn.addEventListener('click', () => {
-        renderDiagnostics();
-        showModal('modal-diagnostics');
-      });
-    }
-
     // Sync info — popup with the explanation about Firebase/security
     const syncInfoBtn = document.getElementById('sync-info-btn');
     if (syncInfoBtn) {
@@ -9135,7 +9677,7 @@ Here is the recipe:
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        toast('Backup downloaded');
+        toast('Backup downloaded', 'success');
       });
     }
 
@@ -9262,7 +9804,7 @@ Here is the recipe:
     // Manual sync trigger — forces an immediate push and re-establishes the listener
     // (which Firestore will respond to with the latest snapshot)
     document.getElementById('sync-now').addEventListener('click', async () => {
-      if (!state.syncCode) { toast('Sync isn\'t enabled'); return; }
+      if (!state.syncCode) { toast('Sync isn\'t enabled', 'error'); return; }
       const btn = document.getElementById('sync-now');
       const originalHtml = btn.innerHTML;
       btn.disabled = true;
@@ -9278,10 +9820,10 @@ Here is the recipe:
         // Give the listener a moment to fire before reading lastSyncAt for the UI
         setTimeout(() => {
           renderSyncStatus();
-          toast('Synced');
+          toast('Synced', 'success');
         }, 600);
       } catch (e) {
-        toast('Sync failed — check connection');
+        toast('Sync failed — check connection', 'error');
       } finally {
         setTimeout(() => {
           btn.disabled = false;
@@ -9358,15 +9900,47 @@ Here is the recipe:
   }
   wireSyncControls();
 
-  // Wire recipe search input (debounced)
+  // Wire recipe search input. The render is debounced 150ms so typing feels live,
+  // but state save is debounced longer (600ms after the user stops typing) — the
+  // filter text doesn't need to sync to other devices at every keystroke, and
+  // doing so triggers a Firestore push per character which is wasteful and can
+  // cause sync conflicts when typing fast.
   let _recipeSearchTimer = null;
+  let _recipeSearchSaveTimer = null;
   const recipeSearchInput = document.getElementById('recipe-search');
+  const recipeSearchClear = document.getElementById('recipe-search-clear');
+  const updateClearButton = () => {
+    if (!recipeSearchClear) return;
+    recipeSearchClear.style.display = (recipeSearchInput && recipeSearchInput.value) ? 'inline-flex' : 'none';
+  };
   if (recipeSearchInput) {
     recipeSearchInput.addEventListener('input', () => {
       state.recipeFilter.text = recipeSearchInput.value || '';
-      saveState();
+      updateClearButton();
+      // Render quickly — local-only, no save involved
       clearTimeout(_recipeSearchTimer);
       _recipeSearchTimer = setTimeout(() => renderRecipes(), 150);
+      // Save state much less aggressively — once the user pauses typing
+      clearTimeout(_recipeSearchSaveTimer);
+      _recipeSearchSaveTimer = setTimeout(() => saveState(), 600);
+    });
+    // Save immediately on blur so we don't leave unsaved filter state lingering
+    recipeSearchInput.addEventListener('blur', () => {
+      clearTimeout(_recipeSearchSaveTimer);
+      saveState();
+    });
+    // Initial visibility (in case state restored a non-empty search)
+    updateClearButton();
+  }
+  // Clear button: empties the input, clears state.recipeFilter.text, re-renders
+  if (recipeSearchClear) {
+    recipeSearchClear.addEventListener('click', () => {
+      if (recipeSearchInput) recipeSearchInput.value = '';
+      state.recipeFilter.text = '';
+      updateClearButton();
+      saveState();
+      renderRecipes();
+      if (recipeSearchInput) recipeSearchInput.focus();
     });
   }
 
@@ -9460,7 +10034,7 @@ Here is the recipe:
     saveState();
     exitBulkSelectMode();
     haptic('warning');
-    toast(`${ids.length} recipe${ids.length === 1 ? '' : 's'} deleted`);
+    toast(`${ids.length} recipe${ids.length === 1 ? '' : 's'} deleted`, 'success');
   });
   document.getElementById('bulk-move-btn').addEventListener('click', async () => {
     if (bulkSelectedIds.size === 0) return;
@@ -9490,7 +10064,7 @@ Here is the recipe:
     exitBulkSelectMode();
     const catName = newCatId ? (cats.find(c => c.id === newCatId)?.name || 'category') : 'Uncategorized';
     haptic('medium');
-    toast(`${ids.length} recipe${ids.length === 1 ? '' : 's'} moved to ${catName}`);
+    toast(`${ids.length} recipe${ids.length === 1 ? '' : 's'} moved to ${catName}`, 'success');
   });
 
   // =========================================================
