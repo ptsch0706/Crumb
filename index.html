@@ -1980,8 +1980,19 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.26.0';
+  const APP_VERSION = '1.27.1';
   const CHANGELOG = [
+    { version: '1.27.1', date: '2026-06-14', notes: [
+      'Diagnostics: added a Sync (Firestore) section showing Firebase config status, sync code, last successful push timestamp, in-flight state, and the most recent error code + message.',
+      'Diagnostics: added a "Force Sync Now" button that fires an immediate push and shows the result inline. Useful for debugging when the sync indicator stays orange.',
+      'No behavior changes to sync itself — just better visibility into what\'s happening.',
+    ]},
+    { version: '1.27.0', date: '2026-06-14', notes: [
+      'New: "Reformat All Recipes" button in Settings → Diagnostics → Maintenance. One tap applies every current formatting rule to every recipe.',
+      'Initial rules: title-case stage names, title-case concurrent timer names, trim/collapse whitespace in stage names.',
+      'Extensible: future format changes can be added as new rules and run via the same button. Reports per-rule change counts and total recipes touched.',
+      'Idempotent: running it twice produces zero changes the second time (and no extra sync push).',
+    ]},
     { version: '1.26.0', date: '2026-06-14', notes: [
       'Stage names and concurrent timer names auto-format to title case when you finish editing. Small words like "of", "for", "to", "with", "in", "on", "the", etc. stay lowercase (unless they\'re the first or last word). e.g. "mix the dough" becomes "Mix the Dough".',
       'Formatting happens on blur in the recipe editor (when you tap away from the field) and on save in the live stage-edit modal — so typing flows naturally and the polish appears once you\'re done.',
@@ -7671,6 +7682,7 @@ Here is the recipe:
           lastSyncAt = Date.now();
           syncInFlight = false;
           window.__lastSyncError = null; // success clears any prior error state
+          window.__lastSyncErrorMsg = null;
           renderSyncStatus();
           resolve(true);
         } catch (e) {
@@ -7678,6 +7690,7 @@ Here is the recipe:
           const code = e && e.code ? e.code : 'unknown';
           const msg = e && e.message ? e.message : String(e);
           window.__lastSyncError = code;
+          window.__lastSyncErrorMsg = msg.slice(0, 200); // cap so diagnostics doesn't blow up
           const bytes = window.__lastSyncPayloadBytes || 0;
           const kb = Math.round(bytes / 1024);
           if (code === 'invalid-argument' && bytes > 700 * 1024) {
@@ -8135,6 +8148,105 @@ Here is the recipe:
   // Diagnostics modal — surfaces internal stats useful for debugging sync issues,
   // data growth, and other "why is this happening" questions. Not shown by default
   // since most users never need it; opened from Settings → About → Diagnostics.
+  /**
+   * Recipe formatting rules — applied by the "Reformat All Recipes" button in
+   * Diagnostics. Each rule is a function that takes a recipe and mutates it in
+   * place, returning the number of fields it changed. The button walks every
+   * recipe through every rule, then saves once.
+   *
+   * To add a new rule:
+   *   1. Append an object to RECIPE_FORMAT_RULES below with { name, apply }
+   *   2. The `name` shows up in the summary line; `apply` returns the change count
+   *   3. Be defensive: check that fields exist before touching them, since
+   *      schemas evolve and old recipes may lack newer fields
+   *
+   * Rules should be IDEMPOTENT — running the same rule twice on the same recipe
+   * should produce zero changes the second time. The button reports per-rule
+   * change counts so the user knows what was touched.
+   */
+  const RECIPE_FORMAT_RULES = [
+    {
+      name: 'Title-case stage names',
+      apply(recipe) {
+        let changed = 0;
+        for (const stage of (recipe.stages || [])) {
+          if (typeof stage.name === 'string' && stage.name.trim()) {
+            const cased = toTitleCase(stage.name);
+            if (cased !== stage.name) { stage.name = cased; changed++; }
+          }
+        }
+        return changed;
+      },
+    },
+    {
+      name: 'Title-case concurrent timer names',
+      apply(recipe) {
+        let changed = 0;
+        for (const stage of (recipe.stages || [])) {
+          for (const ct of (stage.concurrentTimers || [])) {
+            if (typeof ct.name === 'string' && ct.name.trim()) {
+              const cased = toTitleCase(ct.name);
+              if (cased !== ct.name) { ct.name = cased; changed++; }
+            }
+          }
+        }
+        return changed;
+      },
+    },
+    {
+      name: 'Trim whitespace in stage names',
+      apply(recipe) {
+        let changed = 0;
+        for (const stage of (recipe.stages || [])) {
+          if (typeof stage.name === 'string') {
+            const trimmed = stage.name.trim().replace(/\s+/g, ' ');
+            if (trimmed !== stage.name) { stage.name = trimmed; changed++; }
+          }
+        }
+        return changed;
+      },
+    },
+  ];
+
+  /**
+   * Walks every live recipe through every formatting rule. Returns a summary
+   * object with per-rule counts and total recipes touched. Saves state once at
+   * the end — even though saveState fires sync, batching it means the user
+   * only triggers one Firestore push for the whole reformat.
+   *
+   * Reports via toast and updates the summary element if present.
+   */
+  function reformatAllRecipes() {
+    const recipes = liveItems(state.recipes || []);
+    if (recipes.length === 0) {
+      toast('No recipes to reformat');
+      return { recipes: 0, totalChanges: 0, byRule: {} };
+    }
+    const byRule = {};
+    let totalChanges = 0;
+    const touchedRecipes = new Set();
+    for (const recipe of recipes) {
+      for (const rule of RECIPE_FORMAT_RULES) {
+        const n = rule.apply(recipe);
+        if (n > 0) {
+          byRule[rule.name] = (byRule[rule.name] || 0) + n;
+          totalChanges += n;
+          touchedRecipes.add(recipe.id);
+          // Bump _updatedAt so this recipe wins the next LWW comparison on sync
+          recipe._updatedAt = Date.now();
+        }
+      }
+    }
+    if (totalChanges > 0) {
+      saveState();
+    }
+    return {
+      recipes: touchedRecipes.size,
+      totalChanges,
+      byRule,
+    };
+  }
+
   function renderDiagnostics() {
     const body = document.getElementById('diagnostics-body');
     if (!body) return;
@@ -8290,6 +8402,30 @@ Here is the recipe:
             <div style="display: flex; justify-content: space-between;"><span>localStorage used</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-ls-size">—</span></div>
           </div>
         </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Sync (Firestore)</div>
+          <div style="font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 4px;" id="diag-sync-block">
+            <div style="display: flex; justify-content: space-between;"><span>Firebase configured</span><span style="font-family: 'JetBrains Mono', monospace; color: ${isFirebaseConfigured() ? 'var(--leaven)' : 'var(--warn)'};">${isFirebaseConfigured() ? 'yes' : 'no'}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Sync code</span><span style="font-family: 'JetBrains Mono', monospace;">${state.syncCode || '\u2014'}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Last successful push</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-sync-lastpush">${lastSyncAt ? new Date(lastSyncAt).toLocaleString() : 'never'}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Currently syncing</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-sync-inflight">${syncInFlight ? 'yes' : 'no'}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Last error</span><span style="font-family: 'JetBrains Mono', monospace; color: ${window.__lastSyncError ? 'var(--warn)' : 'var(--ink-mute)'}; max-width: 220px; text-align: right; word-break: break-word;" id="diag-sync-error">${window.__lastSyncError || '\u2014'}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>Last error message</span><span style="font-family: 'JetBrains Mono', monospace; color: var(--ink-mute); font-size: 10px; max-width: 220px; text-align: right; word-break: break-word;" id="diag-sync-errmsg">${window.__lastSyncErrorMsg || '\u2014'}</span></div>
+          </div>
+          <button class="btn btn-sm btn-block" id="diag-force-sync" style="margin-top: 10px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
+            Force Sync Now
+          </button>
+        </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Maintenance</div>
+          <p style="font-size: 12px; color: var(--ink-mute); line-height: 1.5; margin: 0 0 10px;">Apply the latest formatting rules to every recipe at once. Useful after Crumb adds new conventions (like title-cased stage names).</p>
+          <button class="btn btn-sm btn-block" id="diag-format-all">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Reformat All Recipes
+          </button>
+          <p class="help" id="diag-format-summary" style="margin: 8px 0 0; text-align: center; min-height: 14px;"></p>
+        </div>
       </div>
     `;
     // Compute localStorage usage (async-ish; just sum string lengths)
@@ -8303,6 +8439,68 @@ Here is the recipe:
       const el = document.getElementById('diag-ls-size');
       if (el) el.textContent = `${(total / 1024).toFixed(1)} KB`;
     } catch (e) { /* ignore */ }
+
+    // Wire "Force Sync Now" — fires an immediate Firestore push and refreshes
+    // the diagnostics readout so the user can see whether it succeeded or what
+    // error code came back. Bypasses the debounce so they don't have to wait.
+    const forceBtn = document.getElementById('diag-force-sync');
+    if (forceBtn) {
+      forceBtn.addEventListener('click', async () => {
+        if (!isFirebaseConfigured()) { toast('Firebase not configured', 'error'); return; }
+        if (!state.syncCode) { toast('Sync code not set', 'error'); return; }
+        forceBtn.disabled = true;
+        forceBtn.textContent = 'Syncing…';
+        try {
+          const ok = await pushToFirestore({ immediate: true });
+          if (ok) {
+            toast('Synced', 'success');
+          } else {
+            toast(`Sync failed: ${window.__lastSyncError || 'unknown'}`, 'error');
+          }
+        } catch (e) {
+          toast(`Sync error: ${e.message || e}`, 'error');
+        }
+        // Refresh the whole diagnostics view so all the updated fields render
+        renderDiagnostics();
+      });
+    }
+
+    // Wire the "Reformat All Recipes" button — runs every rule in RECIPE_FORMAT_RULES
+    // across every live recipe. Shows a summary inline below the button, and a toast
+    // with the headline number. Asks for confirmation first because the change syncs
+    // to other devices.
+    const formatBtn = document.getElementById('diag-format-all');
+    const formatSummary = document.getElementById('diag-format-summary');
+    if (formatBtn) {
+      formatBtn.addEventListener('click', async () => {
+        const ok = await showConfirm({
+          title: 'Reformat All Recipes?',
+          message: 'Apply the latest formatting rules to every recipe. This syncs to your other devices and can\'t be undone (except by re-editing fields manually).',
+          buttons: [
+            { label: 'Reformat', style: 'primary', value: true },
+            { label: 'Cancel', style: 'ghost', value: false },
+          ],
+        });
+        if (!ok) return;
+        formatBtn.disabled = true;
+        formatBtn.textContent = 'Reformatting…';
+        // Defer to next frame so the UI updates before the (potentially heavy) work
+        await new Promise(r => requestAnimationFrame(r));
+        const result = reformatAllRecipes();
+        formatBtn.disabled = false;
+        formatBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Reformat All Recipes';
+        if (result.totalChanges === 0) {
+          formatSummary.textContent = 'Already up to date — no changes needed.';
+          toast('Already up to date', 'info');
+        } else {
+          const ruleSummaries = Object.entries(result.byRule)
+            .map(([name, n]) => `${name}: ${n}`)
+            .join(' \u00b7 ');
+          formatSummary.textContent = `Updated ${result.recipes} recipe${result.recipes === 1 ? '' : 's'} (${result.totalChanges} change${result.totalChanges === 1 ? '' : 's'}). ${ruleSummaries}`;
+          toast(`Updated ${result.recipes} recipe${result.recipes === 1 ? '' : 's'}`, 'success');
+        }
+      });
+    }
 
     // Push backend diagnostic — async since it involves network calls
     (async () => {
