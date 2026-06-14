@@ -67,7 +67,46 @@
   .tagline { font-size: 11px; color: var(--ink-mute); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
 
   /* Tab bar */
-  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
+  /* Bottom tab bar.
+     Notes on the floating-bar bug on iOS:
+       - `transform: translateZ(0)` and `will-change: transform` force this into
+         its own GPU compositing layer. Without that, iOS Safari can briefly
+         detach `position: fixed` elements with `backdrop-filter` during
+         momentum scroll, making the bar appear to "float up" the screen.
+       - `contain: layout style` tells the browser this element's internals
+         don't affect outside layout, reducing reflow-related glitches.
+       - The ::after pseudo-element paints a solid color all the way to the
+         bottom of the viewport so iOS rubber-band overscroll doesn't reveal
+         the page background behind the nav. */
+  nav.tabs {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(253, 248, 241, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    padding: 6px 0 calc(var(--safe-bot) + 6px);
+    z-index: 50;
+    transform: translateZ(0);
+    will-change: transform;
+    contain: layout style;
+  }
+  /* Solid color extending below the nav into the safe-area inset, so the page
+     background never shows through during iOS rubber-band overscroll. */
+  nav.tabs::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 200px;
+    background: var(--bg);
+    pointer-events: none;
+  }
   nav.tabs button { background: none; border: none; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink-mute); font-size: 11px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; min-width: 0; }
   nav.tabs button.active { color: var(--crust); }
   nav.tabs button svg { width: 22px; height: 22px; stroke-width: 1.8; }
@@ -1941,8 +1980,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.25.0';
+  const APP_VERSION = '1.25.1';
   const CHANGELOG = [
+    { version: '1.25.1', date: '2026-06-14', notes: [
+      'Fixed: bottom navigation bar occasionally floating up the screen during scroll on iOS. Caused by the backdrop-blur layer detaching from its fixed position during momentum scroll. Locked the nav into its own GPU compositing layer (transform: translateZ(0) + will-change) and added a solid background extending below it so iOS rubber-band overscroll can\'t reveal the page behind the nav.',
+    ]},
     { version: '1.25.0', date: '2026-06-13', notes: [
       'Second UI polish pass: eight refinements from the deeper design review.',
       'Modals: bottom safe-area inset added so content no longer clips against the iPhone home indicator on the last row.',
