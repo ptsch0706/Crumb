@@ -67,10 +67,10 @@
   .tagline { font-size: 11px; color: var(--ink-mute); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
 
   /* Tab bar */
-  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
-  nav.tabs button { background: none; border: none; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--ink-mute); font-size: 10px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; min-width: 0; }
+  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
+  nav.tabs button { background: none; border: none; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink-mute); font-size: 11px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; min-width: 0; }
   nav.tabs button.active { color: var(--crust); }
-  nav.tabs button svg { width: 20px; height: 20px; stroke-width: 1.8; }
+  nav.tabs button svg { width: 22px; height: 22px; stroke-width: 1.8; }
 
   /* Views */
   .view { display: none; padding: 0 20px; max-width: 100%; overflow-x: hidden; }
@@ -91,13 +91,38 @@
   .btn-ghost { background: transparent; border-color: transparent; color: var(--ink-soft); }
   .btn-block { width: 100%; }
   .btn svg { width: 18px; height: 18px; stroke-width: 2; }
-  .btn-sm { padding: 8px 12px; font-size: 13px; }
+  .btn-sm { padding: 8px 14px; font-size: 13px; gap: 6px; }
+  .btn-sm svg { width: 14px; height: 14px; }
+  /* xs is the smallest standardized button size. Used for inline actions inside cards
+     and rows where space is tight. Still meets a comfortable tap target at ~32px tall. */
+  .btn-xs { padding: 6px 10px; font-size: 12px; gap: 4px; border-radius: 8px; }
+  .btn-xs svg { width: 12px; height: 12px; }
 
   /* Cards */
   .card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-sm); margin-bottom: 12px; }
 
-  /* Section headers */
+  /* Section headers — uppercase eyebrow style, used for sub-sections within a page */
   .section-title { font-size: 12px; font-weight: 600; color: var(--ink-mute); letter-spacing: 0.1em; text-transform: uppercase; margin: 24px 0 10px; padding: 0 4px; }
+
+  /* Page header — the top-of-view title block. One per view, always at the top.
+     Larger Fraunces serif, no uppercase, optionally paired with an action button. */
+  .page-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 24px 0 18px; padding: 0 4px; }
+  .page-header h1 { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; margin: 0; line-height: 1.1; display: inline-flex; align-items: center; gap: 10px; }
+  .page-header .subtitle { font-size: 13px; color: var(--ink-mute); margin-top: 4px; }
+  .page-header .actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+  /* Global sync indicator — small dot sitting next to the page title. Three states:
+     synced (subtle leaven dot), syncing (amber, pulsing), error (warn red, pulsing).
+     Only renders when sync is actually enabled; otherwise hidden. */
+  .sync-indicator { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; vertical-align: middle; transition: background 0.25s; }
+  .sync-indicator.synced { background: var(--leaven); box-shadow: 0 0 0 3px rgba(122, 141, 92, 0.15); }
+  .sync-indicator.syncing { background: var(--crust); animation: syncPulse 1.1s ease-in-out infinite; }
+  .sync-indicator.error { background: var(--warn); animation: syncPulse 0.9s ease-in-out infinite; }
+  .sync-indicator.hidden { display: none; }
+  @keyframes syncPulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+    50% { opacity: 0.5; box-shadow: 0 0 0 4px transparent; }
+  }
 
   /* Category headers in recipe list */
   .cat-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink); margin: 18px 4px 8px; }
@@ -114,6 +139,13 @@
   /* Recipe list */
   .recipe-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
   .recipe-item:active { transform: scale(0.99); background: var(--bg-warm); }
+  /* Compact density: smaller thumb, tighter padding, hide secondary info. Useful when
+     you have 30+ recipes and want to scan the list faster. Toggled via the sort menu. */
+  #recipe-list.compact .recipe-item { padding: 10px 14px; gap: 10px; margin-bottom: 6px; border-radius: var(--radius-sm); }
+  #recipe-list.compact .recipe-thumb { width: 32px; height: 32px; border-radius: 8px; padding: 2px; }
+  #recipe-list.compact .recipe-name { font-size: 15px; }
+  #recipe-list.compact .recipe-sub { display: none; }
+  #recipe-list.compact .recipe-sub:first-of-type { display: block; font-size: 11px; margin-top: 1px; }
   .recipe-thumb { width: 48px; height: 48px; border-radius: 12px; background: var(--bg-warm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--line); padding: 4px; }
   .recipe-meta { flex: 1; min-width: 0; }
   .recipe-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; }
@@ -144,15 +176,40 @@
   #modal-confirm { z-index: 150; }
   .modal { background: var(--bg); width: 100%; max-width: 600px; max-height: 92vh; border-radius: 24px 24px 0 0; overflow: hidden; display: flex; flex-direction: column; animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  .modal-header { padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line-soft); flex-shrink: 0; }
+  .modal-header {
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    background: var(--bg);
+    z-index: 2;
+    /* Subtle elevation when scrolling content passes underneath. Pseudo-element
+       lets the shadow fade in via opacity transitions on the body's scroll state
+       (see .modal-body.scrolled below). */
+    position: relative;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.18s, box-shadow 0.18s;
+  }
+  .modal-header.scrolled {
+    border-bottom-color: var(--line-soft);
+    box-shadow: 0 4px 12px rgba(60, 40, 20, 0.04);
+  }
   .modal-title { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
-  .modal-close { background: var(--bg-warm); border: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft); font-family: 'Fraunces', serif; font-size: 16px; font-weight: 500; font-style: italic; }
-  .modal-body { padding: 20px; overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+  .modal-close { background: var(--bg-warm); border: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft); padding: 0; transition: background 0.15s; }
+  .modal-close:active { background: var(--line); }
+  .modal-close svg { width: 14px; height: 14px; stroke-width: 2.2; }
+  /* Legacy: modal-close buttons that still have a text glyph (e.g. "✕") inside —
+     hide the text so the SVG (added globally on init) is what shows. The .has-text-x
+     class is set by the init script so we only hide content where appropriate. */
+  .modal-close.has-text-x { font-size: 0; line-height: 0; }
+  .modal-close.has-text-x svg { font-size: initial; line-height: initial; }
+  .modal-body { padding: 20px 20px calc(var(--safe-bot) + 20px); overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
 
   /* Forms */
   label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 6px; }
-  input, textarea, select { font-family: inherit; font-size: 15px; padding: 11px 14px; border: 1px solid var(--line); background: var(--bg-elev); border-radius: var(--radius-sm); width: 100%; max-width: 100%; color: var(--ink); transition: border-color 0.15s; min-width: 0; }
-  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--crust); }
+  input, textarea, select { font-family: inherit; font-size: 15px; padding: 11px 14px; border: 1px solid var(--line); background: var(--bg-elev); border-radius: var(--radius-sm); width: 100%; max-width: 100%; color: var(--ink); transition: border-color 0.15s, box-shadow 0.15s; min-width: 0; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--crust); box-shadow: 0 0 0 3px rgba(201, 123, 60, 0.15); }
   textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
   .field { margin-bottom: 16px; }
 
@@ -192,7 +249,34 @@
   .timeline-time { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-mute); font-weight: 500; letter-spacing: -0.02em; }
   .timeline-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; letter-spacing: -0.01em; margin-top: 2px; color: var(--ink); }
   .timeline-detail { font-size: 13px; color: var(--ink-soft); margin-top: 4px; line-height: 1.45; }
-  .timeline-dur { font-size: 11px; color: var(--ink-mute); margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
+  .timeline-dur {
+    font-size: 11px;
+    color: var(--ink-soft);
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--bg-warm);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    font-weight: 500;
+  }
+  .timeline-dur.wait { background: var(--leaven-soft); border-color: rgba(122, 141, 92, 0.3); color: var(--rye); }
+  .timeline-dur .pacing-tag {
+    margin-left: 4px;
+    padding-left: 8px;
+    border-left: 1px solid currentColor;
+    border-bottom: 0;
+    border-right: 0;
+    border-top: 0;
+    border-radius: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: 10px;
+    opacity: 0.9;
+  }
   /* Concurrent timers nested under their parent stage. Each timer is its own card with
      its own background, padding, and border, so they don't visually compete with the
      parent stage's content. Indented with a connector line on the left to imply ownership. */
@@ -204,8 +288,15 @@
   .timeline-concurrent .ct-meta { font-size: 10px; color: var(--ink-mute); margin-top: 6px; letter-spacing: 0.02em; font-family: 'JetBrains Mono', monospace; }
 
   /* Toast */
-  .toast { position: fixed; bottom: calc(var(--safe-bot) + 92px); left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: white; padding: 12px 22px; border-radius: 100px; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.12); border: 1px solid rgba(255,255,255,0.08); opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1); z-index: 200; max-width: calc(100vw - 32px); text-align: center; }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  /* Toast — sits above the 5-tab nav with safe-area padding. Uses the same iOS-feel
+     cubic-bezier as modals so the entrance/exit feels consistent. Variants tint the
+     left edge: default neutral, success leaven-green, error warn-orange, info crust. */
+  .toast { position: fixed; bottom: calc(var(--safe-bot) + 96px); left: 50%; transform: translateX(-50%) translateY(24px) scale(0.96); background: var(--ink); color: white; padding: 12px 22px; border-radius: 100px; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; box-shadow: 0 12px 32px rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.12); border: 1px solid rgba(255,255,255,0.08); opacity: 0; pointer-events: none; transition: opacity 0.28s cubic-bezier(0.32, 0.72, 0, 1), transform 0.36s cubic-bezier(0.32, 0.72, 0, 1); z-index: 200; max-width: calc(100vw - 32px); text-align: center; display: inline-flex; align-items: center; gap: 8px; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  .toast.success { background: linear-gradient(135deg, #4d6840, var(--leaven)); }
+  .toast.error { background: linear-gradient(135deg, #8a3015, var(--warn)); }
+  .toast.info { background: linear-gradient(135deg, var(--crust-deep), var(--crust)); }
+  .toast .toast-icon { width: 14px; height: 14px; flex-shrink: 0; }
 
   /* Pill row */
   .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -313,7 +404,8 @@
   .bake-topbar .options-btn.needs-refresh .notif-dot { display: block; }
 
   /* Option buttons in the bake-options modal */
-  .opt-btn { background: var(--bg-elev); border: 1px solid var(--line); font-family: inherit; font-size: 15px; color: var(--ink); }
+  .opt-btn { background: var(--bg-elev); border: 1px solid var(--line); font-family: inherit; font-size: 15px; color: var(--ink); text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; position: relative; }
+  .opt-btn + .opt-btn { margin-top: 8px; }
   .opt-btn:active { background: var(--bg-warm); }
   .opt-btn svg { color: var(--ink-mute); flex-shrink: 0; }
 
@@ -345,15 +437,18 @@
   .wheat-deco { text-align: center; color: var(--line); font-size: 14px; letter-spacing: 8px; margin: 20px 0; user-select: none; }
 
   /* Active bake mode */
-  .bake-hero { background: linear-gradient(135deg, var(--crust), var(--crust-deep)); color: white; border-radius: var(--radius-lg); padding: 24px 20px; margin-bottom: 16px; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; }
-  .bake-hero::before { content: ''; position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; background: radial-gradient(circle, rgba(255,255,255,0.15), transparent 70%); pointer-events: none; }
+  .bake-hero { background: linear-gradient(135deg, var(--crust), var(--crust-deep)); color: white; border-radius: var(--radius-lg); padding: 22px 22px 24px; margin-bottom: 16px; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; }
+  .bake-hero::before { content: ''; position: absolute; top: -40px; right: -40px; width: 180px; height: 180px; background: radial-gradient(circle, rgba(255,255,255,0.18), transparent 70%); pointer-events: none; }
   .bake-hero .status { font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.85; font-weight: 600; }
-  .bake-hero .stage-name { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 500; line-height: 1.15; margin: 8px 0 4px; letter-spacing: -0.02em; }
-  .bake-hero .stage-detail { font-size: 14px; opacity: 0.92; line-height: 1.45; margin-bottom: 18px; }
-  .bake-hero .countdown-box { background: rgba(255,255,255,0.15); border-radius: var(--radius); padding: 14px 16px; backdrop-filter: blur(8px); }
-  .bake-hero .countdown-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.85; font-weight: 600; }
-  .bake-hero .countdown-value { font-family: 'JetBrains Mono', monospace; font-size: 38px; font-weight: 500; letter-spacing: -0.04em; line-height: 1.1; margin-top: 2px; }
-  .bake-hero .countdown-when { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+  .bake-hero .stage-name { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 500; line-height: 1.2; margin: 6px 0 14px; letter-spacing: -0.01em; opacity: 0.95; }
+  .bake-hero .stage-detail { font-size: 14px; opacity: 0.85; line-height: 1.45; margin-top: 14px; }
+  /* Countdown is the centerpiece. It dominates the hero visually so a passing glance
+     across the room can read the remaining time. Mono digits keep the layout stable
+     while the value ticks. */
+  .bake-hero .countdown-box { background: transparent; padding: 0; }
+  .bake-hero .countdown-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.8; font-weight: 600; }
+  .bake-hero .countdown-value { font-family: 'JetBrains Mono', monospace; font-size: 64px; font-weight: 500; letter-spacing: -0.04em; line-height: 1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .bake-hero .countdown-when { font-size: 12px; opacity: 0.85; margin-top: 8px; }
   .bake-hero.waiting { background: linear-gradient(135deg, var(--rest), var(--crust)); }
   .bake-hero.idle { background: linear-gradient(135deg, var(--leaven), #5a7044); }
   /* Approaching-end: gentle amber warm-up in the final 5 minutes before the stage ends.
@@ -398,8 +493,14 @@
 
   .done-btn { display: flex; gap: 10px; }
   .done-btn .btn { flex: 1; }
-  .btn-done { background: white; color: var(--crust-deep); border-color: white; font-weight: 600; }
-  .btn-done:hover { background: var(--bg-warm); }
+  /* Mark Done button — used during active bakes. Background is set inline to the
+     recipe's color, which can be anything from dark navy to pale yellow, so we lock
+     text and icon to white for guaranteed contrast. A subtle text-shadow keeps it
+     legible even on very light backgrounds. */
+  .btn-done { color: #fff; border-color: transparent; font-weight: 600; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
+  .btn-done svg { stroke: #fff; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25)); }
+  .btn-done:hover { filter: brightness(0.95); }
+  .btn-done:disabled { opacity: 0.5; }
 
   .upcoming-list { margin-top: 8px; }
   .upcoming-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
@@ -426,15 +527,12 @@
 
 <!-- RECIPES VIEW -->
 <section class="view active" id="view-recipes">
-  <div style="display: flex; align-items: center; justify-content: space-between; margin: 24px 0 10px; padding: 0 4px;">
-    <div class="section-title" style="margin: 0;">My Recipes</div>
-    <div style="display: flex; gap: 8px; align-items: center;">
-      <button class="btn btn-primary btn-sm" id="btn-new-recipe" style="padding: 6px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+  <div class="page-header">
+    <h1>Recipes</h1>
+    <div class="actions">
+      <button class="btn btn-primary btn-sm" id="btn-new-recipe">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 14px; height: 14px;"><path d="M12 5v14m-7-7h14"/></svg>
-        New Recipe
-      </button>
-      <button id="btn-open-settings" aria-label="Settings" style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft); padding: 0;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        New
       </button>
     </div>
   </div>
@@ -444,10 +542,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ink-mute); pointer-events: none;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="recipe-search" placeholder="Search recipes" style="width: 100%; padding: 8px 12px 8px 36px; border-radius: 100px; border: 1px solid var(--line); background: var(--bg-elev); font-family: inherit; font-size: 14px;">
       </div>
-      <button class="btn btn-ghost btn-sm" id="recipe-sort-btn" title="Sort recipes" style="padding: 6px 10px; flex-shrink: 0;">
+      <button class="btn btn-ghost btn-xs" id="recipe-sort-btn" title="Sort recipes" style="flex-shrink: 0;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
       </button>
-      <button class="btn btn-ghost btn-sm" id="recipe-select-btn" title="Select recipes" style="padding: 6px 10px; flex-shrink: 0;">
+      <button class="btn btn-ghost btn-xs" id="recipe-select-btn" title="Select recipes" style="flex-shrink: 0;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17l2.5 2.5L21 15"/></svg>
       </button>
     </div>
@@ -488,19 +586,19 @@
 
 <!-- HISTORY VIEW -->
 <section class="view" id="view-history">
-  <div class="section-title">Past Bakes</div>
+  <div class="page-header"><h1>History</h1></div>
   <div id="history-list"></div>
 </section>
 
 <!-- ACTIVE BAKES VIEW -->
 <section class="view" id="view-active-bakes">
-  <div class="section-title">Active Bakes</div>
+  <div class="page-header"><h1>Active</h1></div>
   <div id="active-bakes-list"></div>
 
   <div style="margin-top: 24px;">
     <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
       <span>Starter</span>
-      <button class="btn btn-ghost btn-sm" id="starter-edit-btn" style="padding: 4px 10px; font-size: 11px;">Edit Schedule</button>
+      <button class="btn btn-ghost btn-xs" id="starter-edit-btn">Edit Schedule</button>
     </div>
     <div id="starter-content"></div>
   </div>
@@ -508,9 +606,8 @@
 
 <!-- STATS VIEW -->
 <section class="view" id="view-stats">
-  <div class="section-title">Stats</div>
+  <div class="page-header"><h1>Stats</h1></div>
   <div id="stats-content"></div>
-  <div class="wheat-deco">·  ·  ·</div>
 </section>
 
 <!-- TAB BAR -->
@@ -523,7 +620,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2L4 7l8 5 8-5-8-5z"/><path d="M4 17l8 5 8-5"/><path d="M4 12l8 5 8-5"/></svg>
     <span style="display: inline-flex; align-items: center; gap: 4px;">
       Active
-      <span id="active-badge" style="display: none; min-width: 16px; height: 16px; padding: 0 4px; background: var(--crust); color: white; border-radius: 100px; font-size: 9px; font-weight: 700; font-family: Inter, sans-serif; line-height: 16px; text-align: center;">0</span>
+      <span id="active-badge" style="display: none; min-width: 18px; height: 18px; padding: 0 5px; background: var(--crust); color: white; border-radius: 100px; font-size: 10px; font-weight: 700; font-family: Inter, sans-serif; line-height: 18px; text-align: center;">0</span>
     </span>
   </button>
   <button data-view="view-history">
@@ -534,6 +631,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
     Stats
   </button>
+  <button data-view="view-settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Settings
+  </button>
 </nav>
 
 <!-- RECIPE EDITOR / IMPORT MODAL (unified) -->
@@ -542,8 +643,8 @@
     <div class="modal-header">
       <div class="modal-title" id="modal-recipe-title">New Recipe</div>
       <div style="display: flex; gap: 8px; align-items: center;">
-        <button class="btn btn-primary btn-sm" id="save-recipe" style="padding: 6px 14px; font-size: 13px;">Save</button>
-        <button class="modal-close" data-close>✕</button>
+        <button class="btn btn-primary btn-sm" id="save-recipe">Save</button>
+        <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
     </div>
     <div class="modal-body">
@@ -650,8 +751,8 @@
     <div class="modal-header">
       <div class="modal-title" id="hd-title">Bake</div>
       <div style="display: flex; gap: 8px; align-items: center;">
-        <button class="btn btn-sm" id="hd-edit" style="padding: 6px 14px; font-size: 13px;">Edit</button>
-        <button class="modal-close" data-close>✕</button>
+        <button class="btn btn-sm" id="hd-edit">Edit</button>
+        <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
     </div>
     <div class="modal-body" id="hd-body"></div>
@@ -663,31 +764,31 @@
   <div class="modal" style="max-width: 380px;">
     <div class="modal-header">
       <div class="modal-title">Bake Options</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body">
-      <button class="btn btn-block opt-btn" id="opt-notifications" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; position: relative;">
+      <button class="btn btn-block opt-btn" id="opt-notifications">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span style="flex: 1;" id="opt-notifications-label">Notifications</span>
         <span id="opt-refresh-dot" style="display: none; width: 12px; height: 12px; border-radius: 50%; background: #d93636; animation: pulse 1.6s ease-in-out infinite; box-shadow: 0 0 0 1px rgba(217, 54, 54, 0.3);"></span>
       </button>
 
-      <button class="btn btn-block opt-btn" id="opt-adjust-timer" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px;">
+      <button class="btn btn-block opt-btn" id="opt-adjust-timer">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M5 5l-2-2M19 5l2-2"/></svg>
         <span style="flex: 1;">Adjust Timer</span>
       </button>
 
-      <button class="btn btn-block opt-btn" id="opt-pause-bake" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px;">
+      <button class="btn btn-block opt-btn" id="opt-pause-bake">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" id="opt-pause-icon"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
         <span id="opt-pause-label" style="flex: 1;">Pause Bake</span>
       </button>
 
-      <button class="btn btn-block opt-btn" id="opt-step-back" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px;">
+      <button class="btn btn-block opt-btn" id="opt-step-back">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 1 3 6.7L3 16m0 5v-5h5"/></svg>
         <span style="flex: 1;">Step Back One Stage</span>
       </button>
 
-      <button class="btn btn-block opt-btn" id="opt-edit-recipe" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 8px;">
+      <button class="btn btn-block opt-btn" id="opt-edit-recipe">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         <span style="flex: 1;">Edit Recipe</span>
       </button>
@@ -700,7 +801,7 @@
   <div class="modal" style="max-width: 380px;">
     <div class="modal-header">
       <div class="modal-title">Notifications</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body">
       <div id="notif-modal-body"><!-- filled dynamically --></div>
@@ -713,7 +814,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Adjust Timer</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body">
       <p class="help" style="margin-bottom: 14px;">Change how much time is left in the current stage. All upcoming stages will shift to match.</p>
@@ -739,7 +840,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Edit Stage</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body">
       <p class="help" style="margin-bottom: 14px;">Changes save to the recipe permanently. Future bakes will use the updated version.</p>
@@ -772,7 +873,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">What's new</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body" id="changelog-body"></div>
   </div>
@@ -783,7 +884,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Diagnostics</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body" id="diagnostics-body"></div>
   </div>
@@ -794,7 +895,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">About Sync</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body">
       <p style="font-size: 14px; color: var(--ink-soft); line-height: 1.6;">Crumb syncs through Firebase. Data is stored under your sync code only — no account or sign-in needed. Anyone with your sync code can read and write your data, so treat it like a password.</p>
@@ -807,7 +908,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Delete All Data</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body">
       <div style="padding: 12px; background: rgba(184, 92, 42, 0.06); border-radius: var(--radius-sm); border: 1px solid var(--warn);">
@@ -824,7 +925,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Version History</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body" id="version-history-body"></div>
   </div>
@@ -835,7 +936,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Starter Schedule</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body">
       <p class="help" style="margin-bottom: 14px;">Set up to two weekly feedings. Reminders are delivered via push notifications.</p>
@@ -847,17 +948,14 @@
   </div>
 </div>
 
-<!-- SETTINGS MODAL -->
-<div class="modal-backdrop" id="modal-settings">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title">Settings</div>
-      <button class="modal-close" data-close>✕</button>
-    </div>
-    <div class="modal-body">
+<!-- SETTINGS VIEW -->
+<section class="view" id="view-settings">
+  <div class="page-header"><h1>Settings</h1></div>
       <div class="section-title" style="margin-top: 0; display: flex; align-items: center; gap: 8px;">
         <span>Cloud Sync</span>
-        <button id="sync-info-btn" aria-label="About sync" style="background: var(--bg-warm); border: 1px solid var(--line); color: var(--ink-soft); width: 20px; height: 20px; border-radius: 50%; padding: 0; font-size: 12px; font-weight: 700; font-family: serif; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1;">i</button>
+        <button id="sync-info-btn" aria-label="About sync" style="background: var(--bg-warm); border: 1px solid var(--line); color: var(--ink-soft); width: 22px; height: 22px; border-radius: 50%; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        </button>
       </div>
 
       <div id="sync-status-card" style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px;">
@@ -927,7 +1025,7 @@
         </div>
         <div class="switch-pill"></div>
       </div>
-      <button class="btn btn-ghost btn-sm" id="test-notification-btn" style="margin-top: 8px; padding: 6px 12px; font-size: 12px; display: none;">Send test notification</button>
+      <button class="btn btn-ghost btn-xs" id="test-notification-btn" style="margin-top: 8px; display: none;">Send test notification</button>
 
       <div class="section-title">Data</div>
       <button class="btn btn-block" id="export-data" style="margin-bottom: 8px;">
@@ -948,20 +1046,18 @@
         <div><strong>Crumb</strong> · Bread baking workflow</div>
         <div style="margin-top: 4px; color: var(--ink-mute);">Version <span id="app-version">1.0.0</span> · <span id="recipe-count-stat">0</span> recipes · <span id="bake-count-stat">0</span> bakes logged</div>
         <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-          <button class="btn btn-ghost btn-sm" id="view-changelog" style="padding: 4px 10px; font-size: 11px;">What's new</button>
-          <button class="btn btn-ghost btn-sm" id="view-diagnostics" style="padding: 4px 10px; font-size: 11px;">Diagnostics</button>
+          <button class="btn btn-ghost btn-xs" id="view-changelog">What's new</button>
+          <button class="btn btn-ghost btn-xs" id="view-diagnostics">Diagnostics</button>
         </div>
       </div>
-    </div>
-  </div>
-</div>
+</section>
 
 <!-- BAKE NOTES MODAL -->
 <div class="modal-backdrop" id="modal-bake-notes">
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title" id="bake-notes-title">Save Bake</div>
-      <button class="modal-close" data-close>✕</button>
+      <button class="modal-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="modal-body">
       <div class="field">
@@ -1488,11 +1584,31 @@
   /**
    * Heartbeat — verify the backend still has scheduled notifications for our live bakes.
    * If missing, automatically re-schedule them.
+   *
+   * Only asks about bakes that have at least one stage with a future fire time. Bakes
+   * where every stage has already fired (e.g. user finished baking but hasn't saved
+   * the bake yet) don't need notifications, so we don't pester the backend about them.
+   * This avoids the backend's 24h GC making completed bakes look "missing" and triggering
+   * a useless re-schedule of past-due notifications.
    */
   async function pushBackendHeartbeat() {
     if (!IS_INSTALLED_PWA || !state.syncCode || !state.notificationsEnabled) return;
     const liveBakes = liveActiveBakes();
-    const bakeIds = liveBakes.map(b => b.id);
+    const now = Date.now();
+    const bakesWithFuture = liveBakes.filter(b => {
+      const recipe = state.recipes.find(r => r.id === b.recipeId);
+      if (!recipe || recipe._deleted) return false;
+      for (let i = 0; i < recipe.stages.length; i++) {
+        if (b.stageStates && b.stageStates[i] && b.stageStates[i].done) continue;
+        const stageStart = getStageScheduledStart(recipe, i, b);
+        const stageDurMs = getStageDur(recipe, i, b) * 60000;
+        const stageEnd = new Date(stageStart.getTime() + stageDurMs);
+        const fireAt = recipe.stages[i].isWait ? stageEnd.getTime() : stageStart.getTime();
+        if (fireAt > now) return true;
+      }
+      return false;
+    });
+    const bakeIds = bakesWithFuture.map(b => b.id);
     if (bakeIds.length === 0) return;
     try {
       const result = await pushBackendPost('/heartbeat', {
@@ -1503,7 +1619,7 @@
       if (Array.isArray(result.missingBakes) && result.missingBakes.length > 0) {
         console.log('[push] heartbeat found missing bakes:', result.missingBakes);
         for (const bakeId of result.missingBakes) {
-          const bake = liveBakes.find(b => b.id === bakeId);
+          const bake = bakesWithFuture.find(b => b.id === bakeId);
           if (!bake) continue;
           const recipe = state.recipes.find(r => r.id === bake.recipeId);
           if (!recipe) continue;
@@ -1515,7 +1631,7 @@
         console.log('[push] heartbeat: backend lost our subscription, re-subscribing');
         await subscribeToPush();
         // Re-schedule everything since the sub_id will have changed
-        for (const bake of liveBakes) {
+        for (const bake of bakesWithFuture) {
           const recipe = state.recipes.find(r => r.id === bake.recipeId);
           if (recipe) await schedulePushNotificationsForBake(bake, recipe);
         }
@@ -1600,6 +1716,7 @@
     notificationsEnabled: false, // user opts in; permission requested at toggle-on
     recipeFilter: { text: '', categoryId: null }, // recipe list filter
     recipeSort: 'alpha', // recipe sort mode: 'alpha' | 'recent' | 'mostBaked' | 'duration'
+    recipeDensity: 'comfortable', // 'comfortable' | 'compact'
     // Starter feeding schedule. Up to 2 weekly reminders; each independently enabled.
     // dayOfWeek: 0=Sun..6=Sat; hour: 0-23; minute: 0-59.
     starter: {
@@ -1607,7 +1724,6 @@
         { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
         { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
       ],
-      remindersSentAt: null,
     },
   };
 
@@ -1825,8 +1941,55 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.20.0';
+  const APP_VERSION = '1.25.0';
   const CHANGELOG = [
+    { version: '1.25.0', date: '2026-06-13', notes: [
+      'Second UI polish pass: eight refinements from the deeper design review.',
+      'Modals: bottom safe-area inset added so content no longer clips against the iPhone home indicator on the last row.',
+      'Modals: sticky header with subtle shadow that appears when content scrolls underneath. Title and Close button stay accessible in long modals (recipe editor, settings).',
+      'Inputs: focus state now adds a soft 3px crust-colored ring alongside the border change — meets accessibility focus visibility standards.',
+      'Toasts: refined entrance with iOS-feel easing (slight scale + slide-up); added "success", "error", "info" color variants with tinted gradients.',
+      'Sync status: small dot next to each page header h1 — green pulse synced, amber syncing, red on error. Glance at any page to see sync state.',
+      'Sync info button: serif "i" replaced with proper SVG info icon for consistency with the rest of the app.',
+      'Recipe density toggle: new "Compact" option in the sort menu collapses recipe cards to a tighter single-line layout. Great for libraries with 30+ recipes.',
+      'Schedule timeline: stage durations now render as proper pills (wait stages get a leaven-tinted background, hands-on get a neutral warm background) instead of an emoji + mono text.',
+    ]},
+    { version: '1.24.0', date: '2026-06-13', notes: [
+      'UI polish pass: top 5 recommendations from the design review.',
+      'Unified page headers across all five tabs — large Fraunces "Recipes", "Active", "History", "Stats", "Settings" with consistent spacing. Section titles within a page (e.g. "Cloud Sync" in Settings) keep the uppercase eyebrow style for a clear hierarchy.',
+      'Active Bake countdown is now the centerpiece: 64px monospace digits with tabular-nums (no width jitter as the timer ticks). Stage name moves above as a 20px Fraunces subtitle.',
+      'Bottom navigation: labels bumped from 10px to 11px, icons from 20px to 22px, and the Active badge from 9px to 10px — all above iOS accessibility minimums.',
+      'Modal close buttons: swapped the serif italic ✕ glyph for a clean SVG cross icon (consistent rendering across iOS versions).',
+      'Standardized button sizes: added .btn-xs as the smallest size and removed ~10 inline padding overrides in favor of size classes. Buttons across the app are now visually consistent at 4 standard sizes (xs, sm, default, primary).',
+      'Removed the "·  ·  ·" wheat-deco footer from Settings and Stats (kept on Recipes only as an end-of-list indicator).',
+    ]},
+    { version: '1.23.0', date: '2026-06-13', notes: [
+      'Critical fix: when localStorage is full, Crumb no longer pushes the photo-stripped fallback payload to Firestore. Previously this could wipe photos on every other synced device.',
+      'XSS hardening: concurrent timer cards now HTML-escape their label and value (defense-in-depth).',
+      'Heartbeat: only asks the backend about bakes that still have at least one future stage. Prevents wasteful re-scheduling of completed bakes after the backend GCs their fired notifications.',
+      'Backend patches (separate deploy required): dispatcher now sends in parallel for reliability under load; expired subscription cleanup uses the JOIN sub_id directly; heartbeat correctly distinguishes "no rows" (missing) from "all sent" (complete); CORS restricted to an origin allow-list; bakeIds capped at 100 per request; auth errors return a single generic message to reduce enumeration. See backend/README.md.',
+    ]},
+    { version: '1.22.2', date: '2026-06-13', notes: [
+      'Bug fix audit: removed orphan buildRemainingTimeline function (~30 lines of dead code).',
+      'Notifications modal: Reschedule button is now hidden when there are no upcoming notifications to schedule.',
+      'Stats: headline counts ("Bakes this month/year/last 30 days") now use the same fractional-split logic as the charts — a bake spanning Friday into Saturday counts 0.5 per day everywhere, consistently.',
+      'Removed: dead state.starter.remindersSentAt field (3 init sites).',
+      'Settings page: removed empty wrapper div; page title is now a proper h1 instead of a section-title, visually distinct from subsection headers.',
+    ]},
+    { version: '1.22.1', date: '2026-06-13', notes: [
+      'Mark Done button: text and checkmark are now always white with a subtle drop shadow, so they stay readable on any recipe color background (including pale yellows and beiges).',
+    ]},
+    { version: '1.22.0', date: '2026-06-13', notes: [
+      'Settings is now its own tab in the bottom navigation bar (rightmost slot).',
+      'Bottom nav rebalanced to 5 evenly-spaced tabs: Recipes, Active, History, Stats, Settings.',
+      'Removed: the settings gear icon from the Recipes page header.',
+      'Removed: the Settings modal — settings now render as a full page.',
+    ]},
+    { version: '1.21.0', date: '2026-06-13', notes: [
+      'Stats: bakes spanning multiple calendar days are now split evenly across those days in the day-of-week and monthly charts.',
+      'A bake from Friday into Saturday counts as 0.5 each; Friday→Sat→Sun counts as 0.33 each, and so on.',
+      'Monthly chart tooltip shows fractional counts with one decimal place when applicable (e.g. "Apr: 1.5").',
+    ]},
     { version: '1.20.0', date: '2026-06-13', notes: [
       'iOS Reminders / Shortcut integration removed entirely. Bake and starter reminders now exclusively use push notifications.',
       'Removed: Send Reminders modal, Shortcut Setup instructions modal, pre-bake clock icon button, and all related click handlers.',
@@ -2078,6 +2241,7 @@
       if (typeof state.notificationsEnabled !== 'boolean') state.notificationsEnabled = false;
       if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null };
       if (!['alpha', 'recent', 'mostBaked', 'duration'].includes(state.recipeSort)) state.recipeSort = 'alpha';
+      if (!['comfortable', 'compact'].includes(state.recipeDensity)) state.recipeDensity = 'comfortable';
       // Starter schema migration: ensure the object and its 2 reminders exist with valid shape.
       if (!state.starter || typeof state.starter !== 'object') {
         state.starter = {
@@ -2085,7 +2249,6 @@
             { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
             { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
           ],
-          remindersSentAt: null,
         };
       }
       if (!Array.isArray(state.starter.reminders) || state.starter.reminders.length !== 2) {
@@ -2181,6 +2344,7 @@
       notificationsEnabled: state.notificationsEnabled,
       recipeFilter: state.recipeFilter,
       recipeSort: state.recipeSort,
+      recipeDensity: state.recipeDensity,
       starter: state.starter,
     };
     try {
@@ -2192,7 +2356,10 @@
       if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
         if (!_quotaWarned) {
           _quotaWarned = true;
-          // Try saving without photos as a fallback so the user doesn't lose other changes
+          // Try saving without photos as a fallback so the user doesn't lose other changes.
+          // CRITICAL: we must NOT push this photo-stripped payload to Firestore — that
+          // would wipe photos on every other synced device. The fallback is local-only;
+          // other devices keep their photos until this device clears space and resyncs.
           try {
             const slim = { ...payload, bakes: (payload.bakes || []).map(b => ({ ...b, photos: b.photos && b.photos.length > 0 ? ['__omitted_quota__'] : [] })) };
             localStorage.setItem(LS_KEY, JSON.stringify(slim));
@@ -2201,6 +2368,7 @@
             if (typeof toast === 'function') toast('Storage full — can\'t save. Delete old bakes or export to free space.');
           }
         }
+        return; // <-- skip Firestore push to preserve photos on other devices
       }
     }
     // Push shared data to Firestore if sync is enabled AND we're the installed PWA.
@@ -2578,6 +2746,8 @@
 
   function renderRecipes() {
     const list = document.getElementById('recipe-list');
+    // Apply density class based on user preference
+    list.classList.toggle('compact', state.recipeDensity === 'compact');
     // Filter out tombstones (deleted but kept for sync propagation)
     const visibleRecipes = liveItems(state.recipes);
     if (visibleRecipes.length === 0) {
@@ -3124,31 +3294,74 @@
     const scores = allBakes.map(b => b.score).filter(s => typeof s === 'number' && s > 0);
     const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length) : null;
 
+    // === BAKE DAY SPAN HELPER ===
+    // Used by all stats that count bakes-per-day-range. Bakes that span multiple
+    // calendar days are split evenly across those days. e.g. a bake from Fri 6pm to
+    // Sat 8am counts as 0.5 Fri + 0.5 Sat; Fri→Sat→Sun counts as 0.33 each. Bakes
+    // without a completedAt (still active, never saved) count fully on their start day.
+    // We use local-midnight boundaries so "what day was it" matches a wall calendar.
+    // Safety capped at 14 days to avoid runaway loops on corrupt data.
+    const bakeDaySpan = (startedAt, completedAt) => {
+      const start = new Date(startedAt);
+      const end = completedAt ? new Date(completedAt) : start;
+      const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+      const days = [];
+      const cursor = new Date(startDay);
+      let safety = 0;
+      while (cursor <= endDay && safety++ < 14) {
+        days.push(new Date(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return days;
+    };
+
     // === TIME-WINDOWED COUNTS ===
+    // Same fractional-split logic as the charts below: a bake spanning Fri→Sat counts
+    // as 0.5 each toward "Bakes this month" / "this year" / "last 30 days" based on
+    // which days fall inside each window. Keeps cards and charts consistent.
     const now = new Date();
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisYear = new Date(now.getFullYear(), 0, 1);
-    const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const thisYear = new Date(now.getFullYear(), 0, 1).getTime();
+    const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).getTime();
     let bakesThisMonth = 0, bakesThisYear = 0, bakesLast30 = 0;
     for (const b of allBakes) {
-      const t = new Date(b.startedAt || 0);
-      if (t >= thisMonth) bakesThisMonth++;
-      if (t >= thisYear) bakesThisYear++;
-      if (t >= last30Days) bakesLast30++;
+      if (!b.startedAt) continue;
+      const days = bakeDaySpan(b.startedAt, b.completedAt);
+      const share = 1 / days.length;
+      for (const day of days) {
+        const t = day.getTime();
+        if (t >= thisMonth) bakesThisMonth += share;
+        if (t >= thisYear) bakesThisYear += share;
+        if (t >= last30Days) bakesLast30 += share;
+      }
     }
+    // Round headline counts to integers — fractional counts in big headline numbers look
+    // weird ("12.5 bakes this year"), so display nearest whole. Bar charts can show
+    // fractional values in tooltips because they're already a fine-grained visualization.
+    bakesThisMonth = Math.round(bakesThisMonth);
+    bakesThisYear = Math.round(bakesThisYear);
+    bakesLast30 = Math.round(bakesLast30);
 
     // === DAY-OF-WEEK ACTIVITY ===
+    // Uses the same bakeDaySpan helper.
+
     const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const dayCounts = [0, 0, 0, 0, 0, 0, 0];
     for (const b of allBakes) {
-      const d = new Date(b.startedAt || 0).getDay();
-      dayCounts[d]++;
+      if (!b.startedAt) continue;
+      const days = bakeDaySpan(b.startedAt, b.completedAt);
+      const share = 1 / days.length;
+      for (const d of days) dayCounts[d.getDay()] += share;
     }
     const peakDayIdx = dayCounts.indexOf(Math.max(...dayCounts));
     const peakDayLabel = dayLabels[peakDayIdx];
     const maxDay = Math.max(...dayCounts) || 1; // for bar scaling
 
     // === MONTHLY BAKES — LAST 12 MONTHS ===
+    // Same split logic as day-of-week: bakes spanning days that fall in different months
+    // contribute fractionally to each month. e.g. a bake that started Apr 30 11pm and
+    // ended May 1 7am counts as 0.5 April + 0.5 May.
     const monthLabels = [];
     const monthCounts = [];
     for (let i = 11; i >= 0; i--) {
@@ -3158,8 +3371,13 @@
       const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime();
       let count = 0;
       for (const b of allBakes) {
-        const t = new Date(b.startedAt || 0).getTime();
-        if (t >= start && t < end) count++;
+        if (!b.startedAt) continue;
+        const days = bakeDaySpan(b.startedAt, b.completedAt);
+        const share = 1 / days.length;
+        for (const day of days) {
+          const t = day.getTime();
+          if (t >= start && t < end) count += share;
+        }
       }
       monthCounts.push(count);
     }
@@ -3278,8 +3496,10 @@
         <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 80px;">
           ${monthCounts.map((count, i) => {
             const heightPct = Math.round((count / maxMonth) * 100);
+            // Display: integers stay clean ("3"), fractional counts show one decimal ("1.5")
+            const countDisplay = Number.isInteger(count) ? String(count) : count.toFixed(1);
             return `
-              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%;" title="${monthLabels[i]}: ${count}">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%;" title="${monthLabels[i]}: ${countDisplay}">
                 <div style="flex: 1; width: 100%; display: flex; align-items: flex-end;">
                   <div style="width: 100%; background: var(--crust); opacity: ${count > 0 ? 1 : 0.15}; border-radius: 2px 2px 0 0; height: ${heightPct}%; min-height: ${count > 0 ? '3px' : '2px'};"></div>
                 </div>
@@ -3510,7 +3730,11 @@
             <div class="timeline-time mono">${formatDateTime(s.startAt)}</div>
             <div class="timeline-name">${escapeHtml(s.name)}</div>
             ${s.detail ? `<div class="timeline-detail">${escapeHtml(s.detail)}</div>` : ''}
-            <div class="timeline-dur">${s.isWait ? '⏳ ' : '· '}${formatDur(s.durMin)}${pacingLabel}</div>
+            <div class="timeline-dur${s.isWait ? ' wait' : ''}">
+              ${s.isWait ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l2 2"/><circle cx="12" cy="12" r="9"/></svg>' : ''}
+              ${formatDur(s.durMin)}${s.isWait ? ' wait' : ''}
+              ${pacingLabel}
+            </div>
             ${s.concurrentTimers && s.concurrentTimers.length > 0 ? `
               <div class="timeline-concurrents">
                 ${s.concurrentTimers.map(ct => `
@@ -4517,7 +4741,7 @@
             <div class="ct-card ${item.state}">
               <div class="ct-card-row">
                 <div class="ct-card-name">${escapeHtml(item.ct.name || 'Timer')}</div>
-                <div class="ct-card-value">${item.state === 'done' ? '<span class="ct-check">✓</span>' : `<span class="ct-label">${item.label}</span> <span class="ct-time-val">${item.value}</span>`}</div>
+                <div class="ct-card-value">${item.state === 'done' ? '<span class="ct-check">✓</span>' : `<span class="ct-label">${escapeHtml(item.label)}</span> <span class="ct-time-val">${escapeHtml(item.value)}</span>`}</div>
               </div>
               ${item.ct.detail && item.state !== 'done' ? `<div class="ct-card-detail">${escapeHtml(item.ct.detail)}</div>` : ''}
               ${item.state === 'running' ? `
@@ -4682,8 +4906,8 @@
                   ${s.detail ? `<div style="font-size: 11px; color: var(--ink-mute); margin-top: 2px; line-height: 1.4;">${escapeHtml(s.detail)}</div>` : ''}
                 </div>
                 <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                  ${!st.done && !isCurrent ? `<button class="btn-ghost btn btn-sm" data-skip-to="${i}" style="padding: 4px 8px; font-size: 11px; color: var(--ink-mute);">Skip to</button>` : ''}
-                  <button class="btn-ghost btn btn-sm" data-edit-stage="${i}" style="padding: 4px 8px; font-size: 11px; color: var(--ink-mute);" aria-label="Edit stage">
+                  ${!st.done && !isCurrent ? `<button class="btn-ghost btn btn-xs" data-skip-to="${i}" style="color: var(--ink-mute);">Skip to</button>` : ''}
+                  <button class="btn-ghost btn btn-xs" data-edit-stage="${i}" style="color: var(--ink-mute);" aria-label="Edit stage">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                 </div>
@@ -5322,7 +5546,7 @@
         <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line);">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
             <span style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em;">Concurrent Timers</span>
-            <button class="btn btn-sm" data-add-ct="${i}" style="padding: 4px 10px; font-size: 11px;">+ Add</button>
+            <button class="btn btn-xs" data-add-ct="${i}">+ Add</button>
           </div>
           ${cts.length === 0 ? `<p class="help" style="margin: 0;">For things you do during this wait — e.g., preheat oven 15 min into proof.</p>` : ''}
           ${cts.map((t, ti) => `
@@ -5875,9 +6099,21 @@ Here is the recipe:
     }).join('');
   }
 
-  function toast(msg) {
+  /**
+   * Show a transient toast notification.
+   * @param {string} msg - The message to show. Will be title-cased.
+   * @param {'default'|'success'|'error'|'info'} [type='default'] - Color variant.
+   *   Pass 'success' for confirmations (e.g. "Bake saved"), 'error' for failures,
+   *   'info' for neutral status. Default is the dark neutral pill.
+   */
+  function toast(msg, type) {
     const t = document.getElementById('toast');
     t.textContent = toTitleCase(msg);
+    // Reset any prior variant so successive toasts don't carry state forward
+    t.classList.remove('success', 'error', 'info');
+    if (type === 'success' || type === 'error' || type === 'info') {
+      t.classList.add(type);
+    }
     t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
@@ -5898,8 +6134,27 @@ Here is the recipe:
     // last scrolled. Without this, reopening a long modal like the recipe editor would
     // jump to the previous scroll position which looks unpolished.
     const body = el.querySelector('.modal-body');
+    const header = el.querySelector('.modal-header');
     if (body) body.scrollTop = 0;
     el.scrollTop = 0; // fallback in case the modal scrolls at the root level
+    // Sticky-header shadow on scroll. The body is the scroll container; when its
+    // scrollTop > 0 the header gets a subtle border + shadow to separate it from
+    // the content sliding underneath. Idempotent: attaching multiple times wouldn't
+    // hurt, but we check via a sentinel so the listener isn't installed twice.
+    if (body && header && !body._stickyHeaderWired) {
+      body._stickyHeaderWired = true;
+      const sync = () => {
+        if (body.scrollTop > 1) {
+          header.classList.add('scrolled');
+        } else {
+          header.classList.remove('scrolled');
+        }
+      };
+      body.addEventListener('scroll', sync, { passive: true });
+      sync();
+    }
+    // Clear the scrolled state on open since we just reset scrollTop to 0
+    if (header) header.classList.remove('scrolled');
   }
   function hideModal(id) {
     const el = document.getElementById(id);
@@ -6418,6 +6673,11 @@ Here is the recipe:
     if (viewId === 'view-history') renderHistory();
     if (viewId === 'view-active-bakes') renderActiveBakes();
     if (viewId === 'view-stats') renderStats();
+    if (viewId === 'view-settings') {
+      renderSyncStatus();
+      renderAlertsToggle();
+      renderSettingsStats();
+    }
     // Safety net: any time we navigate to a view that displays bake countdowns, make sure
     // the ticker is running. Recovers from cases where iOS killed setInterval in the
     // background and our other restart paths missed it.
@@ -6614,23 +6874,28 @@ Here is the recipe:
             `).join('')}
           </div>
         `}
-        <button class="btn btn-primary btn-block" id="notif-reschedule-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
-          Reschedule Notifications
-        </button>
+        ${items.some(i => !i.isPast) ? `
+          <button class="btn btn-primary btn-block" id="notif-reschedule-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>
+            Reschedule Notifications
+          </button>
+        ` : ''}
       `;
 
-      document.getElementById('notif-reschedule-btn').addEventListener('click', async () => {
-        hideModal('modal-bake-notifications');
-        const r = await schedulePushNotificationsForBake(ab, recipe);
-        ab.needsReminderRefresh = false;
-        saveState();
-        if (r && r.ok) {
-          toast(`Rescheduled ${r.scheduled ?? ''} notification${r.scheduled === 1 ? '' : 's'}`);
-        } else {
-          toast('Reschedule failed — check your connection');
-        }
-      });
+      const rescheduleBtn = document.getElementById('notif-reschedule-btn');
+      if (rescheduleBtn) {
+        rescheduleBtn.addEventListener('click', async () => {
+          hideModal('modal-bake-notifications');
+          const r = await schedulePushNotificationsForBake(ab, recipe);
+          ab.needsReminderRefresh = false;
+          saveState();
+          if (r && r.ok) {
+            toast(`Rescheduled ${r.scheduled ?? ''} notification${r.scheduled === 1 ? '' : 's'}`);
+          } else {
+            toast('Reschedule failed — check your connection');
+          }
+        });
+      }
 
     } else {
       // Push not active — guide the user to enable it. There's no fallback path.
@@ -6646,7 +6911,7 @@ Here is the recipe:
       `;
       document.getElementById('notif-open-settings-btn').addEventListener('click', () => {
         hideModal('modal-bake-notifications');
-        showModal('modal-settings');
+        switchView('view-settings');
       });
     }
 
@@ -6682,27 +6947,6 @@ Here is the recipe:
     stopBakeTicker();
     openRecipeEditor(recipe);
   });
-
-  // Helper: build the timeline of remaining stages (used by Send/Refresh Reminders)
-  function buildRemainingTimeline(recipe, ab) {
-    const out = [];
-    for (let i = 0; i < recipe.stages.length; i++) {
-      if (ab.stageStates[i].done) continue;
-      const stage = recipe.stages[i];
-      const start = getStageScheduledStart(recipe, i, ab);
-      const end = new Date(start.getTime() + stage.durMin * 60000);
-      out.push({
-        idx: i,
-        name: stage.name,
-        detail: stage.detail || '',
-        isWait: !!stage.isWait,
-        startAt: start,
-        endAt: end,
-        durMin: stage.durMin,
-      });
-    }
-    return out;
-  }
 
   // Toggle pause/resume on the bake
   function togglePause(recipe, bake) {
@@ -7344,12 +7588,14 @@ Here is the recipe:
           lastPushedDirtyCounter = dirtyCounter;
           lastSyncAt = Date.now();
           syncInFlight = false;
+          window.__lastSyncError = null; // success clears any prior error state
           renderSyncStatus();
           resolve(true);
         } catch (e) {
           console.error('Firestore push failed:', e);
           const code = e && e.code ? e.code : 'unknown';
           const msg = e && e.message ? e.message : String(e);
+          window.__lastSyncError = code;
           const bytes = window.__lastSyncPayloadBytes || 0;
           const kb = Math.round(bytes / 1024);
           if (code === 'invalid-argument' && bytes > 700 * 1024) {
@@ -7662,7 +7908,50 @@ Here is the recipe:
     renderSyncStatus();
   }
 
+  /**
+   * Update the global sync indicator dots that sit next to each page header h1.
+   * Called from renderSyncStatus whenever sync state changes. Visible on all 5
+   * top-level tabs so the user can glance at the current page and see if their
+   * changes have been propagated.
+   *
+   * States:
+   *   - hidden: sync disabled or not configured
+   *   - syncing: a push is currently in flight (amber, pulsing)
+   *   - error: last push failed (warn-red, pulsing)
+   *   - synced: everything's settled (leaven-green, static)
+   */
+  function updateGlobalSyncIndicators() {
+    let stateClass;
+    if (!state.syncCode || !isFirebaseConfigured()) {
+      stateClass = 'hidden';
+    } else if (syncInFlight) {
+      stateClass = 'syncing';
+    } else if (window.__lastSyncError) {
+      stateClass = 'error';
+    } else {
+      stateClass = 'synced';
+    }
+    // Inject (once) and update the dot inside every page-header h1
+    document.querySelectorAll('.page-header h1').forEach(h1 => {
+      let dot = h1.querySelector('.sync-indicator');
+      if (!dot) {
+        dot = document.createElement('span');
+        dot.className = 'sync-indicator';
+        dot.setAttribute('aria-hidden', 'true');
+        // Append after the title text
+        h1.appendChild(dot);
+      }
+      dot.className = 'sync-indicator ' + stateClass;
+      // Tooltip helps anyone who hovers (desktop / PWA-on-iPad)
+      const labels = { hidden: '', synced: 'Synced', syncing: 'Syncing…', error: 'Sync error' };
+      if (labels[stateClass]) dot.title = labels[stateClass];
+    });
+  }
+
   function renderSyncStatus() {
+    // Always update the global indicators first — they exist independent of the
+    // Settings page DOM.
+    updateGlobalSyncIndicators();
     const dot = document.getElementById('sync-status-dot');
     const label = document.getElementById('sync-status-label');
     const detail = document.getElementById('sync-status-detail');
@@ -8085,19 +8374,11 @@ Here is the recipe:
     });
   }
 
-  // Wire up settings + sync controls
+  // Wire up settings + sync controls.
+  // Settings is its own tab/view as of v1.22.0; tab clicks are wired via nav.tabs
+  // and rendering hooks are in switchView(). Any other code that previously opened
+  // the modal should now call switchView('view-settings') instead.
   function wireSyncControls() {
-    const openSettings = () => {
-      renderSyncStatus();
-      renderAlertsToggle();
-      renderSettingsStats();
-      showModal('modal-settings');
-    };
-    const oldGear = document.getElementById('btn-settings');
-    if (oldGear) oldGear.addEventListener('click', openSettings);
-    const newGear = document.getElementById('btn-open-settings');
-    if (newGear) newGear.addEventListener('click', openSettings);
-
     // Wipe all data — local + remote (if synced). Requires two confirmations.
     const wipeBtn = document.getElementById('wipe-all-data');
     if (wipeBtn) {
@@ -8146,7 +8427,6 @@ Here is the recipe:
             { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
             { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
           ],
-          remindersSentAt: null,
         };
         stopBakeTicker();
         // Clear the pre-sync backup too — no point keeping it after a deliberate wipe
@@ -8171,7 +8451,7 @@ Here is the recipe:
             suppressNextRemote = false;
             toast('Local Wiped · Remote Failed');
             saveState();
-            hideModal('modal-settings');
+            switchView('view-recipes');
             renderRecipes();
             renderHistory();
             return;
@@ -8184,7 +8464,7 @@ Here is the recipe:
         // Re-seed default categories so the user has something to start with
         seedIfEmpty();
         saveState();
-        hideModal('modal-settings');
+        switchView('view-recipes');
         renderRecipes();
         renderHistory();
         updateActiveTabBadge();
@@ -8493,7 +8773,6 @@ Here is the recipe:
     });
 
     document.getElementById('join-sync').addEventListener('click', async () => {
-      hideModal('modal-settings');
       const code = await showPrompt({
         title: 'Connect with Code',
         message: 'Enter the sync code from your other device (6 letters/digits).',
@@ -8596,6 +8875,9 @@ Here is the recipe:
   }
   renderRecipes();
   updateActiveTabBadge();
+  // Inject the global sync indicator dots and set their initial state. This runs
+  // after the first render so all five page-header h1 elements exist.
+  updateGlobalSyncIndicators();
   if (liveActiveBakes().length > 0) {
     // Pre-populate alertedStageEnds so we don't beep for stages that became overdue
     // while the app was closed. The first alert should be for NEW transitions only.
@@ -8628,27 +8910,34 @@ Here is the recipe:
     });
   }
 
-  // Wire sort button — opens a picker for the user to choose how recipes are ordered
+  // Wire sort button — opens a picker for sort mode + density
   const sortBtn = document.getElementById('recipe-sort-btn');
   if (sortBtn) {
     sortBtn.addEventListener('click', async () => {
       const current = state.recipeSort || 'alpha';
+      const currentDensity = state.recipeDensity || 'comfortable';
       const label = (mode, text) => current === mode ? `✓ ${text}` : text;
+      const dLabel = (mode, text) => currentDensity === mode ? `✓ ${text}` : text;
       const choice = await showConfirm({
-        title: 'Sort recipes by',
-        message: 'Recipes within each category will be ordered by this option.',
+        title: 'View options',
+        message: 'Choose how recipes are sorted and how densely they\'re displayed.',
         buttons: [
-          { label: label('alpha', 'Alphabetical (A → Z)'), style: current === 'alpha' ? 'primary' : 'default', value: 'alpha' },
-          { label: label('recent', 'Most recently baked'), style: current === 'recent' ? 'primary' : 'default', value: 'recent' },
-          { label: label('mostBaked', 'Most baked'), style: current === 'mostBaked' ? 'primary' : 'default', value: 'mostBaked' },
-          { label: label('duration', 'Shortest first'), style: current === 'duration' ? 'primary' : 'default', value: 'duration' },
+          { label: label('alpha', 'Alphabetical (A → Z)'), style: current === 'alpha' ? 'primary' : 'default', value: 'sort:alpha' },
+          { label: label('recent', 'Most recently baked'), style: current === 'recent' ? 'primary' : 'default', value: 'sort:recent' },
+          { label: label('mostBaked', 'Most baked'), style: current === 'mostBaked' ? 'primary' : 'default', value: 'sort:mostBaked' },
+          { label: label('duration', 'Shortest first'), style: current === 'duration' ? 'primary' : 'default', value: 'sort:duration' },
+          { label: dLabel('comfortable', 'Comfortable density'), style: currentDensity === 'comfortable' ? 'primary' : 'default', value: 'density:comfortable' },
+          { label: dLabel('compact', 'Compact density'), style: currentDensity === 'compact' ? 'primary' : 'default', value: 'density:compact' },
           { label: 'Cancel', style: 'ghost', value: null },
         ],
       });
-      if (choice && choice !== current) {
-        state.recipeSort = choice;
-        saveState();
-        renderRecipes();
+      if (!choice) return;
+      if (choice.startsWith('sort:')) {
+        const v = choice.slice(5);
+        if (v !== current) { state.recipeSort = v; saveState(); renderRecipes(); }
+      } else if (choice.startsWith('density:')) {
+        const v = choice.slice(8);
+        if (v !== currentDensity) { state.recipeDensity = v; saveState(); renderRecipes(); }
       }
     });
   }
