@@ -1980,8 +1980,13 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.25.1';
+  const APP_VERSION = '1.26.0';
   const CHANGELOG = [
+    { version: '1.26.0', date: '2026-06-14', notes: [
+      'Stage names and concurrent timer names auto-format to title case when you finish editing. Small words like "of", "for", "to", "with", "in", "on", "the", etc. stay lowercase (unless they\'re the first or last word). e.g. "mix the dough" becomes "Mix the Dough".',
+      'Formatting happens on blur in the recipe editor (when you tap away from the field) and on save in the live stage-edit modal — so typing flows naturally and the polish appears once you\'re done.',
+      'All-caps tokens like sync codes ("ABC234") are preserved as-is.',
+    ]},
     { version: '1.25.1', date: '2026-06-14', notes: [
       'Fixed: bottom navigation bar occasionally floating up the screen during scroll on iOS. Caused by the backdrop-blur layer detaching from its fixed position during momentum scroll. Locked the nav into its own GPU compositing layer (transform: translateZ(0) + will-change) and added a solid background extending below it so iOS rubber-band overscroll can\'t reveal the page behind the nav.',
     ]},
@@ -4466,7 +4471,11 @@
     }
 
     document.getElementById('se-save').onclick = () => {
-      const newName = document.getElementById('se-name').value.trim() || stage.name;
+      const rawName = document.getElementById('se-name').value.trim() || stage.name;
+      // Title-case here too — the stage-edit modal saves on click, not blur, so we
+      // apply the formatting once at commit time. Keeps stage names consistent
+      // whether they're entered in the recipe editor or live-edited mid-bake.
+      const newName = toTitleCase(rawName);
       const newDurRaw = parseInt(document.getElementById('se-dur').value);
       const newDur = isDone ? stage.durMin : (isNaN(newDurRaw) || newDurRaw < 0 ? stage.durMin : newDurRaw);
       const newDetail = document.getElementById('se-detail').value;
@@ -5657,6 +5666,22 @@
         }
         else state.editingRecipe.stages[i][k] = e.target.value;
       });
+      // Title-case the stage name when the user finishes editing (on blur).
+      // We don't do this during 'input' because it would fight the user's caret —
+      // every keystroke would re-render the value and jump the cursor. Blur is the
+      // natural "I'm done with this field" moment to apply formatting.
+      if (inp.dataset.k === 'name') {
+        inp.addEventListener('blur', (e) => {
+          const i = +e.target.dataset.i;
+          const raw = e.target.value.trim();
+          if (!raw) return;
+          const cased = toTitleCase(raw);
+          if (cased !== raw) {
+            e.target.value = cased;
+            state.editingRecipe.stages[i].name = cased;
+          }
+        });
+      }
     });
     // Concurrent timer inputs — separate handler since they need ti index
     c.querySelectorAll('input[data-ti]').forEach(inp => {
@@ -5667,6 +5692,21 @@
         if (k === 'offsetMin' || k === 'durMin') cts[ti][k] = parseInt(e.target.value) || 0;
         else cts[ti][k] = e.target.value;
       });
+      // Same blur-based title-casing for concurrent timer names
+      if (inp.dataset.k === 'name') {
+        inp.addEventListener('blur', (e) => {
+          const i = +e.target.dataset.i, ti = +e.target.dataset.ti;
+          const cts = state.editingRecipe.stages[i].concurrentTimers || [];
+          if (!cts[ti]) return;
+          const raw = e.target.value.trim();
+          if (!raw) return;
+          const cased = toTitleCase(raw);
+          if (cased !== raw) {
+            e.target.value = cased;
+            cts[ti].name = cased;
+          }
+        });
+      }
     });
     // "Add Concurrent Timer" buttons — append a fresh timer to the parent stage
     c.querySelectorAll('[data-add-ct]').forEach(b => {
