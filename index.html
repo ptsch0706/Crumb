@@ -18,8 +18,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
-  import { getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, collection, getDocs, deleteDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
-  window.__firebase = { initializeApp, getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, collection, getDocs, deleteDoc, writeBatch };
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, clearIndexedDbPersistence, terminate, collection, getDocs, deleteDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
+  window.__firebase = { initializeApp, getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, clearIndexedDbPersistence, terminate, collection, getDocs, deleteDoc, writeBatch };
   window.dispatchEvent(new Event('firebase-ready'));
 </script>
 <style>
@@ -1980,8 +1980,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.27.2';
+  const APP_VERSION = '1.27.3';
   const CHANGELOG = [
+    { version: '1.27.3', date: '2026-06-14', notes: [
+      'Diagnostics: added "Clear Firestore Cache" button. Wipes the Firebase SDK\'s local IndexedDB cache (which can get into a wedged state where every write hangs forever) and reloads the app. Your data is preserved — only the sync cache is cleared, and the app re-fetches everything fresh from the cloud after reload.',
+      'Use this as a last resort if Force Sync Now keeps timing out and Reset Sync State doesn\'t help.',
+    ]},
     { version: '1.27.2', date: '2026-06-14', notes: [
       'Sync: 30-second timeout on Firestore batch commits. Previously the Firebase SDK could hang silently on certain failures (network drop mid-write, oversized doc, security rule issue), leaving sync stuck "in flight" forever. Now it errors out with a "timeout" code so you can see what\'s wrong.',
       'Diagnostics: added "Reset Sync State" button to manually clear a stuck in-flight flag. Use after a timeout if Force Sync still won\'t fire.',
@@ -7398,6 +7402,47 @@ Here is the recipe:
     }
   }
 
+  /**
+   * Surgical fix for corrupted Firestore IndexedDB cache.
+   *
+   * When the Firestore SDK's offline cache (IndexedDB) gets into a wedged state —
+   * which can happen after an interrupted write, schema migration between SDK
+   * versions, or storage pressure — writes will hang indefinitely waiting for the
+   * local cache to acknowledge them. Network round-trips never happen, so there's
+   * no error to surface.
+   *
+   * The fix is to terminate the Firestore instance, clear the IndexedDB store,
+   * then reload. The SDK strictly requires this order — clearIndexedDbPersistence
+   * throws "failed-precondition" if Firestore is still active or has any open
+   * listeners. After clearing, the SDK can't be reinitialized in the same JS
+   * context (also by design), so we force a page reload.
+   *
+   * Local state in localStorage is untouched. On next launch, the Firestore SDK
+   * starts with a fresh cache and pulls everything from the server, then merges
+   * with the local copy via the usual LWW logic.
+   */
+  async function clearFirestoreCache() {
+    const { clearIndexedDbPersistence, terminate } = window.__firebase;
+    if (!firestoreDb || !clearIndexedDbPersistence || !terminate) {
+      throw new Error('Firestore not initialized');
+    }
+    // 1. Detach all snapshot listeners so terminate() can run
+    if (unsubscribeSnapshot) {
+      try { unsubscribeSnapshot(); } catch (e) { /* ignore */ }
+      unsubscribeSnapshot = null;
+    }
+    // 2. Terminate the Firestore instance — required before clearIndexedDbPersistence
+    try {
+      await terminate(firestoreDb);
+    } catch (e) {
+      console.warn('[sync] terminate threw (continuing anyway):', e);
+    }
+    // 3. Wipe the IndexedDB store
+    await clearIndexedDbPersistence(firestoreDb);
+    // 4. Caller is responsible for reloading the page after this resolves.
+    return true;
+  }
+
   // Generate a 6-char readable sync code (no ambiguous chars)
   function generateSyncCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
@@ -8437,7 +8482,11 @@ Here is the recipe:
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
             Reset Sync State
           </button>
-          <p class="help" style="margin: 6px 0 0; text-align: center; font-size: 11px;">If sync is stuck "syncing" forever, tap Reset to clear the in-flight flag, then Force Sync Now.</p>
+          <button class="btn btn-sm btn-block" id="diag-clear-cache" style="margin-top: 6px; color: var(--warn); border-color: var(--warn);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Clear Firestore Cache
+          </button>
+          <p class="help" style="margin: 6px 0 0; text-align: center; font-size: 11px;">If sync is stuck "syncing" forever, tap Reset to clear the in-flight flag, then Force Sync Now. If that still doesn't work, Clear Firestore Cache wipes the local sync cache (your data is safe) and reloads — pulls everything fresh from the cloud.</p>
         </div>
         <div>
           <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Maintenance</div>
@@ -8503,6 +8552,38 @@ Here is the recipe:
         renderSyncStatus();
         renderDiagnostics();
         toast('Sync state reset', 'info');
+      });
+    }
+
+    // Wire "Clear Firestore Cache" — last-resort fix for a wedged IndexedDB
+    // cache. Terminates Firestore, wipes the local cache, reloads the page.
+    // localStorage data is preserved; only the Firestore SDK's offline cache
+    // is cleared. After reload, the SDK pulls fresh state from the cloud.
+    const clearCacheBtn = document.getElementById('diag-clear-cache');
+    if (clearCacheBtn) {
+      clearCacheBtn.addEventListener('click', async () => {
+        const ok = await showConfirm({
+          title: 'Clear Firestore Cache?',
+          message: 'This wipes the local sync cache (corrupted state, queued writes) and reloads the app. Your recipes, bakes, and settings stay safe — they\'ll be re-fetched from the cloud. Use this if sync keeps timing out.',
+          buttons: [
+            { label: 'Clear & Reload', style: 'primary', value: true },
+            { label: 'Cancel', style: 'ghost', value: false },
+          ],
+        });
+        if (!ok) return;
+        clearCacheBtn.disabled = true;
+        clearCacheBtn.textContent = 'Clearing…';
+        try {
+          await clearFirestoreCache();
+          toast('Cache cleared, reloading…', 'success');
+          // Small delay so the toast is visible before reload
+          setTimeout(() => window.location.reload(), 800);
+        } catch (e) {
+          console.error('[sync] clearFirestoreCache failed:', e);
+          clearCacheBtn.disabled = false;
+          clearCacheBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Clear Firestore Cache';
+          toast(`Couldn\'t clear cache: ${e.message || e}`, 'error');
+        }
       });
     }
 
