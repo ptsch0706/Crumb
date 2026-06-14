@@ -1442,9 +1442,18 @@
       } catch (e) { return '/'; }
     })();
     const items = [];
-    // Iterate stages; skip already-done; for waits, fire when stage END is reached
-    // (the user's next action); for hands-on, fire when stage START is reached.
-    // Also include concurrent timer fires within wait stages.
+    // Notification rule: ONE notification per stage, fired when that stage STARTS.
+    // This avoids the previous behavior where wait-stage-end and next-stage-start
+    // both fired at the same moment, producing duplicate alerts.
+    //
+    // Special cases:
+    //   - The first stage's notification is suppressed (you just tapped Start Bake;
+    //     no point telling you the stage you just started has started)
+    //   - If the recipe ends on a WAIT stage (e.g. "Cool 30 min"), we fire one extra
+    //     notification at the END of that final wait, since otherwise there'd be no
+    //     "your bake is done" alert
+    //   - Concurrent timers within waits still fire at their offsets (they're
+    //     independent actions like "preheat oven")
     for (let i = 0; i < recipe.stages.length; i++) {
       const ss = bake.stageStates[i];
       if (ss && ss.done) continue;
@@ -1452,7 +1461,7 @@
       const stageStart = getStageScheduledStart(recipe, i, bake);
       const stageDurMs = getStageDur(recipe, i, bake) * 60000;
       const stageEnd = new Date(stageStart.getTime() + stageDurMs);
-      // Concurrent timers (within wait stages)
+      // Concurrent timers (within wait stages) — these stay, they're independent actions
       if (stage.isWait && Array.isArray(stage.concurrentTimers)) {
         for (const ct of stage.concurrentTimers) {
           const fireAt = stageStart.getTime() + (ct.offsetMin || 0) * 60000;
@@ -1466,24 +1475,39 @@
           });
         }
       }
-      // Main stage alert: wait stages alert at END (next action), hands-on at START
-      const fireAt = stage.isWait ? stageEnd.getTime() : stageStart.getTime();
-      if (fireAt <= now) continue;
-      // Look ahead to name the action — for wait stages it's the NEXT stage
-      let actionName;
-      if (stage.isWait) {
-        const nextStage = recipe.stages[i + 1];
-        actionName = nextStage ? `Next: ${nextStage.name}` : 'All stages complete';
-      } else {
-        actionName = `${stage.name} starts now`;
+      // Stage-start notification — but NOT for the very first stage (the user just
+      // tapped Start Bake; a notification telling them the bake started is redundant
+      // noise on an unlocked phone they're actively using).
+      if (i > 0) {
+        const fireAt = stageStart.getTime();
+        if (fireAt > now) {
+          items.push({
+            fireAt,
+            title: `Baking · ${recipe.name}`,
+            body: `${stage.name} starts now`,
+            tag: `stage-${bake.id}-${i}`,
+            url: `${pwaBaseUrl}?bake=${bake.id}`,
+          });
+        }
       }
-      items.push({
-        fireAt,
-        title: `Baking · ${recipe.name}`,
-        body: actionName,
-        tag: `stage-${bake.id}-${i}`,
-        url: `${pwaBaseUrl}?bake=${bake.id}`,
-      });
+      // "Bake complete" notification: only if this is the LAST stage AND it's a wait.
+      // A wait stage ends with no next stage to trigger an alert, so without this
+      // explicit notification the user would never know the bake had finished.
+      // For a recipe ending on a hands-on stage (e.g. "Slice and serve"), the user
+      // is already actively working, so no end-notification is needed.
+      const isLastStage = i === recipe.stages.length - 1;
+      if (isLastStage && stage.isWait) {
+        const fireAt = stageEnd.getTime();
+        if (fireAt > now) {
+          items.push({
+            fireAt,
+            title: `Baking · ${recipe.name}`,
+            body: `${recipe.name} is ready`,
+            tag: `done-${bake.id}`,
+            url: `${pwaBaseUrl}?bake=${bake.id}`,
+          });
+        }
+      }
     }
     if (items.length === 0) {
       // Nothing in the future — still call /schedule with empty list to clear any
@@ -1980,8 +2004,18 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.28.0';
+  const APP_VERSION = '1.30.0';
   const CHANGELOG = [
+    { version: '1.30.0', date: '2026-06-14', notes: [
+      'Fixed: duplicate notifications at the same moment. Previously a wait stage ending and the next stage starting would BOTH fire — same timestamp, two buzzes. Now only ONE notification fires per stage, at the start of that stage.',
+      'New rule: one notification per stage start. The first stage is skipped (you just tapped Start Bake, no reminder needed). Recipes ending on a wait stage get a final "[recipe] is ready" alert so you know to take your bread out.',
+      'Concurrent timers (preheat oven, etc.) keep firing on their own schedule — they\'re separate actions, not stage transitions.',
+      'Notifications modal updated to mirror the new scheduling exactly so the preview matches what actually fires.',
+    ]},
+    { version: '1.29.0', date: '2026-06-14', notes: [
+      'Active bake: ingredients checklist on the current stage now uses smaller text (12px vs 14px), tighter padding, and a smaller checkbox. Creates more breathing room before the "Done by" countdown below.',
+      'Active bake: recipe title and notes now appear under the Mark Done area. Previously these disappeared as soon as a bake went active — now you always see what you\'re baking without scrolling to the All Stages list.',
+    ]},
     { version: '1.28.0', date: '2026-06-14', notes: [
       'Recipe page: Start Bake and Edit Recipe buttons are now side-by-side, each taking ~half the width. Both are icon-only (play arrow for start, pencil for edit) and slightly taller for a chunkier, easier-to-tap target. Start Bake remains the primary (orange-filled) action.',
     ]},
@@ -4864,8 +4898,8 @@
           const checks = ab.stageStates[curIdx].ingredientChecks;
           const scale = ab.scaleFactor || 1;
           return `
-            <div class="stage-ingredients" style="margin-top: 14px; padding: 10px 12px; background: rgba(255,255,255,0.12); border-radius: 10px;">
-              <div style="font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 6px;">Ingredients for this step</div>
+            <div class="stage-ingredients" style="margin-top: 12px; padding: 8px 10px; background: rgba(255,255,255,0.12); border-radius: 8px;">
+              <div style="font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 4px;">Ingredients for this step</div>
               ${matched.map(ing => {
                 // Use the ingredient's name as the stable key (ids don't exist in this schema)
                 const key = ing.name;
@@ -4877,8 +4911,8 @@
                 const displayedQty = parsed ? formatWeightAs(parsed, override) : scaledQty;
                 const isWeight = !!parseWeight(scaledQty);
                 return `
-                  <label class="stage-ing-row" data-ing-key="${escapeHtml(key)}" style="display: flex; align-items: center; gap: 10px; padding: 6px 0; cursor: pointer; font-size: 14px;">
-                    <span class="stage-ing-box" style="width: 20px; height: 20px; border-radius: 5px; border: 2px solid currentColor; flex-shrink: 0; display: flex; align-items: center; justify-content: center; opacity: ${checked ? 1 : 0.55}; background: ${checked ? 'currentColor' : 'transparent'};">${checked ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--bake-accent)" stroke-width="3" style="width: 12px; height: 12px;"><path d="M5 13l4 4L19 7"/></svg>' : ''}</span>
+                  <label class="stage-ing-row" data-ing-key="${escapeHtml(key)}" style="display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; font-size: 12px;">
+                    <span class="stage-ing-box" style="width: 16px; height: 16px; border-radius: 4px; border: 2px solid currentColor; flex-shrink: 0; display: flex; align-items: center; justify-content: center; opacity: ${checked ? 1 : 0.55}; background: ${checked ? 'currentColor' : 'transparent'};">${checked ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--bake-accent)" stroke-width="3" style="width: 10px; height: 10px;"><path d="M5 13l4 4L19 7"/></svg>' : ''}</span>
                     <span style="flex: 1; ${checked ? 'text-decoration: line-through; opacity: 0.55;' : ''}">${escapeHtml(ing.name)}${displayedQty ? ` <span ${isWeight ? `class="qty-convertible-bake" data-ing-name="${escapeAttr(ing.name)}"` : ''} style="opacity: 0.7;${isWeight ? ' border-bottom: 1px dotted rgba(255,255,255,0.5); cursor: pointer;' : ''}">· ${escapeHtml(displayedQty)}</span>` : ''}</span>
                   </label>
                 `;
@@ -4917,6 +4951,20 @@
 
       <button class="btn btn-block" id="btn-adjust-timer" style="display: none;"></button>
       <button class="btn btn-block" id="btn-edit-recipe-active" style="display: none;"></button>
+
+      <!-- Recipe identity block — shown after the bake hero / Mark Done area so the
+           user always knows which recipe is baking without scrolling to the All Stages
+           list. The title matches the schedule view's pre-bake header treatment for
+           visual continuity. Notes only appear if the recipe has any. -->
+      <div style="margin-top: 20px; padding: 0 4px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          ${renderRecipeIcon(recipe.icon, 32)}
+          <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; line-height: 1.15;">${escapeHtml(recipe.name)}</div>
+        </div>
+        ${recipe.notes ? `
+          <div style="margin-top: 10px; font-size: 13px; color: var(--ink-soft); line-height: 1.55; white-space: pre-wrap;">${renderNotesHtml(recipe.notes)}</div>
+        ` : ''}
+      </div>
 
       ${recipe.ingredients && recipe.ingredients.length > 0 ? `
         <div class="section-title">Ingredients${ab.scaleFactor && ab.scaleFactor !== 1 ? ` <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-mute);">· scaled ${ab.scaleFactor}×</span>` : ''}</div>
@@ -6911,23 +6959,27 @@ Here is the recipe:
             });
           }
         }
-        // Main stage notification — wait stages fire at end, hands-on fire at start
-        const fireAt = stage.isWait ? stageEnd.getTime() : stageStart.getTime();
-        let label, sublabel;
-        if (stage.isWait) {
-          const nextStage = recipe.stages[i + 1];
-          if (nextStage) {
-            label = `${stage.name} ends → ${nextStage.name}`;
-            sublabel = `${formatDur(stageDurMin)} wait ends`;
-          } else {
-            label = `${stage.name} ends`;
-            sublabel = 'Bake complete';
-          }
-        } else {
-          label = `${stage.name} starts`;
-          sublabel = 'Hands-on stage';
+        // Mirror schedulePushNotificationsForBake exactly: notification fires at stage
+        // START, except the first stage (suppressed — the user just tapped Start Bake).
+        if (i > 0) {
+          items.push({
+            fireAt: stageStart.getTime(),
+            label: `${stage.name} starts`,
+            sublabel: stage.isWait ? `${formatDur(stageDurMin)} wait stage` : 'Hands-on stage',
+            isPast: stageStart.getTime() <= now,
+          });
         }
-        items.push({ fireAt, label, sublabel, isPast: fireAt <= now });
+        // "Bake complete" — only when the recipe ends on a wait stage. Otherwise the
+        // last stage is hands-on and its start notification already marked the action.
+        const isLastStage = i === recipe.stages.length - 1;
+        if (isLastStage && stage.isWait) {
+          items.push({
+            fireAt: stageEnd.getTime(),
+            label: `${recipe.name} is ready`,
+            sublabel: 'Bake complete',
+            isPast: stageEnd.getTime() <= now,
+          });
+        }
       }
       // Sort by fire time
       items.sort((a, b) => a.fireAt - b.fireAt);
