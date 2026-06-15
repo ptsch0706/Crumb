@@ -530,16 +530,16 @@
   /* Aborted bakes (0 stages done) get a muted treatment so they don't shout */
   .history-card.aborted { opacity: 0.72; }
   /* Header row layout */
-  .hc-header { display: flex; align-items: flex-start; gap: 12px; }
-  .hc-icon { flex-shrink: 0; margin-top: 2px; }
-  .hc-identity { flex: 1; min-width: 0; }
-  .hc-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; line-height: 1.2; }
+  .hc-header { display: flex; align-items: center; gap: 12px; }
+  .hc-icon { flex-shrink: 0; }
+  .hc-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .hc-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; line-height: 1.1; }
   /* Meta row: date/duration/stages on the left, score on the right.
      Score lives here (rather than next to the title) so a long recipe name
      can't wrap-collide with the score and create vertical gaps. Both children
      are flex with explicit line-heights so neither one inflates the row. */
-  .hc-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; min-height: 0; }
-  .hc-meta { font-size: 12px; color: var(--ink-mute); line-height: 1.35; flex: 1; min-width: 0; }
+  .hc-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; min-height: 0; }
+  .hc-meta { font-size: 12px; color: var(--ink-mute); line-height: 1.2; flex: 1; min-width: 0; }
   /* Score row — actual SVG stars instead of dots. Display:flex (not inline-flex)
      and a 0 line-height anchor prevent the row from being taller than the icons. */
   .hc-score { display: flex; gap: 2px; flex-shrink: 0; align-items: center; line-height: 0; }
@@ -567,24 +567,24 @@
   .hc-rate-stub svg { width: 11px; height: 11px; color: var(--ink-mute); }
   .hc-rate-stub:active { background: var(--line-soft, var(--line)); }
   /* Pills below the header (temp, scale) */
-  .hc-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .hc-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   /* Photo strip — first 3 photos with overflow "+N more" badge */
-  .hc-photos { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
-  .hc-photos img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex-shrink: 0; cursor: pointer; border: 1px solid var(--line); }
+  .hc-photos { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .hc-photos img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex-shrink: 0; cursor: pointer; border: 1px solid var(--line); display: block; }
   .hc-photo-more {
-    width: 64px; height: 64px;
+    width: 56px; height: 56px;
     border-radius: 8px;
     background: var(--bg-warm);
     border: 1px solid var(--line);
     display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 600; color: var(--ink-soft);
+    font-size: 13px; font-weight: 600; color: var(--ink-soft);
     flex-shrink: 0;
     font-family: 'JetBrains Mono', monospace;
   }
   /* Notes preview — truncated to 2 lines with ellipsis. Full notes in detail modal. */
   .hc-notes-preview {
     margin-top: 10px;
-    padding-top: 10px;
+    padding-top: 8px;
     border-top: 1px solid var(--line-soft, var(--line));
     font-size: 13px;
     color: var(--ink-soft);
@@ -606,7 +606,7 @@
   /* "Add notes" affordance for bakes without any notes */
   .hc-add-notes {
     margin-top: 10px;
-    padding-top: 10px;
+    padding-top: 8px;
     border-top: 1px solid var(--line-soft, var(--line));
     font-size: 12px;
     color: var(--crust-deep);
@@ -615,10 +615,14 @@
     align-items: center;
     gap: 4px;
     background: none;
-    border: none;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
     cursor: pointer;
     font-family: inherit;
-    padding: 0;
+    padding-left: 0;
+    padding-right: 0;
+    padding-bottom: 0;
     -webkit-tap-highlight-color: transparent;
   }
   .hc-add-notes svg { width: 12px; height: 12px; }
@@ -3073,8 +3077,16 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.37.2';
+  const APP_VERSION = '1.37.3';
   const CHANGELOG = [
+    { version: '1.37.3', date: '2026-06-14', notes: [
+      'History cards: tightened all internal spacing.',
+      'Title line-height reduced from 1.2 to 1.1 — was leaving an extra ~3-4px of leading above the meta row.',
+      'Meta line-height reduced from 1.35 to 1.2 — text wraps slightly less generously but the row is more compact.',
+      'Photos: shrunk from 64x64 to 56x56, and the img tag is now display: block so the inline-baseline gap below images (typical ~4-6px) is gone.',
+      'Photos, pills, and notes preview now use 8px gap instead of 10px between sections.',
+      'Header layout simplified — icon vertically centered with content instead of top-aligned with a manual margin hack. Eliminates the case where a tall icon column added empty space below a short identity column.',
+    ]},
     { version: '1.37.2', date: '2026-06-14', notes: [
       'Fixed: extra vertical space on rated history cards. Root cause was the score SVGs lacking explicit width/height attributes — SVGs without those default to a 300×150 box for layout purposes, even with CSS overriding the visible size. The browser was reserving phantom vertical space for the "true" SVG size before applying the CSS width/height, inflating the meta row.',
       'Score stars now ship with hardcoded width/height attributes so they\'re sized correctly from the first paint, with no layout reflow.',
