@@ -535,15 +535,37 @@
   .hc-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .hc-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; line-height: 1.1; }
   /* Meta row: date/duration/stages on the left, score on the right.
-     Score lives here (rather than next to the title) so a long recipe name
-     can't wrap-collide with the score and create vertical gaps. Both children
-     are flex with explicit line-heights so neither one inflates the row. */
-  .hc-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; min-height: 0; }
-  .hc-meta { font-size: 12px; color: var(--ink-mute); line-height: 1.2; flex: 1; min-width: 0; }
-  /* Score row — actual SVG stars instead of dots. Display:flex (not inline-flex)
-     and a 0 line-height anchor prevent the row from being taller than the icons. */
-  .hc-score { display: flex; gap: 2px; flex-shrink: 0; align-items: center; line-height: 0; }
-  .hc-score svg { width: 13px; height: 13px; display: block; }
+     Both children explicitly height-locked so the row matches the meta text height
+     and the score icons can never inflate the row. */
+  .hc-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 2px;
+    height: 16px; /* explicit height: matches meta text at 12px × 1.35 line-height ≈ 16px */
+  }
+  .hc-meta {
+    font-size: 12px;
+    color: var(--ink-mute);
+    line-height: 16px;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Score row — display: flex, height matches the meta row exactly, line-height: 0
+     to prevent the icons from contributing any line-box padding. */
+  .hc-score {
+    display: flex;
+    gap: 1px;
+    flex-shrink: 0;
+    align-items: center;
+    height: 16px;
+    line-height: 0;
+  }
+  .hc-score svg { width: 12px; height: 12px; display: block; flex-shrink: 0; }
   .hc-score .filled { color: var(--crust); fill: var(--crust); }
   .hc-score .empty { color: var(--line); fill: none; }
   /* "Tap to rate" affordance on unrated bakes — clickable to open the editor straight to score */
@@ -551,7 +573,8 @@
     display: inline-flex;
     gap: 3px;
     align-items: center;
-    padding: 3px 8px;
+    padding: 0 8px;
+    height: 16px;
     background: var(--bg-warm);
     border: 1px solid var(--line);
     border-radius: 100px;
@@ -564,7 +587,7 @@
     font-family: inherit;
     line-height: 1;
   }
-  .hc-rate-stub svg { width: 11px; height: 11px; color: var(--ink-mute); }
+  .hc-rate-stub svg { width: 10px; height: 10px; color: var(--ink-mute); display: block; }
   .hc-rate-stub:active { background: var(--line-soft, var(--line)); }
   /* Pills below the header (temp, scale) */
   .hc-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
@@ -3077,8 +3100,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.37.3';
+  const APP_VERSION = '1.37.4';
   const CHANGELOG = [
+    { version: '1.37.4', date: '2026-06-14', notes: [
+      'History cards: locked meta row to a fixed 16px height so the score element can never inflate it.',
+      'Previously the row used align-items: center with auto-sized children — even though the children were small, something (likely an SVG-baseline interaction) was inflating the row height. Now meta row has explicit height: 16px and both children (.hc-meta text, .hc-score icons, .hc-rate-stub button) are locked to 16px too.',
+      'Score icon size shrunk from 13px to 12px to comfortably fit in 16px.',
+      'Note for testing: if cards still look spaced out, force-quit and reopen the PWA to clear the service worker cache. The CSS changes can\'t take effect if the cached old CSS is still being served.',
+    ]},
     { version: '1.37.3', date: '2026-06-14', notes: [
       'History cards: tightened all internal spacing.',
       'Title line-height reduced from 1.2 to 1.1 — was leaving an extra ~3-4px of leading above the meta row.',
