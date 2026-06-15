@@ -301,12 +301,692 @@
     mask-image: linear-gradient(to right, black 85%, transparent 100%);
   }
   #recipe-category-chips::-webkit-scrollbar { display: none; }
+  /* History filter chips — same treatment as recipe chips. Shows the recipe-name
+     filter row at the top of History when there are 2+ recipes with bakes. */
+  #history-filter-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+    mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  }
+  #history-filter-chips::-webkit-scrollbar { display: none; }
   .recipe-item { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; cursor: pointer; transition: all 0.15s; position: relative; }
   .recipe-item:active { transform: scale(0.99); background: var(--bg-warm); }
   /* Active bake state: thicker accent border on the left plus a soft fill to make
      "this recipe is currently baking" unmissable on a busy list. Uses --bake-accent
      CSS var so each bake's chosen color flows through. */
   .recipe-item.is-baking { border-left: 4px solid var(--bake-accent); background: linear-gradient(to right, color-mix(in srgb, var(--bake-accent) 6%, var(--bg-elev)), var(--bg-elev) 40%); }
+
+  /* =========================================================================
+     ACTIVE BAKE CARDS — used on the Active tab
+     =========================================================================
+     Each card represents one in-progress bake. Visual treatment:
+       - Thick left border in the bake's color (consistency with recipe-item.is-baking)
+       - Subtle color wash from left to right
+       - Header row: icon, recipe name, start-time, end-button (or menu)
+       - Status block: current stage + countdown
+       - Segmented progress bar showing each stage as a discrete segment
+       - Footer metadata: "X of Y stages · Done by 5:30 PM"
+     CSS variable --bake-accent flows the bake's chosen color into every part. */
+  .active-bake-card {
+    position: relative;
+    background: linear-gradient(to right, color-mix(in srgb, var(--bake-accent) 6%, var(--bg-elev)), var(--bg-elev) 50%);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--bake-accent);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: transform 0.15s, background 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .active-bake-card:active { transform: scale(0.99); }
+  /* Header: icon, identity, action button. All children gap-controlled. */
+  .abc-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .abc-icon { flex-shrink: 0; display: flex; align-items: center; }
+  .abc-identity { flex: 1; min-width: 0; }
+  .abc-recipe-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; line-height: 1.2; }
+  .abc-started { font-size: 11px; color: var(--ink-mute); margin-top: 2px; font-weight: 500; }
+  /* End button — proper button affordance, not a borderline link. */
+  .abc-end-btn {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.12s, color 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .abc-end-btn:active { background: var(--bg-warm); color: var(--ink); }
+  /* Status block — current stage name + countdown. Combined into a tight visual unit. */
+  .abc-status { margin-bottom: 12px; }
+  .abc-stage-name { font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.3; }
+  .abc-stage-meta { font-size: 11px; color: var(--ink-mute); margin-top: 1px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .abc-countdown { font-size: 13px; color: var(--ink-soft); margin-top: 4px; line-height: 1.3; }
+  .abc-countdown .mono { font-family: 'JetBrains Mono', monospace; font-weight: 500; color: var(--ink); }
+  .abc-countdown .warn { color: var(--warn); font-weight: 600; }
+  .abc-countdown .ready { color: var(--leaven); font-weight: 600; }
+  .abc-countdown .crust { color: var(--crust); font-weight: 600; }
+  /* Concurrent timers indicator — small chip showing how many CTs are active */
+  .abc-ct-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    padding: 2px 8px;
+    background: var(--bg-warm);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    font-size: 10px;
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+  .abc-ct-pill svg { width: 10px; height: 10px; }
+  /* Segmented progress bar — one segment per stage, highlighted as completed. */
+  .abc-progress { display: flex; gap: 3px; margin-top: 4px; }
+  .abc-progress-seg { flex: 1; height: 4px; background: var(--line); border-radius: 2px; transition: background 0.3s; }
+  .abc-progress-seg.done { background: var(--bake-accent); }
+  .abc-progress-seg.current { background: var(--bake-accent); opacity: 0.5; }
+  /* Footer metadata: "3 of 5 stages · Done by 5:30 PM" */
+  .abc-footer { font-size: 11px; color: var(--ink-mute); margin-top: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .abc-footer .mono { font-family: 'JetBrains Mono', monospace; }
+  .abc-footer .dot { color: var(--line); }
+  /* Quick action button — appears for stages that need user action (Mark Done) */
+  .abc-quick-action {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bake-accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .abc-quick-action:active { transform: scale(0.99); opacity: 0.92; }
+  .abc-quick-action svg { width: 16px; height: 16px; stroke-width: 2.2; }
+  .abc-quick-action.complete { background: var(--leaven); }
+
+  /* "Next action" banner — only shown when 2+ bakes are running */
+  .abc-banner {
+    background: color-mix(in srgb, var(--banner-color, var(--crust)) 12%, var(--bg-elev));
+    border: 1px solid var(--banner-color, var(--crust));
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .abc-banner.overdue { background: rgba(196, 90, 74, 0.12); border-color: var(--warn); }
+  .abc-banner-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--banner-color, var(--crust));
+    margin-bottom: 4px;
+  }
+  .abc-banner.overdue .abc-banner-eyebrow { color: var(--warn); }
+  .abc-banner-headline { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; color: var(--ink); line-height: 1.25; letter-spacing: -0.01em; }
+  .abc-banner-meta { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+
+  /* Empty state custom SVG illustration container */
+  .active-empty-illus { width: 96px; height: 96px; margin: 0 auto 20px; color: var(--crust); opacity: 0.4; }
+  .active-empty-illus svg { width: 100%; height: 100%; }
+
+  /* =========================================================================
+     STARTER SECTION on Active tab
+     =========================================================================
+     Visually subordinate to active bakes (smaller header, less prominence). */
+  .starter-section { margin-top: 32px; }
+  .starter-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 0 4px;
+  }
+  .starter-section-header h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    letter-spacing: -0.01em;
+    margin: 0;
+    line-height: 1.2;
+  }
+  .starter-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .starter-card-title { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; }
+  .starter-card-away { font-size: 12px; color: var(--leaven); font-weight: 600; }
+  .starter-schedule-list { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .starter-schedule-row { font-size: 12px; color: var(--ink-soft); padding: 3px 0; display: flex; justify-content: space-between; gap: 8px; }
+  .starter-schedule-row .when { font-family: 'JetBrains Mono', monospace; color: var(--ink-mute); font-size: 11px; }
+  /* Starter feed log — small list of recent feedings */
+  .starter-feedlog { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .starter-feedlog-header { font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .starter-feedlog-row { font-size: 12px; color: var(--ink-soft); padding: 3px 0; display: flex; justify-content: space-between; gap: 8px; }
+  .starter-feedlog-row .when { font-family: 'JetBrains Mono', monospace; color: var(--ink-mute); font-size: 11px; }
+  .starter-feed-now-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--leaven);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .starter-feed-now-btn:active { opacity: 0.92; }
+  .starter-feed-now-btn svg { width: 14px; height: 14px; }
+
+  /* =========================================================================
+     HISTORY CARDS — used on the History tab
+     =========================================================================
+     Each card represents one past bake. Visual treatment:
+       - Optional accent border based on bake color (consistency with active cards)
+       - Header: icon, recipe name, score stars, relative date, actions
+       - Optional photo strip (first 3 + count badge) with edge fade
+       - Notes preview (1-2 lines), tap-through to full notes
+       - Whole-card tap opens detail modal
+     Notes preview prevents cards from becoming visually unbounded. */
+  .history-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .history-card:active { transform: scale(0.99); background: var(--bg-warm); }
+  /* Aborted bakes (0 stages done) get a muted treatment so they don't shout */
+  .history-card.aborted { opacity: 0.72; }
+  /* Header row layout */
+  .hc-header { display: flex; align-items: flex-start; gap: 12px; }
+  .hc-icon { flex-shrink: 0; margin-top: 2px; }
+  .hc-identity { flex: 1; min-width: 0; }
+  .hc-name { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; line-height: 1.2; }
+  .hc-meta { font-size: 12px; color: var(--ink-mute); margin-top: 3px; line-height: 1.35; }
+  /* Score row — actual SVG stars instead of dots */
+  .hc-score { display: inline-flex; gap: 2px; vertical-align: -3px; margin-left: 8px; }
+  .hc-score svg { width: 14px; height: 14px; }
+  .hc-score .filled { color: var(--crust); fill: var(--crust); }
+  .hc-score .empty { color: var(--line); fill: none; }
+  /* "Tap to rate" affordance on unrated bakes — clickable to open the editor straight to score */
+  .hc-rate-stub {
+    display: inline-flex;
+    gap: 2px;
+    align-items: center;
+    margin-left: 8px;
+    vertical-align: -3px;
+    padding: 2px 6px;
+    background: var(--bg-warm);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    font-size: 10px;
+    color: var(--ink-mute);
+    font-weight: 500;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .hc-rate-stub svg { width: 10px; height: 10px; color: var(--line); fill: var(--line); }
+  .hc-rate-stub:active { background: var(--line-soft, var(--line)); }
+  /* Pills below the header (temp, scale) */
+  .hc-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  /* Photo strip — first 3 photos with overflow "+N more" badge */
+  .hc-photos { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+  .hc-photos img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex-shrink: 0; cursor: pointer; border: 1px solid var(--line); }
+  .hc-photo-more {
+    width: 64px; height: 64px;
+    border-radius: 8px;
+    background: var(--bg-warm);
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 600; color: var(--ink-soft);
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  /* Notes preview — truncated to 2 lines with ellipsis. Full notes in detail modal. */
+  .hc-notes-preview {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line-soft, var(--line));
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hc-notes-preview .label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-mute);
+    margin-right: 6px;
+  }
+  /* "Add notes" affordance for bakes without any notes */
+  .hc-add-notes {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line-soft, var(--line));
+    font-size: 12px;
+    color: var(--crust-deep);
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .hc-add-notes svg { width: 12px; height: 12px; }
+  .hc-add-notes:active { opacity: 0.6; }
+  /* Date section headers on the history list */
+  .history-section-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-mute);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 18px 0 10px;
+    padding: 0 4px;
+  }
+  .history-section-header:first-child { margin-top: 4px; }
+  /* History empty-state SVG container */
+  .history-empty-illus { width: 96px; height: 96px; margin: 0 auto 20px; color: var(--crust); opacity: 0.4; }
+  .history-empty-illus svg { width: 100%; height: 100%; }
+
+  /* =========================================================================
+     STATS TAB — used on the Stats view
+     =========================================================================
+     Shared visual vocabulary for the Stats tab. Cards, tiles, bar charts, and
+     section headers all live here. Same naming convention as .recipe-item /
+     .active-bake-card / .history-card for consistency. */
+
+  /* Date-range selector — pill segmented control at the top of Stats */
+  .stats-range {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: 100px;
+    padding: 3px;
+    margin-bottom: 18px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .stats-range::-webkit-scrollbar { display: none; }
+  .stats-range-btn {
+    background: transparent;
+    border: none;
+    color: var(--ink-soft);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 100px;
+    cursor: pointer;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .stats-range-btn.active {
+    background: var(--crust);
+    color: white;
+    font-weight: 600;
+  }
+
+  /* Standard card wrapping a stats section */
+  .stats-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 14px;
+  }
+
+  /* Section header with optional icon — replaces uppercase eyebrow .section-title
+     on Stats for a more confident visual treatment. Each section can carry a
+     small svg icon to help with scanning. */
+  .stats-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 22px 0 10px;
+    padding: 0 4px;
+  }
+  .stats-section-header:first-child { margin-top: 0; }
+  .stats-section-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--bg-warm);
+    color: var(--crust-deep);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .stats-section-icon svg { width: 14px; height: 14px; stroke-width: 2; }
+  .stats-section-title {
+    font-family: 'Fraunces', serif;
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    flex: 1;
+    line-height: 1.2;
+  }
+
+  /* Headline tile (2x2 grid at top of activity section) */
+  .stats-tile {
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .stats-tile.tappable { cursor: pointer; transition: background 0.15s; }
+  .stats-tile.tappable:active { background: var(--bg-warm); }
+  .stats-tile-label {
+    font-size: 11px;
+    color: var(--ink-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .stats-tile-value {
+    font-family: 'Fraunces', serif;
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-top: 4px;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  .stats-tile-sub {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-top: 4px;
+    line-height: 1.3;
+  }
+  /* Delta pill — shows up/down vs prior period inside tile subs */
+  .stats-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 4px;
+  }
+  .stats-delta.up { background: rgba(122, 141, 92, 0.16); color: var(--leaven); }
+  .stats-delta.down { background: rgba(196, 90, 74, 0.14); color: var(--warn); }
+  .stats-delta.flat { background: var(--bg-warm); color: var(--ink-mute); }
+  .stats-delta svg { width: 10px; height: 10px; stroke-width: 2.5; }
+
+  /* Activity card sub-stats row (3 columns: Last 30 / This year / Peak day) */
+  .stats-activity-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  /* On narrow screens, allow wrapping rather than crushing — Peak day drops below */
+  @media (max-width: 360px) {
+    .stats-activity-row { grid-template-columns: 1fr 1fr; }
+    .stats-activity-row > div:nth-child(3) { grid-column: 1 / span 2; }
+  }
+  .stats-activity-row .label {
+    font-size: 11px; color: var(--ink-mute);
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+  }
+  .stats-activity-row .value {
+    font-family: 'Fraunces', serif;
+    font-size: 22px; font-weight: 500;
+    color: var(--ink);
+    margin-top: 2px;
+    line-height: 1.1;
+  }
+
+  /* Bar charts — shared treatment for day-of-week and monthly trend */
+  .stats-bars {
+    display: grid;
+    gap: 6px;
+    align-items: end;
+    height: 90px;
+  }
+  .stats-bars.dow { grid-template-columns: repeat(7, 1fr); }
+  .stats-bars.monthly { grid-template-columns: repeat(12, 1fr); gap: 4px; }
+  .stats-bar-col {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px; height: 100%;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .stats-bar-fill-wrap {
+    flex: 1; width: 100%;
+    display: flex; align-items: flex-end;
+    position: relative;
+  }
+  .stats-bar-fill {
+    width: 100%;
+    background: var(--crust);
+    opacity: 0.45;
+    border-radius: 3px 3px 0 0;
+    transition: opacity 0.15s, background 0.15s;
+  }
+  .stats-bar-fill.peak { background: var(--crust); opacity: 1; }
+  .stats-bar-fill.active { background: var(--crust); opacity: 1; }
+  .stats-bar-fill.zero { opacity: 0.12; min-height: 2px; }
+  .stats-bar-col:active .stats-bar-fill { background: var(--crust-deep); opacity: 1; }
+  /* Tooltip bubble above a bar when tapped */
+  .stats-bar-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translate(-50%, -6px);
+    background: var(--ink);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .stats-bar-col.show-tip .stats-bar-tooltip { opacity: 1; }
+  /* Bar labels under the chart */
+  .stats-bar-label {
+    font-size: 10px;
+    color: var(--ink-mute);
+    font-weight: 500;
+    line-height: 1;
+    text-align: center;
+  }
+  /* Diagonal labels for the 12-month chart so all months fit and are readable */
+  .stats-bar-label.diagonal {
+    transform: rotate(-45deg);
+    transform-origin: top center;
+    margin-top: 8px;
+    white-space: nowrap;
+  }
+  /* Bottom legend on the monthly chart */
+  .stats-chart-footer {
+    font-size: 11px;
+    color: var(--ink-mute);
+    margin-top: 28px;
+    text-align: center;
+  }
+
+  /* Top recipes list — tappable rows with thumbnail */
+  .stats-recipe-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    gap: 10px;
+    border-bottom: 1px solid var(--line-soft, var(--line));
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .stats-recipe-row:last-child { border-bottom: none; }
+  .stats-recipe-row:active { background: var(--bg-warm); }
+  .stats-recipe-rank {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--bg-warm);
+    color: var(--ink-soft);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    flex-shrink: 0;
+  }
+  .stats-recipe-rank.first { background: var(--crust); color: white; }
+  .stats-recipe-thumb {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    background: var(--bg-warm);
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    padding: 2px;
+  }
+  .stats-recipe-name {
+    flex: 1; min-width: 0;
+    font-size: 14px; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .stats-recipe-count {
+    font-size: 13px;
+    color: var(--ink-soft);
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    flex-shrink: 0;
+  }
+
+  /* Category breakdown rows */
+  .stats-cat-row { margin-bottom: 12px; }
+  .stats-cat-row:last-child { margin-bottom: 0; }
+  .stats-cat-row .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .stats-cat-row .name { font-size: 13px; color: var(--ink); }
+  .stats-cat-row .meta { font-size: 12px; color: var(--ink-soft); font-family: 'JetBrains Mono', monospace; }
+  .stats-cat-bar {
+    height: 6px;
+    background: var(--bg-warm);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .stats-cat-bar-fill {
+    height: 100%;
+    background: var(--crust);
+    border-radius: 3px;
+  }
+
+  /* Streak callout — visually distinct from regular stats cards */
+  .stats-streak-card {
+    background: linear-gradient(135deg, var(--leaven-soft, rgba(122, 141, 92, 0.14)), var(--bg-elev) 80%);
+    border: 1px solid var(--leaven);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .stats-streak-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    background: var(--leaven);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .stats-streak-icon svg { width: 22px; height: 22px; stroke-width: 2; }
+  .stats-streak-content { flex: 1; min-width: 0; }
+  .stats-streak-headline {
+    font-family: 'Fraunces', serif;
+    font-size: 18px; font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .stats-streak-sub {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+
+  /* Drift stats row — used in the drift card */
+  .stats-drift-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line-soft, var(--line));
+    gap: 10px;
+  }
+  .stats-drift-row:last-child { border-bottom: none; }
+  .stats-drift-stage {
+    font-size: 13px;
+    color: var(--ink);
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .stats-drift-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .stats-drift-value.late { color: var(--warn); }
+  .stats-drift-value.early { color: var(--leaven); }
+  .stats-drift-value.ontime { color: var(--ink-mute); }
+
+  /* Stats empty-state illustration container */
+  .stats-empty-illus { width: 96px; height: 96px; margin: 0 auto 20px; color: var(--crust); opacity: 0.4; }
+  .stats-empty-illus svg { width: 100%; height: 100%; }
   /* Baking pill (inline with the recipe name) */
   .baking-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: white; padding: 2px 8px; border-radius: 100px; font-family: Inter, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; vertical-align: middle; margin-left: 6px; }
   .baking-pill-dot { width: 5px; height: 5px; background: white; border-radius: 50%; display: inline-block; animation: pulse 1.6s ease-in-out infinite; }
@@ -339,9 +1019,17 @@
   .recipe-item.selected { background: var(--bg-warm); border-color: var(--crust); }
   .recipe-item.selected .recipe-checkbox { background: var(--crust); border-color: var(--crust); }
   .recipe-item.selected .recipe-checkbox::after { content: ''; width: 6px; height: 11px; border-right: 2px solid white; border-bottom: 2px solid white; transform: rotate(45deg) translate(-1px, -1px); }
-  /* Floating bulk action bar at bottom of screen */
+  /* Floating bulk action bar at bottom of screen. Sits above the bottom nav,
+     accounting for the iOS safe area inset. The nav is roughly:
+       6px top padding + 22px icon + 4px gap + 11px label + 6px bottom padding
+       = ~49px chrome
+     Plus var(--safe-bot) home-indicator inset (~34px on newer iPhones).
+     We add a 14px gap above the nav for visual breathing room. The calc()
+     keeps it self-correcting on devices without a home indicator. */
   .bulk-action-bar {
-    position: fixed; left: 12px; right: 12px; bottom: 80px; z-index: 50;
+    position: fixed; left: 12px; right: 12px;
+    bottom: calc(var(--safe-bot) + 65px);
+    z-index: 50;
     background: var(--ink); color: white; border-radius: var(--radius);
     padding: 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -739,6 +1427,11 @@
       <button class="btn btn-ghost btn-xs" id="recipe-sort-btn" title="Sort recipes" style="flex-shrink: 0;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
       </button>
+      <button class="btn btn-ghost btn-xs" id="recipe-density-btn" title="Toggle list density" style="flex-shrink: 0;" aria-label="Toggle list density">
+        <!-- Icon swaps between compact (3 tight lines) and comfortable (3 spaced lines)
+             based on current density — set dynamically by renderRecipeDensityButton -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;" id="recipe-density-icon"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
       <button class="btn btn-ghost btn-xs" id="recipe-select-btn" title="Select recipes" style="flex-shrink: 0;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17l2.5 2.5L21 15"/></svg>
       </button>
@@ -780,6 +1473,21 @@
 <!-- HISTORY VIEW -->
 <section class="view" id="view-history">
   <div class="page-header"><h1>History</h1></div>
+  <div id="history-filter-bar" style="margin-bottom: 12px; display: none;">
+    <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 10px;">
+      <div style="position: relative; flex: 1;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ink-mute); pointer-events: none;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="history-search" placeholder="Search bakes" style="width: 100%; padding: 8px 36px 8px 36px; border-radius: 100px; border: 1px solid var(--line); background: var(--bg-elev); font-family: inherit; font-size: 14px;">
+        <button id="history-search-clear" aria-label="Clear search" style="display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: var(--ink-mute); border: none; width: 18px; height: 18px; border-radius: 50%; padding: 0; cursor: pointer; align-items: center; justify-content: center; color: white;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 10px; height: 10px;"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <button class="btn btn-ghost btn-xs" id="history-sort-btn" title="Sort bakes" style="flex-shrink: 0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 18px; height: 18px;"><path d="M3 6h18M7 12h10M11 18h2"/></svg>
+      </button>
+    </div>
+    <div id="history-filter-chips"></div>
+  </div>
   <div id="history-list"></div>
 </section>
 
@@ -788,9 +1496,9 @@
   <div class="page-header"><h1>Active</h1></div>
   <div id="active-bakes-list"></div>
 
-  <div style="margin-top: 24px;">
-    <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-      <span>Starter</span>
+  <div class="starter-section">
+    <div class="starter-section-header">
+      <h2>Starter</h2>
       <button class="btn btn-ghost btn-xs" id="starter-edit-btn">Edit Schedule</button>
     </div>
     <div id="starter-content"></div>
@@ -1192,7 +1900,12 @@
     </button>
     <button class="settings-row" data-settings-page="view-settings-diag">
       <div class="settings-row-icon" style="background: rgba(140, 100, 60, 0.14); color: #8c643c;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 3a8 8 0 1 0 8 8M11 3l4 4-4 4M21 12h-4"/></svg>
+        <!-- Wrench icon — universal "tools / diagnostics / maintenance" symbol.
+             Clean two-prong wrench at a slight diagonal, more recognizable than
+             the previous arrow-loop which read as "refresh" or "sync". -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6a1.5 1.5 0 0 0 2.1 2.1l6-6a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2 2.4-2.6z"/>
+        </svg>
       </div>
       <div class="settings-row-content">
         <div class="settings-row-title">Diagnostics</div>
@@ -1202,7 +1915,13 @@
     </button>
     <button class="settings-row" data-settings-page="view-settings-about">
       <div class="settings-row-icon" style="background: var(--bg-warm); color: var(--ink-soft);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <!-- Speech-bubble with star inside — feels less generic than the standard
+             info-circle. Suggests "the story of the app / credits / something to
+             read" rather than a help button. -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/>
+          <path d="M12 8l1.5 3 3.3.3-2.5 2.2.8 3.2L12 15l-3.1 1.7.8-3.2L7.2 11.3l3.3-.3z" fill="currentColor" stroke="none" opacity="0.5"/>
+        </svg>
       </div>
       <div class="settings-row-content">
         <div class="settings-row-title">About</div>
@@ -2105,14 +2824,31 @@
     notificationsEnabled: false, // user opts in; permission requested at toggle-on
     recipeFilter: { text: '', categoryId: null }, // recipe list filter
     recipeSort: 'alpha', // recipe sort mode: 'alpha' | 'recent' | 'mostBaked' | 'duration'
-    recipeDensity: 'comfortable', // 'comfortable' | 'compact'
+    recipeDensity: 'compact', // 'comfortable' | 'compact' — compact default is denser and lets users see more recipes at a glance
+    // History tab filter + sort state.
+    //   text: search query across recipe name + notes
+    //   recipeId: filter to a specific recipe's bakes (null = all)
+    //   scoreMin: filter to bakes with score >= N (0 = no score filter)
+    //   sort: 'newest' (default) | 'oldest' | 'highestScore' | 'recipe'
+    historyFilter: { text: '', recipeId: null, scoreMin: 0, sort: 'newest' },
+    // Stats tab date-range filter. Affects all stats computation.
+    //   'all'    = lifetime
+    //   '30d'    = last 30 days (rolling)
+    //   '90d'    = last 90 days (rolling)
+    //   'thisY'  = year-to-date
+    //   'lastY'  = previous full calendar year
+    statsRange: 'all',
     // Starter feeding schedule. Up to 2 weekly reminders; each independently enabled.
     // dayOfWeek: 0=Sun..6=Sat; hour: 0-23; minute: 0-59.
+    // feedLog: array of ISO timestamps of manual feedings. Used to show a recent
+    // history on the Active tab and to compute "last fed X ago". Capped at 20 entries
+    // (oldest are pruned) to keep state size bounded.
     starter: {
       reminders: [
         { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
         { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
       ],
+      feedLog: [],
     },
   };
 
@@ -2330,8 +3066,90 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.32.0';
+  const APP_VERSION = '1.37.0';
   const CHANGELOG = [
+    { version: '1.37.0', date: '2026-06-14', notes: [
+      'Stats tab audit: all 23 bugs fixed plus F1, F4, F7, F15 and major UI overhaul.',
+      'New: date-range selector at top — All time / This year / Last year / Last 90d / Last 30d. All stats recompute for the selected window. Persists across sessions.',
+      'New: streak callout when you have a baking streak. Shows current ongoing streak and longest-ever streak. Honors the "weeks-in-a-row with at least one bake" definition.',
+      'New: timing drift card showing your top 5 most-off-schedule stages. "Bulk Ferment +25m" / "Shape \u22125m" — tells you which stages consistently run long or short.',
+      'New: longest-bake callout showing your longest bake and its recipe — small but fun stat.',
+      'New: vs-prior-period delta on the activity card. "12 bakes \u2191+50% vs prior" / "5 bakes \u2193\u221220% vs prior" / "about the same".',
+      'New: top recipe rows are now tappable — opens the recipe\'s schedule view. Recipes tile is also tappable — navigates to Recipes tab.',
+      'New: tap any bar (day-of-week or monthly) to see the exact count in a tooltip bubble.',
+      'New: SVG illustration with chart bars + trend arrow replaces the 📊 emoji empty state.',
+      'Visual: Activity section moved to TOP — most-changing data first instead of static lifetime totals.',
+      'Visual: each section gets a small icon prefix for easier scanning. Section titles use Fraunces 17px instead of uppercase eyebrows for confidence.',
+      'Visual: 12-month chart now uses diagonal labels so all 12 months are readable (was single-letter "J F M A M J J A S O N D" — confusing).',
+      'Visual: day-of-week labels use 2-char abbreviations (Su Mo Tu We Th Fr Sa) instead of single letters.',
+      'Visual: top recipe rows show recipe icons. Deleted recipes are still shown with a "(deleted)" marker.',
+      'Visual: every card uses .stats-* CSS classes instead of inline styles — much cleaner code.',
+      'Visual: number formatting is consistent — Fraunces for headline values, JetBrains Mono for inline data, Inter for labels.',
+      'Visual: activity sub-stats use delta-pill badges to highlight changing values.',
+      'Math: day-of-week peak now correctly handles ties (shows "Tied" instead of arbitrarily picking the earlier day).',
+      'Math: drift calculation now uses per-stage actual duration (since previous stage\'s done time) instead of cumulative planned schedule — a long stage 2 no longer makes everything afterward look late.',
+      'Math: 7-day cap on bake duration removed — 14h+ cold ferments are now correctly counted instead of silently dropped. New cap is 30 days (only catches corrupted data).',
+      'Math: deleted categories now collapse into "Uncategorized" without duplicating the row.',
+      'Math: hours formatting now consistent — 1 decimal under 10h, integer above (smoother transition than the old "rounds to int at 100+" rule).',
+      'Performance: recipe lookups use a Map (O(1)) instead of linear-scanning state.recipes per bake.',
+    ]},
+    { version: '1.36.0', date: '2026-06-14', notes: [
+      'History tab: search and sort.',
+      'New: search field at the top of History. Searches across recipe names AND your notes (Worked / Change Next / Notes), so you can find a bake by what you wrote about it. Inline × clear button.',
+      'New: recipe filter chips below search. Each recipe with at least one bake gets a chip. Tap to filter to just that recipe\'s history; tap again to clear.',
+      'New: score-filter chips ("4+" and "5") appear when any bakes have been scored. Quick way to see your best results.',
+      'New: sort button (same icon-set as Recipes). Four modes — Newest first (default), Oldest first, Highest score first, or Group by recipe (cards grouped under recipe names instead of date sections).',
+      'Filter bar hides automatically when there are no bakes or when filtering would offer nothing (single recipe, no scores).',
+      'Empty-state when filters return nothing has a "Clear filters" button.',
+      'Search debounce: renders quickly (150ms) but only persists state after you pause typing (600ms) — no Firestore push per keystroke.',
+    ]},
+    { version: '1.35.0', date: '2026-06-14', notes: [
+      'History tab audit pass: all 20 bugs fixed plus F6 (add notes from card).',
+      'New: bakes grouped by date section — "Today", "Yesterday", "This week", "Last week", "Earlier this month", or "June 2026" — much easier to scan than a flat reverse-chrono list.',
+      'New: actual SVG stars for scoring instead of filled-circle characters. Stars are correctly semantic and visually distinctive.',
+      'New: "Tap to rate" stub on unrated bakes — both on the history card AND in the detail view. One tap opens the editor straight to the score control.',
+      'New: "Add notes" inline button on bakes without notes — quick path to add Worked / Change Next / general notes.',
+      'New: photo strip shows first 3 photos + a "+N" badge for the rest (instead of an infinite-scroll strip that hid older photos off-screen).',
+      'New: SVG illustration of stacked loaves replaces the 📜 emoji empty state.',
+      'New: relative dates ("2d ago", "yesterday", "3w ago") replace the verbose "Mon, Jun 9 → Mon, Jun 9".',
+      'Cards: all inline styles moved to .history-card CSS class family. Cleaner, more consistent, and properly themed.',
+      'Cards: notes truncated to 2 lines with ellipsis. Full notes visible in the detail modal. Prevents the list from becoming a wall of text.',
+      'Cards: pencil-icon edit button removed — the whole card was already tappable, the icon was redundant and confused users into thinking it edited the recipe.',
+      'Cards: aborted bakes (0 stages done) are visually muted and labeled "Aborted" instead of "0/N stages".',
+      'Cards: elapsed time shows in minutes for short bakes ("45m") instead of "0.5h".',
+      'Detail: drift calculation now per-stage based on the previous stage\'s actual end, not cumulative planned schedule. A long stage 2 no longer makes stage 3 falsely appear "late". Also no more "0m late" rounding to "on time" for sub-minute drifts.',
+      'Detail: "Snapshot" pill renamed to "Original recipe" with explanatory tooltip — users now understand what it means.',
+      'Detail: score always shown (even when 0), with "Tap to rate" hint replacing the previous behavior of hiding the score block entirely.',
+      'Detail: "Delete This Bake" uses the new .btn-danger style (red outline + icon) matching Settings.',
+      'Performance: recipe lookup is now O(1) via a Map built once per render, instead of linear-scanning state.recipes per bake.',
+      'Toast variants: delete uses success, errors use error, conflicts use info — consistent with the rest of the app.',
+    ]},
+    { version: '1.34.0', date: '2026-06-14', notes: [
+      'Favorites is now a filterable category on the Recipes tab — sits right after "All" in the chip row. A small orange star icon distinguishes it. Tap to show only favorites; tap again to clear. Only appears when you have at least one favorited recipe.',
+      'Bulk action bar now sits properly above the bottom navigation. Previously the floating "X selected" bar at the bottom overlapped the nav on newer iPhones; now it accounts for the safe-area inset plus nav height.',
+      'New dedicated density toggle button in the Recipes filter bar. One-tap swap between compact and comfortable. Icon morphs to show current state. Density removed from the sort menu (now redundant).',
+      'Default density is now compact for new users — denser layout shows more recipes at a glance. Existing users keep whatever density they chose.',
+      'Settings icons refreshed: Diagnostics now uses a wrench (universal tools/maintenance metaphor, replaces the unclear arrow loop). About uses a speech bubble with a star inside (less generic than the standard info-circle).',
+    ]},
+    { version: '1.33.0', date: '2026-06-14', notes: [
+      'Active tab audit pass: 17 bugs and 13 features/refinements shipped.',
+      'New: custom SVG loaf illustration for the empty state, replacing the emoji.',
+      'New: segmented progress bar on each bake card — one segment per stage, completed segments filled in the bake color.',
+      'New: "Done by 5:30 PM" footer on each bake card so you can plan your day around when the bake will finish.',
+      'New: quick action button (Mark Done / Start Stage / Save Bake) appears on each card for stages that need user action — no more drilling into the schedule view for every action.',
+      'New: concurrent timer chip on cards with active CTs (e.g. "2 timers" for preheat + autolyse).',
+      'New: starter feed log. A Log a Feeding button records each manual feeding, and the three most recent appear in the starter card.',
+      'Active bake cards rebuilt: all inline styles moved to .active-bake-card CSS class. Now uses the same gradient color wash treatment as the Recipes tab.',
+      'End button visually upgraded — proper pill button instead of an inconspicuous outlined link.',
+      'End confirmation now shows progress: "You\'re 4 of 5 stages in" so you don\'t accidentally discard a near-complete bake.',
+      'Color labels ("Crust", "Leaven") replaced with start time ("Started 2h 15m ago") — gives the user something semantically meaningful instead of internal color names.',
+      'Next-action banner now only appears when 2+ bakes are running — for a single bake, the card itself is enough.',
+      'Banner uses larger Fraunces headline and proper visual hierarchy.',
+      'Starter section is visually subordinate to active bakes — smaller Fraunces header in muted color, clearer separation.',
+      'Starter schedule rows now use mono font for times with right-alignment, like a proper schedule.',
+      'Starter push status pill removed from the main view — the schedule presence implies it\'s working.',
+      'Unified card spacing throughout — consistent rhythm between header, status, progress, and footer.',
+    ]},
     { version: '1.32.0', date: '2026-06-14', notes: [
       'Settings reorganized into iOS-style sub-pages. The landing screen is a clean list of five categories — Cloud Sync, Notifications & Alerts, Data & Backup, Diagnostics, About — each with a tinted icon, title, and current-state subtitle (e.g. "Connected · ABC234" or "Sound · Haptics · Notifications"). Tapping a row drills into a focused sub-page with a back button.',
       'Diagnostics promoted from modal to a proper sub-page. Same content, more room to breathe.',
@@ -2701,9 +3519,19 @@
       if (typeof state.alertsEnabled !== 'boolean') state.alertsEnabled = true;
       if (typeof state.hapticsEnabled !== 'boolean') state.hapticsEnabled = true;
       if (typeof state.notificationsEnabled !== 'boolean') state.notificationsEnabled = false;
-      if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null };
+      if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null, favoriteOnly: false };
+      if (typeof state.recipeFilter.favoriteOnly !== 'boolean') state.recipeFilter.favoriteOnly = false;
       if (!['alpha', 'recent', 'mostBaked', 'duration'].includes(state.recipeSort)) state.recipeSort = 'alpha';
-      if (!['comfortable', 'compact'].includes(state.recipeDensity)) state.recipeDensity = 'comfortable';
+      if (!['comfortable', 'compact'].includes(state.recipeDensity)) state.recipeDensity = 'compact';
+      // History filter + sort migration. Migrate old installs that didn't have this field.
+      if (!state.historyFilter || typeof state.historyFilter !== 'object') {
+        state.historyFilter = { text: '', recipeId: null, scoreMin: 0, sort: 'newest' };
+      }
+      if (typeof state.historyFilter.text !== 'string') state.historyFilter.text = '';
+      if (typeof state.historyFilter.recipeId !== 'string' && state.historyFilter.recipeId !== null) state.historyFilter.recipeId = null;
+      if (typeof state.historyFilter.scoreMin !== 'number' || state.historyFilter.scoreMin < 0 || state.historyFilter.scoreMin > 5) state.historyFilter.scoreMin = 0;
+      if (!['newest', 'oldest', 'highestScore', 'recipe'].includes(state.historyFilter.sort)) state.historyFilter.sort = 'newest';
+      if (!['all', '30d', '90d', 'thisY', 'lastY'].includes(state.statsRange)) state.statsRange = 'all';
       // Starter schema migration: ensure the object and its 2 reminders exist with valid shape.
       if (!state.starter || typeof state.starter !== 'object') {
         state.starter = {
@@ -2719,6 +3547,11 @@
           { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
         ];
       }
+      // Validate feedLog: array of ISO timestamp strings. Filter out anything malformed.
+      if (!Array.isArray(state.starter.feedLog)) state.starter.feedLog = [];
+      else state.starter.feedLog = state.starter.feedLog
+        .filter(ts => typeof ts === 'string' && !isNaN(new Date(ts).getTime()))
+        .slice(0, 20); // cap at 20 most recent
       // Validate each reminder shape
       for (let i = 0; i < 2; i++) {
         const r = state.starter.reminders[i] || {};
@@ -2807,6 +3640,8 @@
       recipeFilter: state.recipeFilter,
       recipeSort: state.recipeSort,
       recipeDensity: state.recipeDensity,
+      historyFilter: state.historyFilter,
+      statsRange: state.statsRange,
       starter: state.starter,
     };
     try {
@@ -3174,28 +4009,52 @@
     }
     const chipsContainer = document.getElementById('recipe-category-chips');
     if (!chipsContainer) return;
-    // Build chips: "All" + each category that has live recipes. If the user
-    // hasn't set up any categories yet, hide the row entirely — a lone "All"
-    // chip with nothing to filter against is just noise.
+    // Build chips: "All" + "Favorites" (if any favorites exist) + each category that
+    // has live recipes. The Favorites chip is special: it uses a star icon and toggles
+    // the favoriteOnly filter independent of categoryId, so users can combine "show
+    // me favorites in Breads" if desired.
     const usedCategories = new Set();
+    const hasFavorites = liveItems(state.recipes).some(r => r.favorite);
     liveItems(state.recipes).forEach(r => { if (r.categoryId) usedCategories.add(r.categoryId); });
     const liveCats = liveItems(state.categories).filter(c => usedCategories.has(c.id));
-    if (liveCats.length === 0) {
+    // Hide the entire chip row only if there are no categories AND no favorites.
+    if (liveCats.length === 0 && !hasFavorites) {
       chipsContainer.style.display = 'none';
       chipsContainer.innerHTML = '';
       return;
     }
     chipsContainer.style.display = '';
-    const chips = [{ id: null, name: 'All' }, ...liveCats];
+    // Start with All, then the Favorites chip (if any favorites), then categories.
+    // Categories use their id as the chip key; "All" uses null; Favorites uses the
+    // sentinel '__favorites__' so the click handler can route it differently.
+    const chips = [{ id: null, name: 'All', kind: 'all' }];
+    if (hasFavorites) {
+      chips.push({ id: '__favorites__', name: 'Favorites', kind: 'favorites' });
+    }
+    for (const c of liveCats) {
+      chips.push({ id: c.id, name: c.name, kind: 'category' });
+    }
     chipsContainer.innerHTML = chips.map(c => {
-      const active = (f.categoryId || null) === (c.id || null);
+      let active = false;
+      if (c.kind === 'all') {
+        active = !f.categoryId && !f.favoriteOnly;
+      } else if (c.kind === 'favorites') {
+        active = !!f.favoriteOnly;
+      } else {
+        active = (f.categoryId || null) === c.id;
+      }
       // Active chip uses filled crust treatment (orange background + white text)
       // so a non-zero filter state is immediately obvious — the previous "warm bg
       // with deep-crust text" was too subtle. Inactive chips stay neutral.
       const styles = active
         ? 'background: var(--crust); color: white; border: 1px solid var(--crust);'
         : 'background: var(--bg-elev); color: var(--ink-soft); border: 1px solid var(--line);';
-      return `<button class="cat-chip${active ? ' active' : ''}" data-chip-cat="${c.id || ''}" style="flex-shrink: 0; padding: 6px 12px; border-radius: 100px; ${styles} font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(c.name)}</button>`;
+      // Star icon inline for the Favorites chip — fills white when active so it
+      // reads clearly against the orange background.
+      const starIcon = c.kind === 'favorites'
+        ? `<svg viewBox="0 0 24 24" fill="${active ? 'white' : 'currentColor'}" stroke="${active ? 'white' : 'currentColor'}" stroke-width="2" style="width: 11px; height: 11px; margin-right: 4px; vertical-align: -1px; color: ${active ? 'white' : 'var(--crust)'};"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`
+        : '';
+      return `<button class="cat-chip${active ? ' active' : ''}" data-chip-cat="${c.id || ''}" data-chip-kind="${c.kind}" style="flex-shrink: 0; padding: 6px 12px; border-radius: 100px; ${styles} font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center;">${starIcon}${escapeHtml(c.name)}</button>`;
     }).join('');
   }
 
@@ -3250,9 +4109,10 @@
     renderRecipeFilterBar();
 
     // Apply filters
-    const f = state.recipeFilter || { text: '', categoryId: null };
+    const f = state.recipeFilter || { text: '', categoryId: null, favoriteOnly: false };
     const searchText = (f.text || '').toLowerCase().trim();
     const categoryFilter = f.categoryId;
+    const favoriteOnly = !!f.favoriteOnly;
     let filtered = visibleRecipes;
     if (searchText) {
       filtered = filtered.filter(r => {
@@ -3265,19 +4125,30 @@
     if (categoryFilter) {
       filtered = filtered.filter(r => r.categoryId === categoryFilter);
     }
+    if (favoriteOnly) {
+      filtered = filtered.filter(r => !!r.favorite);
+    }
 
     if (filtered.length === 0) {
-      const hasActiveFilter = !!(searchText || categoryFilter);
+      const hasActiveFilter = !!(searchText || categoryFilter || favoriteOnly);
+      // Friendly empty-state body — adapts to what's currently filtered so the
+      // user knows what to relax.
+      let emptyBody = 'Try a different search term or category.';
+      if (favoriteOnly && !categoryFilter && !searchText) {
+        emptyBody = 'No favorites yet. Open a recipe and tap the star to add one.';
+      } else if (favoriteOnly) {
+        emptyBody = 'No favorites match the current filter.';
+      }
       list.innerHTML = `
         <div class="empty" style="padding: 32px 16px;">
           <div class="title">No matches</div>
-          <div class="body">Try a different search term or category.</div>
-          ${hasActiveFilter ? `<button class="btn btn-sm" id="empty-clear-filter" style="margin-top: 8px;">Clear ${searchText && categoryFilter ? 'filters' : 'filter'}</button>` : ''}
+          <div class="body">${emptyBody}</div>
+          ${hasActiveFilter ? `<button class="btn btn-sm" id="empty-clear-filter" style="margin-top: 8px;">Clear ${(searchText ? 1 : 0) + (categoryFilter ? 1 : 0) + (favoriteOnly ? 1 : 0) > 1 ? 'filters' : 'filter'}</button>` : ''}
         </div>`;
       const clearBtn = document.getElementById('empty-clear-filter');
       if (clearBtn) {
         clearBtn.addEventListener('click', () => {
-          state.recipeFilter = { text: '', categoryId: null };
+          state.recipeFilter = { text: '', categoryId: null, favoriteOnly: false };
           const searchInput = document.getElementById('recipe-search');
           if (searchInput) searchInput.value = '';
           saveState();
@@ -3452,15 +4323,27 @@
       });
     });
 
-    // Wire filter chip clicks (each render re-creates the chips)
+    // Wire filter chip clicks (each render re-creates the chips). Three chip kinds
+    // are routed differently: "all" clears everything; "favorites" toggles the
+    // favoriteOnly filter; "category" toggles categoryId.
     document.querySelectorAll('#recipe-category-chips [data-chip-cat]').forEach(chip => {
       chip.addEventListener('click', () => {
-        const id = chip.dataset.chipCat || null;
-        // Toggle: tapping the active chip clears the filter
-        if ((state.recipeFilter.categoryId || null) === (id || null)) {
+        const kind = chip.dataset.chipKind;
+        if (kind === 'all') {
+          // "All" clears both category and favorites filters
           state.recipeFilter.categoryId = null;
+          state.recipeFilter.favoriteOnly = false;
+        } else if (kind === 'favorites') {
+          // Favorites toggles independently — tapping it again turns it off
+          state.recipeFilter.favoriteOnly = !state.recipeFilter.favoriteOnly;
         } else {
-          state.recipeFilter.categoryId = id;
+          // Category chip — toggle, clearing favoriteOnly to avoid stale combo state
+          const id = chip.dataset.chipCat || null;
+          if ((state.recipeFilter.categoryId || null) === (id || null)) {
+            state.recipeFilter.categoryId = null;
+          } else {
+            state.recipeFilter.categoryId = id;
+          }
         }
         saveState();
         renderRecipes();
@@ -3510,73 +4393,332 @@
     }
   }
 
+  /**
+   * Render the History tab's filter chips. Shows recipe-name chips for each
+   * recipe that has at least one live bake, plus an "All" chip and optional
+   * "★ 4+" / "★ 5" score-floor chips when scoring is in use. Sync the search
+   * input value with state.historyFilter.text on first render.
+   *
+   * Hides the chip row if there's only one recipe with bakes (no filtering
+   * value when everything's the same recipe).
+   */
+  function renderHistoryFilterBar() {
+    const f = state.historyFilter || { text: '', recipeId: null, scoreMin: 0, sort: 'newest' };
+    // Sync search input with state on render (e.g. after clear-filter)
+    const searchInput = document.getElementById('history-search');
+    if (searchInput && document.activeElement !== searchInput) {
+      searchInput.value = f.text || '';
+    }
+    // Keep the inline clear button in sync with current search value
+    const clearBtn = document.getElementById('history-search-clear');
+    if (clearBtn) {
+      clearBtn.style.display = (f.text && f.text.length > 0) ? 'inline-flex' : 'none';
+    }
+    const chipsContainer = document.getElementById('history-filter-chips');
+    if (!chipsContainer) return;
+
+    // Discover which recipes have live bakes — only those become filter chips.
+    const recipeMap = new Map();
+    for (const r of state.recipes) recipeMap.set(r.id, r);
+    const usedRecipeIds = new Set();
+    const hasAnyScore = liveItems(state.bakes).some(b => (b.score || 0) > 0);
+    for (const b of liveItems(state.bakes)) {
+      if (b.recipeId) usedRecipeIds.add(b.recipeId);
+    }
+    const recipeChips = Array.from(usedRecipeIds).map(id => {
+      const r = recipeMap.get(id);
+      return r && !r._deleted ? { id, name: r.name, kind: 'recipe' } : null;
+    }).filter(Boolean);
+    // Sort recipe chips alphabetically for predictable order
+    recipeChips.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+
+    // Hide the chip row when there's nothing meaningful to filter on
+    // (1 or 0 recipes AND no scored bakes)
+    if (recipeChips.length < 2 && !hasAnyScore) {
+      chipsContainer.style.display = 'none';
+      chipsContainer.innerHTML = '';
+      return;
+    }
+    chipsContainer.style.display = '';
+
+    // Build chip list: All, score floors (if any scoring in use), recipes
+    const chips = [{ id: null, name: 'All', kind: 'all' }];
+    if (hasAnyScore) {
+      chips.push({ id: '__score4__', name: '4+', kind: 'score', value: 4 });
+      chips.push({ id: '__score5__', name: '5', kind: 'score', value: 5 });
+    }
+    chips.push(...recipeChips);
+
+    chipsContainer.innerHTML = chips.map(c => {
+      let active = false;
+      if (c.kind === 'all') {
+        active = !f.recipeId && !f.scoreMin;
+      } else if (c.kind === 'score') {
+        active = f.scoreMin === c.value;
+      } else {
+        active = f.recipeId === c.id;
+      }
+      const styles = active
+        ? 'background: var(--crust); color: white; border: 1px solid var(--crust);'
+        : 'background: var(--bg-elev); color: var(--ink-soft); border: 1px solid var(--line);';
+      // Score chips get a star icon
+      const starIcon = c.kind === 'score'
+        ? `<svg viewBox="0 0 24 24" fill="${active ? 'white' : 'var(--crust)'}" stroke="${active ? 'white' : 'var(--crust)'}" stroke-width="2" style="width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`
+        : '';
+      return `<button class="cat-chip${active ? ' active' : ''}" data-hchip-id="${c.id || ''}" data-hchip-kind="${c.kind}" ${c.value !== undefined ? `data-hchip-value="${c.value}"` : ''} style="flex-shrink: 0; padding: 6px 12px; border-radius: 100px; ${styles} font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center;">${starIcon}${escapeHtml(c.name)}</button>`;
+    }).join('');
+
+    // Wire chip clicks
+    chipsContainer.querySelectorAll('[data-hchip-id]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const kind = chip.dataset.hchipKind;
+        if (kind === 'all') {
+          state.historyFilter.recipeId = null;
+          state.historyFilter.scoreMin = 0;
+        } else if (kind === 'score') {
+          const val = parseInt(chip.dataset.hchipValue, 10);
+          // Toggle: tapping the active score chip clears the score filter
+          state.historyFilter.scoreMin = state.historyFilter.scoreMin === val ? 0 : val;
+        } else {
+          const id = chip.dataset.hchipId || null;
+          // Toggle: tapping the active recipe chip clears the recipe filter
+          state.historyFilter.recipeId = state.historyFilter.recipeId === id ? null : id;
+        }
+        saveState();
+        renderHistory();
+      });
+    });
+  }
+
   function renderHistory() {
     const list = document.getElementById('history-list');
+    const filterBar = document.getElementById('history-filter-bar');
     const visibleBakes = liveItems(state.bakes);
     if (visibleBakes.length === 0) {
+      // Hide filter bar entirely when there are no bakes to filter
+      if (filterBar) filterBar.style.display = 'none';
+      // Custom SVG illustration — a stylized stack of three loaves (a "history" stack)
       list.innerHTML = `
         <div class="empty">
-          <div class="icon">📜</div>
+          <div class="history-empty-illus">
+            <svg viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <!-- Three stacked loaves, oldest at bottom -->
+              <ellipse cx="48" cy="76" rx="32" ry="12"/>
+              <path d="M28 70l4 4M44 68l4 4M60 70l4 4" opacity="0.5"/>
+              <ellipse cx="48" cy="54" rx="34" ry="13" stroke-opacity="0.7"/>
+              <path d="M28 48l4 4M44 46l4 4M60 48l4 4" opacity="0.4"/>
+              <ellipse cx="48" cy="30" rx="36" ry="14" stroke-opacity="0.45"/>
+              <path d="M28 24l4 4M44 22l4 4M60 24l4 4" opacity="0.3"/>
+            </svg>
+          </div>
           <div class="title">No bakes logged</div>
-          <div class="body">When you finish a bake, you'll be able to save notes and photos here.</div>
+          <div class="body">When you finish a bake, your notes, score, and photos will appear here.</div>
         </div>`;
       return;
     }
-    list.innerHTML = visibleBakes.slice().reverse().map(b => {
-      // Prefer the frozen snapshot from when the bake ended; fall back to current recipe
-      const r = b.recipeSnapshot || state.recipes.find(x => x.id === b.recipeId);
-      const start = new Date(b.startedAt);
-      const end = new Date(b.completedAt || b.startedAt);
-      const elapsedHrs = Math.round((end - start) / 3600000 * 10) / 10;
-      const doneCount = (b.stageStates || []).filter(s => s.done).length;
-      const totalCount = (b.stageStates || []).length;
 
-      // Build score stars (filled vs empty)
-      const score = b.score || 0;
-      const scoreDisplay = score > 0
-        ? `<div style="display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 8px;">${[1,2,3,4,5].map(n => `<span style="color: ${n <= score ? 'var(--crust)' : 'var(--line)'}; font-size: 14px;">●</span>`).join('')}</div>`
-        : '';
+    // Show the filter bar (was hidden by default in HTML so it doesn't flash before render)
+    if (filterBar) filterBar.style.display = '';
+    renderHistoryFilterBar();
 
-      // Photo strip
-      const photoStrip = b.photos && b.photos.length > 0
-        ? `<div style="display: flex; gap: 6px; margin-top: 10px; overflow-x: auto; padding-bottom: 2px;">${b.photos.map((src, i) => `
-            <img src="${src}" data-hist-photo="${b.id}|${i}" style="width: 72px; height: 72px; object-fit: cover; border-radius: 8px; flex-shrink: 0; cursor: pointer; border: 1px solid var(--line);" alt="Bake photo">
-          `).join('')}</div>`
-        : '';
+    // Build a quick recipe lookup map once — much faster than .find() per bake.
+    const recipeMap = new Map();
+    for (const r of state.recipes) recipeMap.set(r.id, r);
 
-      // Sectioned notes
-      const notesParts = [];
-      if (b.worked) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--leaven); text-transform: uppercase; letter-spacing: 0.06em;">Worked</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; white-space: pre-wrap;">${renderNotesHtml(b.worked)}</div></div>`);
-      if (b.changeNext) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--warn); text-transform: uppercase; letter-spacing: 0.06em;">Change Next Time</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; white-space: pre-wrap;">${renderNotesHtml(b.changeNext)}</div></div>`);
-      if (b.notes) notesParts.push(`<div style="margin-top: 8px;"><div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em;">Notes</div><div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; white-space: pre-wrap;">${renderNotesHtml(b.notes)}</div></div>`);
+    // Apply filters: search text, specific recipe, minimum score.
+    const f = state.historyFilter || { text: '', recipeId: null, scoreMin: 0, sort: 'newest' };
+    const searchText = (f.text || '').toLowerCase().trim();
+    let filtered = visibleBakes;
+    if (f.recipeId) {
+      filtered = filtered.filter(b => b.recipeId === f.recipeId);
+    }
+    if (f.scoreMin > 0) {
+      filtered = filtered.filter(b => (b.score || 0) >= f.scoreMin);
+    }
+    if (searchText) {
+      // Match against recipe name, notes/worked/changeNext text. We use the snapshot
+      // recipe if present (so deleted-recipe bakes can still be found by name).
+      filtered = filtered.filter(b => {
+        const r = b.recipeSnapshot || recipeMap.get(b.recipeId);
+        if (r && (r.name || '').toLowerCase().includes(searchText)) return true;
+        if ((b.notes || '').toLowerCase().includes(searchText)) return true;
+        if ((b.worked || '').toLowerCase().includes(searchText)) return true;
+        if ((b.changeNext || '').toLowerCase().includes(searchText)) return true;
+        return false;
+      });
+    }
 
-      // Pills row (temp, scale)
-      const pills = [];
-      if (b.kitchenTemp) pills.push(`<span class="pill">🌡 ${escapeHtml(b.kitchenTemp)}</span>`);
-      if (b.scaleFactor && b.scaleFactor !== 1) pills.push(`<span class="pill crust">${b.scaleFactor}× batch</span>`);
+    if (filtered.length === 0) {
+      const hasActiveFilter = !!(searchText || f.recipeId || f.scoreMin > 0);
+      list.innerHTML = `
+        <div class="empty" style="padding: 32px 16px;">
+          <div class="title">No matches</div>
+          <div class="body">Try a different search term or filter.</div>
+          ${hasActiveFilter ? `<button class="btn btn-sm" id="history-clear-filter" style="margin-top: 8px;">Clear filters</button>` : ''}
+        </div>`;
+      const clearBtn = document.getElementById('history-clear-filter');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          state.historyFilter = { text: '', recipeId: null, scoreMin: 0, sort: f.sort || 'newest' };
+          const si = document.getElementById('history-search');
+          if (si) si.value = '';
+          saveState();
+          renderHistory();
+        });
+      }
+      return;
+    }
 
-      return `
-        <div class="card" data-hist-bake="${b.id}" style="cursor: pointer;">
-          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
-            <div style="flex: 1; display: flex; gap: 10px; align-items: flex-start;">
-              <div style="margin-top: 2px;">${renderRecipeIcon(r ? r.icon : DEFAULT_ICON, 32)}</div>
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-family: Fraunces, serif; font-size: 18px; font-weight: 500; letter-spacing: -0.01em;">${escapeHtml(r ? r.name : 'Recipe')}${scoreDisplay}</div>
-                <div class="recipe-sub">${start.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} → ${end.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${elapsedHrs}h total · ${doneCount}/${totalCount} stages</div>
+    // Sort according to the chosen mode. Default 'newest' preserves the original behavior.
+    const sortMode = f.sort || 'newest';
+    const sortedBakes = filtered.slice().sort((a, b) => {
+      const aTs = new Date(a.completedAt || a.startedAt || 0).getTime();
+      const bTs = new Date(b.completedAt || b.startedAt || 0).getTime();
+      if (sortMode === 'oldest') return aTs - bTs;
+      if (sortMode === 'highestScore') {
+        const aScore = a.score || 0;
+        const bScore = b.score || 0;
+        if (aScore !== bScore) return bScore - aScore;
+        return bTs - aTs; // tiebreak: newest first
+      }
+      if (sortMode === 'recipe') {
+        const aR = a.recipeSnapshot || recipeMap.get(a.recipeId);
+        const bR = b.recipeSnapshot || recipeMap.get(b.recipeId);
+        const aName = (aR && aR.name) || 'zzz';
+        const bName = (bR && bR.name) || 'zzz';
+        const cmp = aName.localeCompare(bName, undefined, { sensitivity: 'base' });
+        if (cmp !== 0) return cmp;
+        return bTs - aTs; // within same recipe: newest first
+      }
+      // 'newest' (default)
+      return bTs - aTs;
+    });
+
+    // Group bakes. By date bucket for time-based sorts; by recipe name for 'recipe' sort.
+    const buckets = [];
+    let currentBucket = null;
+    for (const b of sortedBakes) {
+      let label;
+      if (sortMode === 'recipe') {
+        const r = b.recipeSnapshot || recipeMap.get(b.recipeId);
+        label = (r && r.name) || 'Deleted recipes';
+      } else {
+        const ts = new Date(b.completedAt || b.startedAt || 0).getTime();
+        label = historyDateBucket(ts);
+      }
+      if (!currentBucket || currentBucket.label !== label) {
+        currentBucket = { label, bakes: [] };
+        buckets.push(currentBucket);
+      }
+      currentBucket.bakes.push(b);
+    }
+
+    list.innerHTML = buckets.map(bucket => {
+      const cardsHtml = bucket.bakes.map(b => {
+        const r = b.recipeSnapshot || recipeMap.get(b.recipeId);
+        const start = new Date(b.startedAt);
+        const end = new Date(b.completedAt || b.startedAt);
+        const elapsedMin = Math.round((end - start) / 60000);
+        const doneCount = (b.stageStates || []).filter(s => s.done).length;
+        const totalCount = (b.stageStates || []).length;
+        const isAborted = totalCount > 0 && doneCount === 0;
+        // Relative date label — much faster to scan than "Mon, Jun 9 → Mon, Jun 9"
+        const ts = end.getTime();
+        const relStr = formatRelativeShort(ts);
+
+        // Elapsed display — show minutes for very short bakes (≤90 min) instead of "0h"
+        let elapsedStr;
+        if (elapsedMin < 90) elapsedStr = `${elapsedMin}m`;
+        else if (elapsedMin < 1440) {
+          const h = Math.floor(elapsedMin / 60);
+          const m = elapsedMin % 60;
+          elapsedStr = m > 0 ? `${h}h ${m}m` : `${h}h`;
+        } else {
+          const d = Math.floor(elapsedMin / 1440);
+          const h = Math.floor((elapsedMin % 1440) / 60);
+          elapsedStr = h > 0 ? `${d}d ${h}h` : `${d}d`;
+        }
+
+        // Score: actual SVG stars, with a "tap to rate" stub if unrated
+        const score = b.score || 0;
+        const scoreHtml = score > 0
+          ? `<span class="hc-score">${renderScoreStars(score)}</span>`
+          : `<button class="hc-rate-stub" data-rate-bake="${b.id}" aria-label="Rate this bake">${renderScoreStars(0)}<span style="margin-left: 4px;">Rate</span></button>`;
+
+        // Pills row
+        const pills = [];
+        if (b.kitchenTemp) pills.push(`<span class="pill">${escapeHtml(b.kitchenTemp)}\u00b0</span>`);
+        if (b.scaleFactor && b.scaleFactor !== 1) pills.push(`<span class="pill crust">${b.scaleFactor}\u00d7 batch</span>`);
+
+        // Photos — show first 3, badge with +N if more
+        let photosHtml = '';
+        if (b.photos && b.photos.length > 0) {
+          const visiblePhotos = b.photos.slice(0, 3);
+          const extra = b.photos.length - visiblePhotos.length;
+          photosHtml = `
+            <div class="hc-photos">
+              ${visiblePhotos.map((src, i) => `<img src="${src}" data-hist-photo="${b.id}|${i}" alt="Bake photo">`).join('')}
+              ${extra > 0 ? `<div class="hc-photo-more">+${extra}</div>` : ''}
+            </div>
+          `;
+        }
+
+        // Notes preview — show first non-empty section truncated to 2 lines.
+        // If no notes at all, show an "Add notes" inline button (F6).
+        const hasNotes = !!(b.worked || b.changeNext || b.notes);
+        let notesHtml = '';
+        if (hasNotes) {
+          // Pick the most prominent section: Worked first, then Notes, then Change Next.
+          // The card shows ONE line — full notes live in the detail modal.
+          const text = b.worked || b.notes || b.changeNext || '';
+          const label = b.worked ? 'Worked' : (b.notes ? 'Notes' : 'Change Next');
+          notesHtml = `
+            <div class="hc-notes-preview">
+              <span class="label">${label}</span>${escapeHtml(text)}
+            </div>
+          `;
+        } else if (!isAborted) {
+          // Only offer to add notes on successful bakes — for aborted bakes it's noise
+          notesHtml = `
+            <button class="hc-add-notes" data-add-notes-bake="${b.id}" aria-label="Add notes to this bake">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m-7-7h14"/></svg>
+              Add notes
+            </button>
+          `;
+        }
+
+        // Meta line — relative date, elapsed time, stage count
+        const stageInfo = isAborted ? 'Aborted' : `${doneCount} of ${totalCount} stages`;
+        const metaText = `${escapeHtml(relStr)} \u00b7 ${elapsedStr} \u00b7 ${stageInfo}`;
+
+        const recipeName = r ? r.name : 'Recipe (deleted)';
+        const recipeIcon = renderRecipeIcon(r ? r.icon : DEFAULT_ICON, 32);
+
+        return `
+          <div class="history-card${isAborted ? ' aborted' : ''}" data-hist-bake="${b.id}">
+            <div class="hc-header">
+              <div class="hc-icon">${recipeIcon}</div>
+              <div class="hc-identity">
+                <div class="hc-name">${escapeHtml(recipeName)}${scoreHtml}</div>
+                <div class="hc-meta">${metaText}</div>
               </div>
             </div>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            ${pills.length > 0 ? `<div class="hc-pills">${pills.join('')}</div>` : ''}
+            ${photosHtml}
+            ${notesHtml}
           </div>
-          ${pills.length > 0 ? `<div class="pills" style="margin-top: 8px; margin-bottom: 0;">${pills.join('')}</div>` : ''}
-          ${notesParts.join('')}
-          ${photoStrip}
-        </div>`;
+        `;
+      }).join('');
+      return `<div class="history-section-header">${escapeHtml(bucket.label)}</div>${cardsHtml}`;
     }).join('');
 
-    // Wire tap-to-view and photo viewer
+    // Wire tap-to-view, photo viewer, rate, and add-notes affordances
     list.querySelectorAll('[data-hist-bake]').forEach(card => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('[data-hist-photo]')) return; // photo clicks handled separately
+        // Don't open detail when an interactive child handled the click
+        if (e.target.closest('[data-hist-photo]')) return;
+        if (e.target.closest('[data-rate-bake]')) return;
+        if (e.target.closest('[data-add-notes-bake]')) return;
         openHistoryDetail(card.dataset.histBake);
       });
     });
@@ -3584,6 +4726,22 @@
       img.addEventListener('click', (e) => {
         e.stopPropagation();
         openPhotoViewer(img.src);
+      });
+    });
+    // "Rate" stubs — open the notes editor straight to the score control
+    list.querySelectorAll('[data-rate-bake]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        haptic('light');
+        openBakeNotes(btn.dataset.rateBake);
+      });
+    });
+    // "Add notes" links — same destination, but it's an empty editor
+    list.querySelectorAll('[data-add-notes-bake]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        haptic('light');
+        openBakeNotes(btn.dataset.addNotesBake);
       });
     });
   }
@@ -3596,7 +4754,7 @@
     if (!bake) return;
     const recipe = bake.recipeSnapshot || state.recipes.find(r => r.id === bake.recipeId);
     if (!recipe) {
-      toast('Recipe data missing for this bake');
+      toast('Recipe data missing for this bake', 'error');
       return;
     }
     const title = document.getElementById('hd-title');
@@ -3608,17 +4766,30 @@
     const elapsedMin = Math.round((end - start) / 60000);
     const dateStr = start.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 
-    // Header info: date, score, temp, scale, elapsed
+    // Score: always render the row, with stars filled to the current score.
+    // If unrated, show a clickable "Tap to rate" hint that opens the notes editor
+    // straight to the score control — much more discoverable than the old behavior
+    // of hiding the score block entirely on unrated bakes.
     const score = bake.score || 0;
-    const scoreEl = score > 0
-      ? `<div style="display: flex; gap: 3px; align-items: center;"><span style="font-size: 11px; color: var(--ink-mute); margin-right: 4px;">SCORE</span>${[1,2,3,4,5].map(n => `<span style="color: ${n <= score ? 'var(--crust)' : 'var(--line)'}; font-size: 16px;">●</span>`).join('')}</div>`
-      : '';
+    const scoreEl = `
+      <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 11px; color: var(--ink-mute); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;">Score</span>
+        <span class="hc-score" style="gap: 3px;">${renderScoreStars(score, { size: 16 })}</span>
+        ${score === 0 ? '<button class="hc-rate-stub" id="hd-rate-stub" style="margin-left: 4px;" aria-label="Rate this bake">Tap to rate</button>' : ''}
+      </div>
+    `;
     const pills = [];
     if (bake.kitchenTemp) pills.push(`<span class="pacing-tag" style="border-color: var(--line); color: var(--ink-soft); background: var(--bg-elev);">${escapeHtml(bake.kitchenTemp)}°</span>`);
     if (bake.scaleFactor && bake.scaleFactor !== 1) pills.push(`<span class="pacing-tag" style="border-color: var(--line); color: var(--ink-soft); background: var(--bg-elev);">${bake.scaleFactor}× scaled</span>`);
-    if (bake.recipeSnapshot) pills.push(`<span class="pacing-tag" style="border-color: var(--leaven); color: var(--rye); background: var(--leaven-soft);">Snapshot</span>`);
+    // Snapshot pill — clearer wording so non-technical users understand what it means.
+    // Tooltip on hover, but on iOS the title attribute doesn't show — long label is the safer bet.
+    if (bake.recipeSnapshot) pills.push(`<span class="pacing-tag" style="border-color: var(--leaven); color: var(--rye); background: var(--leaven-soft);" title="Recipe was edited or deleted after this bake; original recipe preserved here.">Original recipe</span>`);
 
-    // Build planned vs actual timeline
+    // Build planned vs actual timeline. Planned times are absolute schedule
+    // assuming everything ran on time. Actual drift is computed per-stage:
+    // each stage's drift is relative to when the PREVIOUS stage actually ended
+    // (or the bake start for stage 0), so a long stage 2 doesn't cause stage 3
+    // to report as "late" even when it ran on schedule relative to its own start.
     const stageStates = bake.stageStates || [];
     const plannedTimes = [];
     let t = start;
@@ -3635,7 +4806,24 @@
       const st = stageStates[i] || {};
       const planned = plannedTimes[i];
       const actualDoneAt = st.doneAt ? new Date(st.doneAt) : null;
-      const driftMin = actualDoneAt ? Math.round((actualDoneAt - planned.end) / 60000) : null;
+      // Per-stage drift: compare actual duration to planned duration.
+      // Actual start = previous stage's actual doneAt (or bake start for stage 0).
+      // Actual duration = actualDoneAt - actualStartAt.
+      // Drift = actual duration - planned duration.
+      let driftMin = null;
+      if (actualDoneAt) {
+        const prevDoneAt = i === 0
+          ? start
+          : (stageStates[i - 1] && stageStates[i - 1].doneAt ? new Date(stageStates[i - 1].doneAt) : null);
+        if (prevDoneAt) {
+          const actualDurMin = (actualDoneAt - prevDoneAt) / 60000;
+          const driftRaw = actualDurMin - planned.dur;
+          // Round to nearest minute but keep sign for the "on time within 1m" case.
+          // A 30-second-late stage shouldn't read as "on time" (Bug 8) — show as 1m if abs >= 0.5.
+          if (Math.abs(driftRaw) < 0.5) driftMin = 0;
+          else driftMin = Math.round(driftRaw);
+        }
+      }
       const driftLabel = driftMin === null
         ? '<span style="color: var(--ink-mute);">—</span>'
         : (driftMin === 0
@@ -3699,7 +4887,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
         Bake Again
       </button>
-      <button class="btn btn-ghost btn-block" id="hd-delete" style="color: var(--warn); margin-top: 8px;">Delete This Bake</button>
+      <button class="btn btn-block btn-danger" id="hd-delete" style="margin-top: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Delete This Bake
+      </button>
     `;
 
     document.getElementById('hd-edit').onclick = () => {
@@ -3707,12 +4898,22 @@
       openBakeNotes(bakeId);
     };
 
+    // "Tap to rate" stub on unrated bakes — opens the notes editor which contains the score control
+    const rateStub = document.getElementById('hd-rate-stub');
+    if (rateStub) {
+      rateStub.onclick = () => {
+        haptic('light');
+        hideModal('modal-history-detail');
+        openBakeNotes(bakeId);
+      };
+    }
+
     document.getElementById('hd-restart').onclick = async () => {
       // Find the current recipe — but if it's tombstoned, treat as deleted for restore flow
       const existingRow = state.recipes.find(r => r.id === bake.recipeId);
       const liveRecipe = (existingRow && !existingRow._deleted) ? existingRow : null;
       const useRecipe = liveRecipe || bake.recipeSnapshot;
-      if (!useRecipe) { toast('Recipe no longer exists'); return; }
+      if (!useRecipe) { toast('Recipe no longer exists', 'error'); return; }
       // If recipe was deleted, restore from snapshot (or un-tombstone existing row)
       if (!liveRecipe) {
         const choice = await showConfirm({
@@ -3737,7 +4938,7 @@
       // Check if another bake is already running for this recipe
       const existing = getActiveBakeForRecipe(useRecipe.id);
       if (existing) {
-        toast('A bake is already running for this recipe');
+        toast('A bake is already running for this recipe', 'info');
         hideModal('modal-history-detail');
         state.currentRecipeId = useRecipe.id;
         saveState();
@@ -3769,7 +4970,7 @@
       saveState();
       hideModal('modal-history-detail');
       renderHistory();
-      toast('Bake deleted');
+      toast('Bake deleted', 'success');
     };
 
     body.querySelectorAll('[data-hd-photo]').forEach(img => {
@@ -3785,54 +4986,168 @@
   // ============================================================
   // STATS VIEW
   // ============================================================
+  /**
+   * Compute the start/end window for the chosen stats range.
+   * Returns { start, end, label } — start/end are Date objects, end is exclusive.
+   * 'all' returns { start: null } meaning "no lower bound".
+   */
+  function statsRangeWindow(range) {
+    const now = new Date();
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999); // include all of today
+    if (range === '30d') {
+      const s = new Date(now.getTime() - 30 * 86400000);
+      s.setHours(0, 0, 0, 0);
+      return { start: s, end, label: 'Last 30 days' };
+    }
+    if (range === '90d') {
+      const s = new Date(now.getTime() - 90 * 86400000);
+      s.setHours(0, 0, 0, 0);
+      return { start: s, end, label: 'Last 90 days' };
+    }
+    if (range === 'thisY') {
+      const s = new Date(now.getFullYear(), 0, 1);
+      return { start: s, end, label: 'This year' };
+    }
+    if (range === 'lastY') {
+      const s = new Date(now.getFullYear() - 1, 0, 1);
+      const e = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+      return { start: s, end: e, label: String(now.getFullYear() - 1) };
+    }
+    return { start: null, end, label: 'All time' };
+  }
+
   function renderStats() {
     const c = document.getElementById('stats-content');
     const allBakes = liveItems(state.bakes);
     if (allBakes.length === 0) {
+      // SVG illustration — three stacked bars suggesting a chart shape
       c.innerHTML = `
         <div class="empty">
-          <div class="icon">📊</div>
+          <div class="stats-empty-illus">
+            <svg viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <!-- Stylized bar chart with three rising bars -->
+              <line x1="14" y1="82" x2="82" y2="82"/>
+              <rect x="22" y="58" width="14" height="22" rx="2" fill="currentColor" opacity="0.5"/>
+              <rect x="42" y="42" width="14" height="38" rx="2" fill="currentColor" opacity="0.75"/>
+              <rect x="62" y="26" width="14" height="54" rx="2" fill="currentColor"/>
+              <!-- Trend arrow over the bars -->
+              <path d="M24 64l16-14 12 4 18-18" stroke-opacity="0.6"/>
+            </svg>
+          </div>
           <div class="title">No stats yet</div>
           <div class="body">Bake a few recipes and save them to history — stats will start tracking here.</div>
         </div>`;
       return;
     }
 
+    // Build a quick recipe lookup map once — O(1) lookups instead of linear search per bake.
+    const recipeMap = new Map();
+    for (const r of state.recipes) recipeMap.set(r.id, r);
+
+    // === DATE RANGE WINDOW ===
+    const range = state.statsRange || 'all';
+    const { start: windowStart, end: windowEnd, label: windowLabel } = statsRangeWindow(range);
+
+    // Filter bakes to the window. A bake's primary timestamp is completedAt (fall
+    // back to startedAt). For 'all' we include everything.
+    const inWindow = (b) => {
+      const ts = new Date(b.completedAt || b.startedAt || 0).getTime();
+      if (!ts) return false;
+      if (windowStart && ts < windowStart.getTime()) return false;
+      if (ts > windowEnd.getTime()) return false;
+      return true;
+    };
+    const bakes = range === 'all' ? allBakes : allBakes.filter(inWindow);
+
+    // Also compute the PRIOR-equivalent window for delta calculation
+    // (e.g. "last 30 days" → "30 days before that")
+    const priorBakes = (() => {
+      if (!windowStart) return null; // 'all' has no prior period
+      const windowMs = windowEnd.getTime() - windowStart.getTime();
+      const priorEnd = new Date(windowStart.getTime() - 1);
+      const priorStart = new Date(windowStart.getTime() - windowMs);
+      return allBakes.filter(b => {
+        const ts = new Date(b.completedAt || b.startedAt || 0).getTime();
+        return ts >= priorStart.getTime() && ts <= priorEnd.getTime();
+      });
+    })();
+
+    if (bakes.length === 0) {
+      c.innerHTML = renderStatsRangeSelector(range) + `
+        <div class="empty" style="padding: 32px 16px;">
+          <div class="title">No bakes in this range</div>
+          <div class="body">Try a wider window, or switch to All time.</div>
+        </div>`;
+      wireStatsRangeSelector();
+      return;
+    }
+
     // === HEADLINE NUMBERS ===
-    const totalBakes = allBakes.length;
-    // Time spent: sum of (completedAt - startedAt) per bake, in hours
+    const totalBakes = bakes.length;
+    const priorBakeCount = priorBakes ? priorBakes.length : null;
+
+    // Total bake duration — sum of (completedAt - startedAt) per bake.
+    // We track BOTH a "wall-clock elapsed" (which includes overnight ferments)
+    // and "active hands-on" hours estimated from non-wait stages. Display the
+    // wall-clock total but label it clearly so users don't misread the number.
+    // The 7-day cap is REMOVED — long cold ferments are legitimately part of
+    // baking, and dropping them silently hid valid data (Bug 5).
     let totalMs = 0;
     let bakesWithDuration = 0;
-    for (const b of allBakes) {
+    let handsOnMs = 0; // sum of non-wait stage durations from the recipe definition
+    for (const b of bakes) {
       if (b.startedAt && b.completedAt) {
         const ms = new Date(b.completedAt) - new Date(b.startedAt);
-        if (ms > 0 && ms < 7 * 24 * 60 * 60 * 1000) { // sanity bound: under a week
+        if (ms > 0 && ms < 30 * 86400000) { // 30-day sanity cap — only catches corrupt data
           totalMs += ms;
           bakesWithDuration++;
         }
       }
+      // Hands-on estimate from recipe definition
+      const r = b.recipeSnapshot || recipeMap.get(b.recipeId);
+      if (r && Array.isArray(r.stages)) {
+        for (const s of r.stages) {
+          if (!s.isWait && typeof s.durMin === 'number') {
+            handsOnMs += s.durMin * 60000;
+          }
+        }
+      }
     }
     const totalHours = totalMs / 3600000;
-    const totalHoursDisplay = totalHours >= 100 ? Math.round(totalHours) : totalHours.toFixed(1);
+    const handsOnHours = handsOnMs / 3600000;
+    // Consistent formatting (Bug 15): always 1 decimal under 10, integer above.
+    // Smoother transition than the previous rule.
+    const fmtHours = (h) => h < 10 ? h.toFixed(1) : String(Math.round(h));
 
-    // Unique recipes baked (resolves via recipeId, fall back to recipeSnapshot name for orphans)
+    // Unique recipes baked
     const uniqueRecipeIds = new Set();
-    for (const b of allBakes) {
+    for (const b of bakes) {
       if (b.recipeId) uniqueRecipeIds.add(b.recipeId);
     }
     const recipesTried = uniqueRecipeIds.size;
 
     // Average score across bakes with score
-    const scores = allBakes.map(b => b.score).filter(s => typeof s === 'number' && s > 0);
+    const scores = bakes.map(b => b.score).filter(s => typeof s === 'number' && s > 0);
     const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+    const unratedCount = totalBakes - scores.length;
+
+    // Delta vs prior period (only for non-'all' ranges)
+    let bakeDelta = null;
+    if (priorBakeCount !== null) {
+      const diff = totalBakes - priorBakeCount;
+      if (priorBakeCount === 0) {
+        bakeDelta = diff > 0 ? { kind: 'up', text: 'first bakes' } : null;
+      } else {
+        const pct = Math.round((diff / priorBakeCount) * 100);
+        if (Math.abs(pct) < 5) bakeDelta = { kind: 'flat', text: 'about the same' };
+        else if (pct > 0) bakeDelta = { kind: 'up', text: `+${pct}% vs prior` };
+        else bakeDelta = { kind: 'down', text: `${pct}% vs prior` };
+      }
+    }
 
     // === BAKE DAY SPAN HELPER ===
-    // Used by all stats that count bakes-per-day-range. Bakes that span multiple
-    // calendar days are split evenly across those days. e.g. a bake from Fri 6pm to
-    // Sat 8am counts as 0.5 Fri + 0.5 Sat; Fri→Sat→Sun counts as 0.33 each. Bakes
-    // without a completedAt (still active, never saved) count fully on their start day.
-    // We use local-midnight boundaries so "what day was it" matches a wall calendar.
-    // Safety capped at 14 days to avoid runaway loops on corrupt data.
+    // Same as before — splits multi-day bakes fractionally across calendar days.
     const bakeDaySpan = (startedAt, completedAt) => {
       const start = new Date(startedAt);
       const end = completedAt ? new Date(completedAt) : start;
@@ -3848,59 +5163,36 @@
       return days;
     };
 
-    // === TIME-WINDOWED COUNTS ===
-    // Same fractional-split logic as the charts below: a bake spanning Fri→Sat counts
-    // as 0.5 each toward "Bakes this month" / "this year" / "last 30 days" based on
-    // which days fall inside each window. Keeps cards and charts consistent.
-    const now = new Date();
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const thisYear = new Date(now.getFullYear(), 0, 1).getTime();
-    const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).getTime();
-    let bakesThisMonth = 0, bakesThisYear = 0, bakesLast30 = 0;
-    for (const b of allBakes) {
-      if (!b.startedAt) continue;
-      const days = bakeDaySpan(b.startedAt, b.completedAt);
-      const share = 1 / days.length;
-      for (const day of days) {
-        const t = day.getTime();
-        if (t >= thisMonth) bakesThisMonth += share;
-        if (t >= thisYear) bakesThisYear += share;
-        if (t >= last30Days) bakesLast30 += share;
-      }
-    }
-    // Round headline counts to integers — fractional counts in big headline numbers look
-    // weird ("12.5 bakes this year"), so display nearest whole. Bar charts can show
-    // fractional values in tooltips because they're already a fine-grained visualization.
-    bakesThisMonth = Math.round(bakesThisMonth);
-    bakesThisYear = Math.round(bakesThisYear);
-    bakesLast30 = Math.round(bakesLast30);
-
     // === DAY-OF-WEEK ACTIVITY ===
-    // Uses the same bakeDaySpan helper.
-
-    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayLabelsShort = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']; // Bug 13 fix
+    const dayLabelsFull = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dayCounts = [0, 0, 0, 0, 0, 0, 0];
-    for (const b of allBakes) {
+    for (const b of bakes) {
       if (!b.startedAt) continue;
       const days = bakeDaySpan(b.startedAt, b.completedAt);
       const share = 1 / days.length;
       for (const d of days) dayCounts[d.getDay()] += share;
     }
-    const peakDayIdx = dayCounts.indexOf(Math.max(...dayCounts));
-    const peakDayLabel = dayLabels[peakDayIdx];
-    const maxDay = Math.max(...dayCounts) || 1; // for bar scaling
+    // Find ALL peak days (handles ties — Bug 6). Returns indices for highlighting.
+    const maxDay = Math.max(...dayCounts) || 1;
+    const peakDayIdxs = dayCounts.map((c, i) => c >= maxDay - 0.0001 && c > 0 ? i : -1).filter(i => i >= 0);
+    const peakDayLabel = peakDayIdxs.length === 0
+      ? '—'
+      : (peakDayIdxs.length === 1 ? dayLabelsFull[peakDayIdxs[0]].slice(0, 3) : 'Tied');
 
-    // === MONTHLY BAKES — LAST 12 MONTHS ===
-    // Same split logic as day-of-week: bakes spanning days that fall in different months
-    // contribute fractionally to each month. e.g. a bake that started Apr 30 11pm and
-    // ended May 1 7am counts as 0.5 April + 0.5 May.
+    // === MONTHLY BAKES — LAST 12 MONTHS (always shown, regardless of range) ===
+    // Always uses ALL bakes (not range-filtered) since the chart's purpose is to
+    // show the year's trend. Range filter applies to the rest of the page.
+    const now = new Date();
     const monthLabels = [];
+    const monthLabelsFull = [];
     const monthCounts = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       monthLabels.push(d.toLocaleDateString([], { month: 'short' }));
-      const start = d.getTime();
-      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime();
+      monthLabelsFull.push(d.toLocaleDateString([], { month: 'long', year: 'numeric' }));
+      const startMs = d.getTime();
+      const endMs = new Date(now.getFullYear(), now.getMonth() - i + 1, 1).getTime();
       let count = 0;
       for (const b of allBakes) {
         if (!b.startedAt) continue;
@@ -3908,7 +5200,7 @@
         const share = 1 / days.length;
         for (const day of days) {
           const t = day.getTime();
-          if (t >= start && t < end) count += share;
+          if (t >= startMs && t < endMs) count += share;
         }
       }
       monthCounts.push(count);
@@ -3918,36 +5210,46 @@
     // === MOST BAKED RECIPE ===
     const bakeCountByRecipe = new Map();
     const bakeNamesById = new Map();
-    for (const b of allBakes) {
+    const recipeIconsById = new Map();
+    const recipeDeletedById = new Map();
+    for (const b of bakes) {
       if (!b.recipeId) continue;
       bakeCountByRecipe.set(b.recipeId, (bakeCountByRecipe.get(b.recipeId) || 0) + 1);
-      // Capture a name (prefer current live recipe, fall back to snapshot)
       if (!bakeNamesById.has(b.recipeId)) {
-        const live = state.recipes.find(r => r.id === b.recipeId && !r._deleted);
-        const name = live ? live.name : (b.recipeSnapshot ? b.recipeSnapshot.name : 'Unknown recipe');
+        const live = recipeMap.get(b.recipeId);
+        const isLive = !!(live && !live._deleted);
+        const name = isLive ? live.name : (b.recipeSnapshot ? b.recipeSnapshot.name : 'Unknown recipe');
         bakeNamesById.set(b.recipeId, name);
+        recipeIconsById.set(b.recipeId, isLive ? live.icon : (b.recipeSnapshot ? b.recipeSnapshot.icon : DEFAULT_ICON));
+        recipeDeletedById.set(b.recipeId, !isLive);
       }
     }
     const topRecipes = [...bakeCountByRecipe.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-      .map(([id, count]) => ({ id, count, name: bakeNamesById.get(id) || 'Unknown' }));
+      .map(([id, count]) => ({
+        id, count,
+        name: bakeNamesById.get(id) || 'Unknown',
+        icon: recipeIconsById.get(id) || DEFAULT_ICON,
+        deleted: recipeDeletedById.get(id),
+      }));
     const mostBaked = topRecipes[0];
 
     // === HIGHEST AVG SCORE RECIPE (min 2 bakes for stability) ===
     const scoresByRecipe = new Map();
-    for (const b of allBakes) {
+    for (const b of bakes) {
       if (!b.recipeId || typeof b.score !== 'number' || b.score <= 0) continue;
       if (!scoresByRecipe.has(b.recipeId)) scoresByRecipe.set(b.recipeId, []);
       scoresByRecipe.get(b.recipeId).push(b.score);
     }
     const recipeAvgScores = [...scoresByRecipe.entries()]
-      .filter(([, scores]) => scores.length >= 2)
-      .map(([id, scores]) => ({
+      .filter(([, sc]) => sc.length >= 2)
+      .map(([id, sc]) => ({
         id,
         name: bakeNamesById.get(id) || 'Unknown',
-        avg: scores.reduce((a, b) => a + b, 0) / scores.length,
-        count: scores.length,
+        icon: recipeIconsById.get(id) || DEFAULT_ICON,
+        avg: sc.reduce((a, b) => a + b, 0) / sc.length,
+        count: sc.length,
       }))
       .sort((a, b) => b.avg - a.avg);
     const highestRated = recipeAvgScores[0];
@@ -3958,136 +5260,437 @@
       if (r.id) categoryByRecipe.set(r.id, r.categoryId || null);
     }
     const catCounts = new Map();
-    for (const b of allBakes) {
+    for (const b of bakes) {
       const catId = categoryByRecipe.get(b.recipeId) || null;
       catCounts.set(catId, (catCounts.get(catId) || 0) + 1);
     }
     const catEntries = [...catCounts.entries()]
       .map(([id, count]) => {
-        const cat = id ? state.categories.find(c => c.id === id && !c._deleted) : null;
-        const name = cat ? cat.name : 'Uncategorized';
+        // Look up category, fall back to a "deleted category" label if id exists but is tombstoned
+        let name = 'Uncategorized';
+        if (id) {
+          const cat = state.categories.find(c => c.id === id);
+          if (cat && !cat._deleted) name = cat.name;
+          else name = 'Uncategorized'; // deleted categories collapse here
+        }
         return { name, count };
       })
+      .reduce((acc, entry) => {
+        // Merge duplicate names (e.g. multiple "Uncategorized" rows from different sources)
+        const existing = acc.find(e => e.name === entry.name);
+        if (existing) existing.count += entry.count;
+        else acc.push(entry);
+        return acc;
+      }, [])
       .sort((a, b) => b.count - a.count);
 
+    // === STREAK COMPUTATION (F7) ===
+    // Compute longest baking streak (weeks-in-a-row with at least one bake) and
+    // current ongoing streak. Uses calendar weeks starting Sunday.
+    let longestStreak = 0;
+    let currentStreak = 0;
+    {
+      // Build a set of "week keys" — ISO-style year-week strings — for every bake
+      const weekOf = (ts) => {
+        const d = new Date(ts);
+        const day = d.getDay(); // 0=Sun
+        const sundayMs = d.getTime() - day * 86400000;
+        const sunday = new Date(sundayMs);
+        return `${sunday.getFullYear()}-${String(sunday.getMonth()).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+      };
+      const weeksWithBakes = new Set();
+      for (const b of allBakes) {
+        const ts = new Date(b.completedAt || b.startedAt || 0).getTime();
+        if (ts) weeksWithBakes.add(weekOf(ts));
+      }
+      // Iterate from oldest to newest, counting consecutive week chains
+      const sortedWeeks = [...weeksWithBakes].sort();
+      let run = 0;
+      let prevKey = null;
+      for (const key of sortedWeeks) {
+        if (prevKey === null) {
+          run = 1;
+        } else {
+          // Check if this week is exactly 7 days after prevKey
+          const [y, m, d] = key.split('-').map(Number);
+          const [py, pm, pd] = prevKey.split('-').map(Number);
+          const curDate = new Date(y, m, d);
+          const prevDate = new Date(py, pm, pd);
+          const diffDays = Math.round((curDate - prevDate) / 86400000);
+          if (diffDays === 7) run++;
+          else run = 1;
+        }
+        if (run > longestStreak) longestStreak = run;
+        prevKey = key;
+      }
+      // Current streak: must include this week or last week to be "ongoing"
+      const thisWeekKey = weekOf(Date.now());
+      const lastWeekKey = weekOf(Date.now() - 7 * 86400000);
+      if (weeksWithBakes.has(thisWeekKey) || weeksWithBakes.has(lastWeekKey)) {
+        // Walk backwards from now finding consecutive weeks
+        let cursor = new Date();
+        cursor.setHours(0, 0, 0, 0);
+        cursor.setDate(cursor.getDate() - cursor.getDay()); // back to Sunday
+        // If this week is empty but last week wasn't, start from last week
+        if (!weeksWithBakes.has(thisWeekKey)) cursor.setDate(cursor.getDate() - 7);
+        let active = 0;
+        while (true) {
+          const key = `${cursor.getFullYear()}-${String(cursor.getMonth()).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+          if (weeksWithBakes.has(key)) {
+            active++;
+            cursor.setDate(cursor.getDate() - 7);
+          } else break;
+        }
+        currentStreak = active;
+      }
+    }
+
+    // === DRIFT STATS (F4) ===
+    // For each stage NAME (across all bakes of all recipes), compute the average
+    // drift (actual stage duration - planned). Only includes stages with done timestamps.
+    const driftByStageName = new Map(); // name -> { totalDrift, count }
+    for (const b of bakes) {
+      const r = b.recipeSnapshot || recipeMap.get(b.recipeId);
+      if (!r || !Array.isArray(r.stages)) continue;
+      const stageStates = b.stageStates || [];
+      for (let i = 0; i < r.stages.length; i++) {
+        const stage = r.stages[i];
+        const st = stageStates[i];
+        if (!st || !st.doneAt) continue;
+        const plannedDur = (typeof st.durMinOverride === 'number') ? st.durMinOverride : stage.durMin;
+        if (typeof plannedDur !== 'number') continue;
+        // Actual duration = doneAt - prev stage's doneAt (or bake start for stage 0)
+        const prevTs = i === 0
+          ? new Date(b.startedAt).getTime()
+          : (stageStates[i - 1] && stageStates[i - 1].doneAt ? new Date(stageStates[i - 1].doneAt).getTime() : null);
+        if (!prevTs) continue;
+        const actualDur = (new Date(st.doneAt).getTime() - prevTs) / 60000;
+        const drift = actualDur - plannedDur;
+        // Sanity: ignore drifts > 24h (corrupt data) and < -24h
+        if (drift > 24 * 60 || drift < -24 * 60) continue;
+        if (!driftByStageName.has(stage.name)) driftByStageName.set(stage.name, { total: 0, count: 0 });
+        const e = driftByStageName.get(stage.name);
+        e.total += drift;
+        e.count++;
+      }
+    }
+    // Show top 5 stages by absolute average drift (most-off-schedule stages get attention)
+    const driftEntries = [...driftByStageName.entries()]
+      .filter(([, e]) => e.count >= 2) // require at least 2 samples for stability
+      .map(([name, e]) => ({ name, avg: e.total / e.count, count: e.count }))
+      .sort((a, b) => Math.abs(b.avg) - Math.abs(a.avg))
+      .slice(0, 5);
+
+    // === RECIPE TOTAL STATS (F15) ===
+    // Total loaves baked is hard to count without per-recipe yield data, but we
+    // can show total bake count and a rough estimate of dough mass if recipes
+    // have ingredient totals. For now, just totalBakes and longest bake duration.
+    let longestBakeMs = 0;
+    let longestBakeName = null;
+    for (const b of bakes) {
+      if (b.startedAt && b.completedAt) {
+        const ms = new Date(b.completedAt) - new Date(b.startedAt);
+        if (ms > longestBakeMs && ms < 30 * 86400000) {
+          longestBakeMs = ms;
+          const r = b.recipeSnapshot || recipeMap.get(b.recipeId);
+          longestBakeName = r ? r.name : 'Recipe';
+        }
+      }
+    }
+
     // === RENDER ===
-    // Big stat tile helper
-    const tile = (label, value, sub) => `
-      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px;">
-        <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">${escapeHtml(label)}</div>
-        <div style="font-family: 'Fraunces', serif; font-size: 28px; font-weight: 500; color: var(--ink); margin-top: 4px; letter-spacing: -0.02em;">${value}</div>
-        ${sub ? `<div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">${sub}</div>` : ''}
-      </div>`;
-
     c.innerHTML = `
-      <!-- Headline tiles, 2x2 grid -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;">
-        ${tile('Total bakes', totalBakes, bakesThisMonth > 0 ? `${bakesThisMonth} this month` : 'lifetime')}
-        ${tile('Hours baking', totalHoursDisplay, `${bakesWithDuration} bakes timed`)}
-        ${tile('Recipes tried', recipesTried, recipesTried === 1 ? 'unique recipe' : 'unique recipes')}
-        ${tile('Avg score', avgScore !== null ? avgScore.toFixed(1) : '—', avgScore !== null ? `${scores.length} rated` : 'rate bakes to track')}
-      </div>
+      ${renderStatsRangeSelector(range)}
 
-      <!-- Activity -->
-      <div class="section-title">Activity</div>
-      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
-        <div style="display: flex; justify-content: space-between; gap: 10px; margin-bottom: 14px;">
+      <!-- ACTIVITY MOVED TO TOP (UI7) — most-changing data first -->
+      <div class="stats-section-header">
+        <span class="stats-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 8v4l3 3M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z"/></svg></span>
+        <span class="stats-section-title">Activity</span>
+      </div>
+      <div class="stats-card">
+        <div class="stats-activity-row">
           <div>
-            <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Last 30 days</div>
-            <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; color: var(--ink);">${bakesLast30} ${bakesLast30 === 1 ? 'bake' : 'bakes'}</div>
+            <div class="label">${escapeHtml(windowLabel)}</div>
+            <div class="value">${totalBakes} ${totalBakes === 1 ? 'bake' : 'bakes'}</div>
+            ${bakeDelta ? `<span class="stats-delta ${bakeDelta.kind}">${bakeDelta.kind === 'up' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m6 15 6-6 6 6"/></svg>' : bakeDelta.kind === 'down' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m6 9 6 6 6-6"/></svg>' : ''}${escapeHtml(bakeDelta.text)}</span>` : ''}
           </div>
           <div>
-            <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">This year</div>
-            <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; color: var(--ink);">${bakesThisYear}</div>
+            <div class="label">Peak day</div>
+            <div class="value">${escapeHtml(peakDayLabel)}</div>
+            <span class="stats-delta flat" style="margin-top: 4px; display: inline-flex;">${peakDayIdxs.length > 0 ? (Math.round(dayCounts[peakDayIdxs[0]] * 10) / 10) : 0}/wk avg</span>
           </div>
           <div>
-            <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Peak day</div>
-            <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; color: var(--ink);">${peakDayLabel}</div>
+            <div class="label">Recipes tried</div>
+            <div class="value">${recipesTried}</div>
+            <span class="stats-delta flat" style="margin-top: 4px; display: inline-flex;">${recipesTried === 1 ? 'unique' : 'unique'}</span>
           </div>
         </div>
-        <!-- Day-of-week bar chart -->
-        <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 8px;">By day of week</div>
-        <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 80px;">
+        <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 8px; margin-top: 6px;">By day of week</div>
+        <div class="stats-bars dow">
           ${dayCounts.map((count, i) => {
             const heightPct = Math.round((count / maxDay) * 100);
-            const isPeak = i === peakDayIdx && count > 0;
+            const isPeak = peakDayIdxs.includes(i) && count > 0;
+            const display = Number.isInteger(count) ? String(count) : count.toFixed(1);
             return `
-              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%;">
-                <div style="flex: 1; width: 100%; display: flex; align-items: flex-end;">
-                  <div style="width: 100%; background: ${isPeak ? 'var(--crust)' : 'var(--crust-soft)'}; border-radius: 3px 3px 0 0; height: ${heightPct}%; min-height: ${count > 0 ? '4px' : '0'};"></div>
+              <div class="stats-bar-col" data-bar-tip="${dayLabelsFull[i]}: ${display}">
+                <div class="stats-bar-fill-wrap">
+                  <div class="stats-bar-tooltip">${dayLabelsFull[i]}: ${display}</div>
+                  <div class="stats-bar-fill ${isPeak ? 'peak' : ''} ${count === 0 ? 'zero' : ''}" style="height: ${heightPct}%;"></div>
                 </div>
-                <div style="font-size: 10px; color: var(--ink-mute); font-weight: 500;">${dayLabels[i].slice(0,1)}</div>
+                <div class="stats-bar-label">${dayLabelsShort[i]}</div>
               </div>`;
           }).join('')}
         </div>
       </div>
 
-      <!-- Monthly trend -->
-      <div class="section-title">Last 12 months</div>
-      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
-        <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 80px;">
+      ${currentStreak > 1 || longestStreak > 1 ? `
+        <!-- STREAK CALLOUT (F7) -->
+        <div class="stats-streak-card">
+          <div class="stats-streak-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2c.5 4-2 6-3.5 8s-1 5 1 6.5c-2 .5-4-.5-5-2.5-1 3 1 7 5 8 4-.5 7-3.5 7-7.5 0-3-1.5-5-2-7 0-2-1.5-4-2.5-5.5z"/></svg>
+          </div>
+          <div class="stats-streak-content">
+            <div class="stats-streak-headline">${currentStreak > 1 ? `${currentStreak} week streak` : `Best streak: ${longestStreak} weeks`}</div>
+            <div class="stats-streak-sub">${currentStreak > 1 ? `Longest ever: ${longestStreak} ${longestStreak === 1 ? 'week' : 'weeks'}` : 'Bake this week to start a new streak'}</div>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- TOTALS — 2x2 grid (UI16 typography fixes) -->
+      <div class="stats-section-header">
+        <span class="stats-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 3h20v18H2zM2 9h20M9 21V9"/></svg></span>
+        <span class="stats-section-title">Totals</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+        ${statsTile('Bakes', String(totalBakes), windowStart ? `during ${windowLabel.toLowerCase()}` : 'all time')}
+        ${statsTile('Hours', fmtHours(totalHours), `${bakesWithDuration} timed bakes`, { tooltip: 'Wall-clock elapsed time, including overnight ferments' })}
+        ${statsTile('Recipes', String(recipesTried), recipesTried === 1 ? 'unique recipe' : 'unique recipes', { tappable: true, action: 'view-recipes' })}
+        ${statsTile('Avg score', avgScore !== null ? avgScore.toFixed(1) : '—', avgScore !== null ? `${scores.length} of ${totalBakes} rated` : 'rate bakes to track')}
+      </div>
+
+      <!-- LONGEST BAKE (F15 — interesting trivia) -->
+      ${longestBakeMs > 0 ? `
+        <div class="stats-card" style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: var(--bg-warm); color: var(--crust-deep); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-size: 11px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;">Longest bake</div>
+            <div style="font-size: 14px; color: var(--ink); font-weight: 500; margin-top: 2px;">${escapeHtml(longestBakeName)} \u00b7 <span style="font-family: 'JetBrains Mono', monospace;">${fmtHours(longestBakeMs / 3600000)}h</span></div>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- LAST 12 MONTHS — bar chart with diagonal labels and tap tooltips -->
+      <div class="stats-section-header">
+        <span class="stats-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+        <span class="stats-section-title">Last 12 months</span>
+      </div>
+      <div class="stats-card">
+        <div class="stats-bars monthly">
           ${monthCounts.map((count, i) => {
             const heightPct = Math.round((count / maxMonth) * 100);
-            // Display: integers stay clean ("3"), fractional counts show one decimal ("1.5")
-            const countDisplay = Number.isInteger(count) ? String(count) : count.toFixed(1);
+            const display = Number.isInteger(count) ? String(count) : count.toFixed(1);
+            const isMax = count === maxMonth && count > 0;
             return `
-              <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%;" title="${monthLabels[i]}: ${countDisplay}">
-                <div style="flex: 1; width: 100%; display: flex; align-items: flex-end;">
-                  <div style="width: 100%; background: var(--crust); opacity: ${count > 0 ? 1 : 0.15}; border-radius: 2px 2px 0 0; height: ${heightPct}%; min-height: ${count > 0 ? '3px' : '2px'};"></div>
+              <div class="stats-bar-col" data-bar-tip="${monthLabelsFull[i]}: ${display}">
+                <div class="stats-bar-fill-wrap">
+                  <div class="stats-bar-tooltip">${monthLabelsFull[i]}: ${display}</div>
+                  <div class="stats-bar-fill ${isMax ? 'peak' : ''} ${count === 0 ? 'zero' : ''}" style="height: ${heightPct}%;"></div>
                 </div>
-                <div style="font-size: 9px; color: var(--ink-mute);">${monthLabels[i].slice(0,1)}</div>
+                <div class="stats-bar-label diagonal">${monthLabels[i]}</div>
               </div>`;
           }).join('')}
         </div>
-        <div style="font-size: 11px; color: var(--ink-mute); margin-top: 10px; text-align: center;">${monthLabels[0]} → ${monthLabels[11]}</div>
+        <div class="stats-chart-footer">Peak: ${Number.isInteger(maxMonth) ? maxMonth : maxMonth.toFixed(1)} bakes</div>
       </div>
 
-      <!-- Top recipes -->
+      <!-- DRIFT STATS (F4) -->
+      ${driftEntries.length > 0 ? `
+        <div class="stats-section-header">
+          <span class="stats-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></svg></span>
+          <span class="stats-section-title">Timing drift</span>
+        </div>
+        <div class="stats-card">
+          ${driftEntries.map(e => {
+            const driftRounded = Math.round(e.avg);
+            const cls = driftRounded === 0 ? 'ontime' : (driftRounded > 0 ? 'late' : 'early');
+            const sign = driftRounded > 0 ? '+' : (driftRounded < 0 ? '\u2212' : '');
+            const abs = Math.abs(driftRounded);
+            const text = driftRounded === 0 ? 'on time' : `${sign}${abs}m`;
+            return `
+              <div class="stats-drift-row">
+                <div class="stats-drift-stage">${escapeHtml(e.name)}</div>
+                <div class="stats-drift-value ${cls}">${text}</div>
+              </div>`;
+          }).join('')}
+          <div style="font-size: 11px; color: var(--ink-mute); margin-top: 8px; line-height: 1.4;">Average difference between planned and actual stage duration. Negative = finished early, positive = ran long.</div>
+        </div>
+      ` : ''}
+
+      <!-- TOP RECIPES (tappable rows + thumbnails — UI8) -->
       ${mostBaked ? `
-        <div class="section-title">Top recipes</div>
-        <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
+        <div class="stats-section-header">
+          <span class="stats-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span>
+          <span class="stats-section-title">Top recipes</span>
+        </div>
+        <div class="stats-card">
           ${topRecipes.map((r, i) => `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; ${i < topRecipes.length - 1 ? 'border-bottom: 1px solid var(--line);' : ''}">
-              <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-                <div style="width: 22px; height: 22px; border-radius: 50%; background: ${i === 0 ? 'var(--crust)' : 'var(--bg-warm)'}; color: ${i === 0 ? 'white' : 'var(--ink-soft)'}; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;">${i + 1}</div>
-                <div style="font-size: 14px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(r.name)}</div>
+            <div class="stats-recipe-row" data-stats-recipe="${r.id}">
+              <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+                <div class="stats-recipe-rank${i === 0 ? ' first' : ''}">${i + 1}</div>
+                <div class="stats-recipe-thumb">${renderRecipeIcon(r.icon, 22)}</div>
+                <div class="stats-recipe-name">${escapeHtml(r.name)}${r.deleted ? ' <span style="font-size: 10px; color: var(--ink-mute); margin-left: 4px;">(deleted)</span>' : ''}</div>
               </div>
-              <div style="font-size: 13px; color: var(--ink-soft); font-weight: 600; flex-shrink: 0; margin-left: 8px;">${r.count} ${r.count === 1 ? 'bake' : 'bakes'}</div>
+              <div class="stats-recipe-count">${r.count}</div>
             </div>
           `).join('')}
         </div>
       ` : ''}
 
-      <!-- Highest-rated recipe -->
+      <!-- HIGHEST RATED -->
       ${highestRated ? `
-        <div class="section-title">Highest rated</div>
-        <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
-          <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em;">${escapeHtml(highestRated.name)}</div>
-          <div style="font-size: 13px; color: var(--ink-soft); margin-top: 4px;">${highestRated.avg.toFixed(1)} avg score · ${highestRated.count} ${highestRated.count === 1 ? 'rating' : 'ratings'}</div>
+        <div class="stats-section-header">
+          <span class="stats-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="6"/><path d="M9 14l-2 7 5-3 5 3-2-7"/></svg></span>
+          <span class="stats-section-title">Highest rated</span>
         </div>
-      ` : ''}
+        <div class="stats-card">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="stats-recipe-thumb" style="width: 36px; height: 36px;">${renderRecipeIcon(highestRated.icon, 28)}</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em;">${escapeHtml(highestRated.name)}</div>
+              <div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;"><span style="font-family: 'JetBrains Mono', monospace; font-weight: 600;">${highestRated.avg.toFixed(1)}</span> avg \u00b7 ${highestRated.count} ${highestRated.count === 1 ? 'rating' : 'ratings'}</div>
+            </div>
+          </div>
+        </div>
+      ` : (scores.length > 0 ? `
+        <div class="stats-card">
+          <div style="font-size: 12px; color: var(--ink-mute); text-align: center; line-height: 1.5;">Rate at least 2 bakes of the same recipe to see your highest-rated.</div>
+        </div>
+      ` : '')}
 
-      <!-- Category breakdown -->
+      <!-- CATEGORY BREAKDOWN -->
       ${catEntries.length > 0 ? `
-        <div class="section-title">By category</div>
-        <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 18px;">
+        <div class="stats-section-header">
+          <span class="stats-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+          <span class="stats-section-title">By category</span>
+        </div>
+        <div class="stats-card">
           ${catEntries.map(entry => {
             const pct = Math.round((entry.count / totalBakes) * 100);
             return `
-              <div style="margin-bottom: 10px;">
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                  <div style="font-size: 13px; color: var(--ink);">${escapeHtml(entry.name)}</div>
-                  <div style="font-size: 12px; color: var(--ink-soft);">${entry.count} ${entry.count === 1 ? 'bake' : 'bakes'} · ${pct}%</div>
+              <div class="stats-cat-row">
+                <div class="head">
+                  <div class="name">${escapeHtml(entry.name)}</div>
+                  <div class="meta">${entry.count} \u00b7 ${pct}%</div>
                 </div>
-                <div style="height: 6px; background: var(--bg-warm); border-radius: 3px; overflow: hidden;">
-                  <div style="height: 100%; width: ${pct}%; background: var(--crust); border-radius: 3px;"></div>
-                </div>
+                <div class="stats-cat-bar"><div class="stats-cat-bar-fill" style="width: ${pct}%;"></div></div>
               </div>
             `;
           }).join('')}
         </div>
       ` : ''}
     `;
+
+    // Wire range selector
+    wireStatsRangeSelector();
+
+    // Wire bar tooltips — tap to show, second tap or tap-away hides
+    c.querySelectorAll('.stats-bar-col').forEach(col => {
+      col.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Hide all other tooltips first
+        c.querySelectorAll('.stats-bar-col.show-tip').forEach(o => {
+          if (o !== col) o.classList.remove('show-tip');
+        });
+        col.classList.toggle('show-tip');
+        haptic('light');
+      });
+    });
+    // Tap outside any bar hides all tooltips
+    document.addEventListener('click', () => {
+      c.querySelectorAll('.stats-bar-col.show-tip').forEach(col => col.classList.remove('show-tip'));
+    }, { once: true });
+
+    // Wire tappable tiles — only the Recipes tile navigates currently
+    c.querySelectorAll('[data-tile-action]').forEach(tile => {
+      tile.addEventListener('click', () => {
+        const action = tile.dataset.tileAction;
+        if (action === 'view-recipes') {
+          haptic('light');
+          switchView('view-recipes');
+        }
+      });
+    });
+
+    // Wire top recipe rows — tap to open the recipe's schedule view
+    c.querySelectorAll('[data-stats-recipe]').forEach(row => {
+      row.addEventListener('click', () => {
+        const id = row.dataset.statsRecipe;
+        const recipe = state.recipes.find(r => r.id === id && !r._deleted);
+        if (!recipe) {
+          toast('Recipe no longer exists', 'info');
+          return;
+        }
+        haptic('light');
+        state.currentRecipeId = id;
+        saveState();
+        switchView('view-schedule');
+      });
+    });
+  }
+
+  /**
+   * Tile helper for the Stats tab. Returns a card HTML string.
+   * opts.tappable + opts.action wire the tile to a navigation target.
+   * opts.tooltip adds a title attribute (visible on desktop hover, ignored on mobile).
+   */
+  function statsTile(label, value, sub, opts = {}) {
+    const tappable = opts.tappable;
+    const tooltip = opts.tooltip ? ` title="${escapeAttr(opts.tooltip)}"` : '';
+    const actionAttr = opts.action ? ` data-tile-action="${opts.action}"` : '';
+    return `
+      <div class="stats-tile${tappable ? ' tappable' : ''}"${actionAttr}${tooltip}>
+        <div class="stats-tile-label">${escapeHtml(label)}</div>
+        <div class="stats-tile-value">${value}</div>
+        ${sub ? `<div class="stats-tile-sub">${escapeHtml(sub)}</div>` : ''}
+      </div>`;
+  }
+
+  /**
+   * Render the date-range pill selector. Used at the top of the Stats view.
+   * The active range is highlighted in crust orange.
+   */
+  function renderStatsRangeSelector(current) {
+    const ranges = [
+      { id: 'all', label: 'All time' },
+      { id: 'thisY', label: 'This year' },
+      { id: 'lastY', label: String(new Date().getFullYear() - 1) },
+      { id: '90d', label: 'Last 90d' },
+      { id: '30d', label: 'Last 30d' },
+    ];
+    return `
+      <div class="stats-range">
+        ${ranges.map(r => `<button class="stats-range-btn${r.id === current ? ' active' : ''}" data-stats-range="${r.id}">${r.label}</button>`).join('')}
+      </div>
+    `;
+  }
+
+  /**
+   * Wire the range-selector buttons. Called after every render of the Stats view
+   * because the buttons get rebuilt each time.
+   */
+  function wireStatsRangeSelector() {
+    document.querySelectorAll('[data-stats-range]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const r = btn.dataset.statsRange;
+        if (r === state.statsRange) return;
+        state.statsRange = r;
+        haptic('light');
+        saveState();
+        renderStats();
+      });
+    });
   }
 
   function openSchedule(recipeId) {
@@ -6687,6 +8290,55 @@ Here is the recipe:
       ? { month: 'short', day: 'numeric' }
       : { month: 'short', year: 'numeric' });
   }
+
+  /**
+   * Bucket a bake timestamp into a date-section label for the History list.
+   * Used to group cards under "This week" / "Last week" / "June 2026" / etc.
+   * Returns a stable string per bucket so the renderer can group consistently.
+   */
+  function historyDateBucket(ts) {
+    if (!ts) return 'Earlier';
+    const d = new Date(ts);
+    const now = new Date();
+    // Today: within calendar today
+    if (d.toDateString() === now.toDateString()) return 'Today';
+    // Yesterday: 1 calendar day back
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    // This week: within 7 days
+    const diffDays = Math.floor((now - d) / 86400000);
+    if (diffDays < 7) return 'This week';
+    if (diffDays < 14) return 'Last week';
+    // Same month and year
+    if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) {
+      return 'Earlier this month';
+    }
+    // Same year — show month name
+    if (d.getFullYear() === now.getFullYear()) {
+      return d.toLocaleDateString([], { month: 'long' });
+    }
+    // Other years — month + year
+    return d.toLocaleDateString([], { month: 'long', year: 'numeric' });
+  }
+
+  /**
+   * Render score stars as inline SVG. Returns a string with 5 stars, filled
+   * up to the score value. Used on history cards and detail view.
+   * If interactive is true, each star gets a data-score-set attribute so a
+   * click handler can wire ratings without opening the full Edit modal.
+   */
+  function renderScoreStars(score, opts = {}) {
+    const s = Math.max(0, Math.min(5, score || 0));
+    const interactive = !!opts.interactive;
+    const sizeAttr = opts.size ? ` style="width: ${opts.size}px; height: ${opts.size}px;"` : '';
+    return [1, 2, 3, 4, 5].map(n => {
+      const filled = n <= s;
+      const cls = filled ? 'filled' : 'empty';
+      const interactiveAttr = interactive ? ` data-score-set="${n}"` : '';
+      return `<svg class="${cls}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"${sizeAttr}${interactiveAttr}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+    }).join('');
+  }
   function formatDateTimeLocal(d) {
     const pad = n => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -6869,187 +8521,320 @@ Here is the recipe:
     }
   }
 
+  /**
+   * Render the Active Bakes view. Top-level renderer for the Active tab.
+   *
+   * Layout (top to bottom):
+   *   1. "Next action" banner — ONLY shown when 2+ bakes are running (otherwise
+   *      the single bake's card already says what's next).
+   *   2. Active bake cards — one per running bake, with status, countdown,
+   *      segmented progress, and a Mark Done quick action for hands-on stages.
+   *   3. Starter section — rendered by renderStarter() (called separately from
+   *      switchView, not from inside this function any more).
+   */
   function renderActiveBakes() {
     const list = document.getElementById('active-bakes-list');
     const bakes = liveActiveBakes();
     if (bakes.length === 0) {
+      // Custom SVG illustration — a stylized loaf of bread with steam. Replaces
+      // the 🥖 emoji which renders differently across iOS versions.
       list.innerHTML = `
         <div class="empty">
-          <div class="icon">🥖</div>
+          <div class="active-empty-illus">
+            <svg viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <!-- Steam wisps -->
+              <path d="M30 18c0-3 3-3 3-6s-3-3-3-6" opacity="0.6"/>
+              <path d="M48 18c0-3 3-3 3-6s-3-3-3-6" opacity="0.6"/>
+              <path d="M66 18c0-3 3-3 3-6s-3-3-3-6" opacity="0.6"/>
+              <!-- Loaf body: an oval with scoring marks -->
+              <ellipse cx="48" cy="60" rx="36" ry="20"/>
+              <path d="M32 53l6 8M44 49l6 8M56 49l6 8M68 53l-2 4" opacity="0.5"/>
+            </svg>
+          </div>
           <div class="title">No active bakes</div>
-          <div class="body">Start a bake from any recipe to see it here. You can run up to ${MAX_ACTIVE_BAKES} bakes at once.</div>
+          <div class="body">Start a bake from any recipe to see it here.</div>
         </div>`;
-      renderStarter();
       return;
     }
 
-    // "What's next" banner — finds the soonest upcoming action across all active bakes
-    const nextAction = (() => {
-      let best = null;
-      for (const b of bakes) {
-        if (b.paused) continue;
-        const recipe = state.recipes.find(r => r.id === b.recipeId);
-        if (!recipe || recipe._deleted) continue;
-        const idx = getCurrentStageIdx(recipe, b);
-        if (idx === -1) continue;
-        // Prep window — the "next action" is when stage 1 will actually begin.
-        if (b.prepUntil && new Date(b.prepUntil) > new Date()) {
-          const target = new Date(b.prepUntil);
-          const candidate = {
-            recipe,
-            bake: b,
-            actionName: `Start: ${recipe.stages[0].name}`,
-            target,
-            msAway: target - new Date(),
-            awaitingStart: false,
-            color: getBakeColor(b.color),
-          };
-          if (!best || candidate.msAway < best.msAway) best = candidate;
-          continue;
-        }
-        const stage = recipe.stages[idx];
-        const curState = b.stageStates[idx];
-        const awaitingStart = stage.needsStart && !curState.startedAt;
-        const start = getStageScheduledStart(recipe, idx, b);
-        const end = new Date(start.getTime() + getStageDur(recipe, idx, b) * 60000);
-        const now = new Date();
-        // For wait stages we care about when they end (so user can do next action)
-        // For hands-on we care about when they start (or now if it's already begun)
-        // For needsStart awaiting confirmation, the "next action" is right now (tap Start)
-        const target = awaitingStart ? now : (stage.isWait ? end : (start > now ? start : end));
-        const msAway = target - now;
-        const nextStage = !stage.isWait ? stage : (idx + 1 < recipe.stages.length ? recipe.stages[idx + 1] : null);
-        const actionName = awaitingStart
-          ? `Start: ${stage.name}`
-          : (stage.isWait ? (nextStage ? nextStage.name : 'End of bake') : stage.name);
-        const candidate = {
-          recipe,
-          bake: b,
-          actionName,
+    // "What's next" computation — finds the soonest upcoming action across bakes.
+    // Used both for the multi-bake banner AND for per-card completion time labels.
+    const nextActionPerBake = new Map(); // bakeId -> { target, msAway, awaitingStart, actionName }
+    let globalNext = null; // soonest across all bakes
+    for (const b of bakes) {
+      if (b.paused) continue;
+      const recipe = state.recipes.find(r => r.id === b.recipeId);
+      if (!recipe || recipe._deleted) continue;
+      const idx = getCurrentStageIdx(recipe, b);
+      if (idx === -1) continue;
+      // Prep window — bake is scheduled but hasn't begun yet
+      if (b.prepUntil && new Date(b.prepUntil) > new Date()) {
+        const target = new Date(b.prepUntil);
+        const data = {
+          recipe, bake: b,
           target,
-          msAway,
-          awaitingStart,
+          msAway: target - new Date(),
+          actionName: `Start: ${recipe.stages[0].name}`,
+          awaitingStart: false,
           color: getBakeColor(b.color),
         };
-        if (!best || msAway < best.msAway) best = candidate;
+        nextActionPerBake.set(b.id, data);
+        if (!globalNext || data.msAway < globalNext.msAway) globalNext = data;
+        continue;
       }
-      return best;
-    })();
+      const stage = recipe.stages[idx];
+      const curState = b.stageStates[idx];
+      const awaitingStart = stage.needsStart && !curState.startedAt;
+      const start = getStageScheduledStart(recipe, idx, b);
+      const end = new Date(start.getTime() + getStageDur(recipe, idx, b) * 60000);
+      const now = new Date();
+      const target = awaitingStart ? now : (stage.isWait ? end : (start > now ? start : end));
+      const msAway = target - now;
+      const nextStage = !stage.isWait ? stage : (idx + 1 < recipe.stages.length ? recipe.stages[idx + 1] : null);
+      const actionName = awaitingStart
+        ? `Start: ${stage.name}`
+        : (stage.isWait ? (nextStage ? nextStage.name : 'End of bake') : stage.name);
+      const data = { recipe, bake: b, target, msAway, awaitingStart, actionName, color: getBakeColor(b.color) };
+      nextActionPerBake.set(b.id, data);
+      if (!globalNext || msAway < globalNext.msAway) globalNext = data;
+    }
 
-    const nextBanner = nextAction ? (() => {
-      const ms = nextAction.msAway;
-      const overdue = ms < 0 && !nextAction.awaitingStart;
-      const isReadyNow = nextAction.awaitingStart;
-      const label = overdue ? 'Action overdue' : (isReadyNow ? 'Ready when you are' : 'Next action');
+    // Banner only shows for 2+ bakes — for a single bake, the card itself is enough
+    const showBanner = bakes.length > 1 && globalNext;
+    let bannerHtml = '';
+    if (showBanner) {
+      const ms = globalNext.msAway;
+      const overdue = ms < 0 && !globalNext.awaitingStart;
+      const isReadyNow = globalNext.awaitingStart;
+      const label = overdue ? 'Action Overdue' : (isReadyNow ? 'Ready When You Are' : 'Next Action');
       const timing = isReadyNow
-        ? 'Tap Start to begin'
+        ? 'Tap into the bake to start'
         : (overdue
           ? `${formatCountdown(Math.abs(ms))} ago`
           : (() => {
-              const f = formatLongCountdown(ms, nextAction.target);
+              const f = formatLongCountdown(ms, globalNext.target);
               return ms > 8 * 3600 * 1000 ? `at ${f.value} (${f.when})` : `in ${f.value}`;
             })());
-      return `
-        <div style="background: ${overdue ? 'rgba(196, 90, 74, 0.1)' : nextAction.color.soft}; border: 1px solid ${overdue ? 'var(--warn)' : nextAction.color.hex}; border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px;">
-          <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: ${overdue ? 'var(--warn)' : nextAction.color.hex}; margin-bottom: 4px;">${label}</div>
-          <div style="font-family: 'Fraunces', serif; font-size: 17px; color: var(--ink); line-height: 1.25;">${escapeHtml(nextAction.actionName)}</div>
-          <div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">${escapeHtml(nextAction.recipe.name)} · ${timing}</div>
+      const accentVar = `--banner-color: ${globalNext.color.hex};`;
+      bannerHtml = `
+        <div class="abc-banner${overdue ? ' overdue' : ''}" style="${accentVar}">
+          <div class="abc-banner-eyebrow">${label}</div>
+          <div class="abc-banner-headline">${escapeHtml(globalNext.actionName)}</div>
+          <div class="abc-banner-meta">${escapeHtml(globalNext.recipe.name)} \u00b7 ${timing}</div>
         </div>
       `;
-    })() : '';
+    }
 
-    list.innerHTML = nextBanner + bakes.map(b => {
+    // Render each bake card
+    const cardsHtml = bakes.map(b => {
       const recipe = state.recipes.find(r => r.id === b.recipeId);
       if (!recipe || recipe._deleted) return '';
       const color = getBakeColor(b.color);
       const curIdx = getCurrentStageIdx(recipe, b);
       const completedCount = b.stageStates.filter(s => s.done).length;
       const totalCount = recipe.stages.length;
-      const progress = Math.round((completedCount / totalCount) * 100);
       const allDone = curIdx === -1;
+      const now = new Date();
 
-      let statusLine = '';
-      let countdownLine = '';
+      // Status display (replaces old statusLine + countdownLine)
+      let stageNameHtml = '';
+      let stageMetaHtml = '';
+      let countdownHtml = '';
+      let quickAction = null; // { label, kind: 'start' | 'done' | 'save', stageIdx? }
+      let ctActiveCount = 0;
+
       if (b.paused) {
-        statusLine = `Stage ${curIdx + 1} of ${totalCount} · ${escapeHtml(recipe.stages[curIdx].name)}`;
-        countdownLine = '<span style="color: var(--ink-mute); font-weight: 600;">⏸ Paused</span>';
-      } else if (b.prepUntil && new Date(b.prepUntil) > new Date()) {
-        // Prep window: bake was started ahead of its scheduled time. Show countdown to
-        // when stage 1 will actually begin.
-        const msToStart = new Date(b.prepUntil) - new Date();
-        statusLine = `Prep · ${totalCount} stages ahead`;
-        countdownLine = `Starts in ${formatCountdown(msToStart)}`;
+        stageNameHtml = escapeHtml(recipe.stages[curIdx].name);
+        stageMetaHtml = `Stage ${curIdx + 1} of ${totalCount} \u00b7 Paused`;
+        countdownHtml = '<span class="warn">\u23f8 Timer paused</span>';
+      } else if (b.prepUntil && new Date(b.prepUntil) > now) {
+        const msToStart = new Date(b.prepUntil) - now;
+        stageNameHtml = escapeHtml(recipe.stages[0].name);
+        stageMetaHtml = `Prep \u00b7 ${totalCount} stages ahead`;
+        countdownHtml = `Starts in <span class="mono">${formatCountdown(msToStart)}</span>`;
       } else if (allDone) {
-        statusLine = 'All stages complete';
-        countdownLine = '<span style="color: var(--leaven); font-weight: 600;">Ready to save</span>';
+        stageNameHtml = 'All Stages Complete';
+        stageMetaHtml = `${totalCount} of ${totalCount} stages`;
+        countdownHtml = '<span class="ready">Ready to save</span>';
+        quickAction = { label: 'Save Bake', kind: 'save' };
       } else {
         const stage = recipe.stages[curIdx];
         const curState = b.stageStates[curIdx];
         const awaitingStart = stage.needsStart && !curState.startedAt;
         const scheduledStart = getStageScheduledStart(recipe, curIdx, b);
         const scheduledEnd = new Date(scheduledStart.getTime() + getStageDur(recipe, curIdx, b) * 60000);
-        const msToEnd = scheduledEnd - new Date();
-        const msToStart = scheduledStart - new Date();
-        statusLine = `Stage ${curIdx + 1} of ${totalCount} · ${escapeHtml(stage.name)}`;
+        const msToEnd = scheduledEnd - now;
+        const msToStart = scheduledStart - now;
+        stageNameHtml = escapeHtml(stage.name);
+        stageMetaHtml = `Stage ${curIdx + 1} of ${totalCount}`;
+        // Count active concurrent timers (running, not yet fired)
+        if (stage.isWait && Array.isArray(stage.concurrentTimers)) {
+          ctActiveCount = stage.concurrentTimers.filter(ct => {
+            const fireAt = scheduledStart.getTime() + (ct.offsetMin || 0) * 60000;
+            return fireAt > now.getTime();
+          }).length;
+        }
         if (awaitingStart) {
-          countdownLine = '<span style="color: var(--crust); font-weight: 600;">Tap Start when ready</span>';
+          countdownHtml = '<span class="crust">Tap Start when ready</span>';
+          quickAction = { label: 'Start Stage', kind: 'start', stageIdx: curIdx };
         } else if (msToStart > 0) {
-          countdownLine = `Starts in ${formatCountdown(msToStart)}`;
+          countdownHtml = `Starts in <span class="mono">${formatCountdown(msToStart)}</span>`;
         } else if (stage.isWait) {
-          countdownLine = `Ready in <span class="mono">${formatCountdown(Math.abs(msToEnd))}</span>`;
+          countdownHtml = `Ready in <span class="mono">${formatCountdown(Math.abs(msToEnd))}</span>`;
         } else if (msToEnd < 0) {
-          countdownLine = `<span style="color: var(--warn); font-weight: 600;">Overdue by ${formatCountdown(Math.abs(msToEnd))}</span>`;
+          countdownHtml = `<span class="warn">Overdue by ${formatCountdown(Math.abs(msToEnd))}</span>`;
+          quickAction = { label: 'Mark Done', kind: 'done', stageIdx: curIdx };
         } else {
-          countdownLine = `<span class="mono">${formatCountdown(Math.abs(msToEnd))}</span> remaining`;
+          countdownHtml = `<span class="mono">${formatCountdown(Math.abs(msToEnd))}</span> remaining`;
+          // Mark Done available for hands-on stages while they're running
+          if (!stage.isWait) {
+            quickAction = { label: 'Mark Done', kind: 'done', stageIdx: curIdx };
+          }
         }
       }
 
+      // Concurrent timers pill (UI recommendation F7)
+      const ctPillHtml = ctActiveCount > 0 ? `
+        <span class="abc-ct-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l2 2"/><circle cx="12" cy="12" r="9"/></svg>
+          ${ctActiveCount} timer${ctActiveCount === 1 ? '' : 's'}
+        </span>
+      ` : '';
+
+      // Segmented progress bar — one segment per stage
+      const segmentsHtml = recipe.stages.map((_, i) => {
+        const ss = b.stageStates[i];
+        const isDone = ss && ss.done;
+        const isCurrent = i === curIdx && !isDone;
+        return `<div class="abc-progress-seg${isDone ? ' done' : (isCurrent ? ' current' : '')}"></div>`;
+      }).join('');
+
+      // Footer: "X of Y stages · Done by 5:30 PM"
+      // "Done by" is computed by adding remaining stage durations to "now"
+      let doneByStr = '';
+      if (!allDone && !b.paused) {
+        try {
+          // Sum remaining duration: current stage's remaining + all future stages' full duration
+          let remainingMs = 0;
+          for (let i = curIdx; i < recipe.stages.length; i++) {
+            const ss = b.stageStates[i];
+            if (ss && ss.done) continue;
+            if (i === curIdx) {
+              // Use remaining time on current stage
+              const stageStart = getStageScheduledStart(recipe, i, b);
+              const stageEnd = new Date(stageStart.getTime() + getStageDur(recipe, i, b) * 60000);
+              const ms = stageEnd - now;
+              remainingMs += Math.max(0, ms);
+            } else {
+              remainingMs += getStageDur(recipe, i, b) * 60000;
+            }
+          }
+          const doneByTime = new Date(now.getTime() + remainingMs);
+          const sameDay = doneByTime.toDateString() === now.toDateString();
+          const tomorrow = new Date(now.getTime() + 86400000);
+          if (sameDay) {
+            doneByStr = `Done by ${doneByTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+          } else if (doneByTime.toDateString() === tomorrow.toDateString()) {
+            doneByStr = `Done tomorrow at ${doneByTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+          } else {
+            doneByStr = `Done ${doneByTime.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${doneByTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      // Start time label — replaces the old "Crust" / "Leaven" color name (which was
+      // internal naming with no user value). Shows when the bake was started.
+      const startedAt = b.startedAt ? new Date(b.startedAt) : null;
+      let startedStr = '';
+      if (startedAt) {
+        const elapsedMs = now - startedAt;
+        if (elapsedMs < 60000) startedStr = 'Just started';
+        else if (elapsedMs < 3600000) startedStr = `Started ${Math.floor(elapsedMs / 60000)}m ago`;
+        else if (elapsedMs < 86400000) {
+          const h = Math.floor(elapsedMs / 3600000);
+          const m = Math.floor((elapsedMs % 3600000) / 60000);
+          startedStr = m > 0 ? `Started ${h}h ${m}m ago` : `Started ${h}h ago`;
+        } else {
+          startedStr = `Started ${Math.floor(elapsedMs / 86400000)}d ago`;
+        }
+      }
+
+      // Quick action button HTML
+      let quickActionHtml = '';
+      if (quickAction) {
+        const iconHtml = quickAction.kind === 'save'
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>'
+          : quickAction.kind === 'start'
+            ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>'
+            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 13l4 4L19 7"/></svg>';
+        quickActionHtml = `
+          <button class="abc-quick-action${quickAction.kind === 'save' ? ' complete' : ''}"
+                  data-quick-action="${quickAction.kind}"
+                  data-bake-id="${b.id}"
+                  ${quickAction.stageIdx !== undefined ? `data-stage-idx="${quickAction.stageIdx}"` : ''}>
+            ${iconHtml}
+            ${quickAction.label}
+          </button>
+        `;
+      }
+
       return `
-        <div class="active-bake-card" data-bake-id="${b.id}" style="border-left: 4px solid ${color.hex}; background: var(--bg-elev); border: 1px solid var(--line); border-left: 4px solid ${color.hex}; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; cursor: pointer;">
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center;">${renderRecipeIcon(recipe.icon, 28)}</div>
-            <div style="flex: 1; min-width: 0;">
-              <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); line-height: 1.2;">${escapeHtml(recipe.name)}</div>
-              <div style="font-size: 11px; color: ${color.hex}; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px;">${color.name}</div>
+        <div class="active-bake-card" data-bake-id="${b.id}" style="--bake-accent: ${color.hex};">
+          <div class="abc-header">
+            <div class="abc-icon">${renderRecipeIcon(recipe.icon, 32)}</div>
+            <div class="abc-identity">
+              <div class="abc-recipe-name">${escapeHtml(recipe.name)}</div>
+              ${startedStr ? `<div class="abc-started">${escapeHtml(startedStr)}</div>` : ''}
             </div>
-            <button data-end-bake="${b.id}" style="background: none; border: 1px solid var(--line); color: var(--ink-mute); padding: 4px 10px; border-radius: 100px; font-family: inherit; font-size: 11px; font-weight: 500; cursor: pointer;">End</button>
+            <button class="abc-end-btn" data-end-bake="${b.id}" aria-label="End bake">End</button>
           </div>
-          <div style="font-size: 13px; color: var(--ink); margin-bottom: 4px;">${statusLine}</div>
-          <div style="font-size: 12px; color: var(--ink-mute); margin-bottom: 10px;">${countdownLine}</div>
-          <div style="height: 4px; background: var(--line); border-radius: 100px; overflow: hidden;">
-            <div style="height: 100%; width: ${progress}%; background: ${color.hex}; transition: width 0.3s;"></div>
+          <div class="abc-status">
+            <div class="abc-stage-meta">${stageMetaHtml}${ctPillHtml}</div>
+            <div class="abc-stage-name">${stageNameHtml}</div>
+            <div class="abc-countdown">${countdownHtml}</div>
           </div>
-          <div style="font-size: 10px; color: var(--ink-mute); margin-top: 4px; font-family: 'JetBrains Mono', monospace;">${completedCount} / ${totalCount} stages</div>
+          <div class="abc-progress">${segmentsHtml}</div>
+          ${doneByStr ? `<div class="abc-footer"><span>${completedCount} of ${totalCount} stages</span><span class="dot">\u00b7</span><span class="mono">${escapeHtml(doneByStr)}</span></div>` : `<div class="abc-footer"><span>${completedCount} of ${totalCount} stages</span></div>`}
+          ${quickActionHtml}
         </div>
       `;
     }).join('');
 
-    // Click on the card opens that bake in the schedule view
+    list.innerHTML = bannerHtml + cardsHtml;
+
+    // Click on the card opens that bake in the schedule view — but ignore clicks
+    // on action buttons (End, quick action) since those have their own handlers.
     list.querySelectorAll('.active-bake-card').forEach(card => {
       card.addEventListener('click', (e) => {
-        // Don't trigger if End button was clicked
         if (e.target.closest('[data-end-bake]')) return;
+        if (e.target.closest('[data-quick-action]')) return;
         const bakeId = card.dataset.bakeId;
-        const b = getActiveBakeById(bakeId);
-        if (!b) return;
+        const bk = getActiveBakeById(bakeId);
+        if (!bk) return;
         state.focusedBakeId = bakeId;
-        state.currentRecipeId = b.recipeId;
+        state.currentRecipeId = bk.recipeId;
         saveState();
         switchView('view-schedule');
       });
     });
 
-    // End buttons
+    // End buttons — confirmation modal with progress shown
     list.querySelectorAll('[data-end-bake]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const bakeId = btn.dataset.endBake;
-        const b = getActiveBakeById(bakeId);
-        if (!b) return;
-        const recipe = state.recipes.find(r => r.id === b.recipeId);
+        const bk = getActiveBakeById(bakeId);
+        if (!bk) return;
+        const recipe = state.recipes.find(r => r.id === bk.recipeId);
+        const completed = bk.stageStates.filter(s => s.done).length;
+        const total = recipe ? recipe.stages.length : 0;
+        // Show progress in the confirmation message so users see what they'd lose
+        const progressLine = total > 0
+          ? `You're ${completed} of ${total} stages in${completed === total ? ' \u2014 all stages complete' : ''}.`
+          : '';
         const choice = await showConfirm({
           title: `End "${recipe ? recipe.name : 'this bake'}"?`,
-          message: 'Save to history or discard without saving?',
+          message: `${progressLine}${progressLine ? ' ' : ''}Save to history or discard without saving?`,
           buttons: [
             { label: 'Save to History', style: 'primary', value: 'save' },
             { label: 'Discard', style: 'danger', value: 'discard' },
@@ -7061,8 +8846,46 @@ Here is the recipe:
       });
     });
 
-    // Render the starter section after the bake list (it sits below)
-    renderStarter();
+    // Quick action buttons (Mark Done / Start Stage / Save Bake)
+    list.querySelectorAll('[data-quick-action]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const kind = btn.dataset.quickAction;
+        const bakeId = btn.dataset.bakeId;
+        const bk = getActiveBakeById(bakeId);
+        if (!bk) return;
+        const recipe = state.recipes.find(r => r.id === bk.recipeId);
+        if (!recipe) return;
+        if (kind === 'done') {
+          const stageIdx = parseInt(btn.dataset.stageIdx, 10);
+          if (bk.stageStates[stageIdx] && !bk.stageStates[stageIdx].done) {
+            const plannedEnd = new Date(getStageScheduledStart(recipe, stageIdx, bk).getTime() + getStageDur(recipe, stageIdx, bk) * 60000);
+            const driftMin = Math.abs((Date.now() - plannedEnd.getTime()) / 60000);
+            if (driftMin > 5) markBakeRemindersStale(bk);
+            bk.stageStates[stageIdx].done = true;
+            bk.stageStates[stageIdx].doneAt = new Date().toISOString();
+            bk._updatedAt = Date.now();
+            saveState();
+          }
+          haptic('success');
+          renderActiveBakes();
+        } else if (kind === 'start') {
+          const stageIdx = parseInt(btn.dataset.stageIdx, 10);
+          if (bk.stageStates[stageIdx]) {
+            bk.stageStates[stageIdx].startedAt = new Date().toISOString();
+            markBakeRemindersStale(bk);
+            bk._updatedAt = Date.now();
+            saveState();
+          }
+          haptic('medium');
+          renderActiveBakes();
+        } else if (kind === 'save') {
+          haptic('success');
+          endBake(bakeId, true);
+        }
+      });
+    });
+
     // Idempotent ticker check — see ensureBakeTickerRunning notes.
     ensureBakeTickerRunning();
   }
@@ -7123,11 +8946,26 @@ Here is the recipe:
     if (!c) return;
     const reminders = (state.starter && state.starter.reminders) || [];
     const enabledReminders = reminders.filter(r => r.enabled);
+    const feedLog = (state.starter && Array.isArray(state.starter.feedLog)) ? state.starter.feedLog : [];
+
     if (enabledReminders.length === 0) {
+      // Empty state — still show Feed Now button so the user can log feedings
+      // even without a recurring schedule
+      const recentFeed = feedLog.length > 0 ? feedLog[0] : null;
+      const lastFedStr = recentFeed ? formatRelativeShort(new Date(recentFeed).getTime()) : null;
       c.innerHTML = `
-        <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px;">
-          <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">No starter reminders set up yet. Tap <strong>Edit Schedule</strong> above to add a weekly feeding routine.</div>
-        </div>`;
+        <div class="starter-card">
+          <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">
+            No schedule set up. Tap <strong>Edit Schedule</strong> above to add a weekly feeding routine, or log a manual feeding below.
+          </div>
+          ${lastFedStr ? `<div style="margin-top: 8px; font-size: 12px; color: var(--ink-mute);">Last fed ${escapeHtml(lastFedStr)}</div>` : ''}
+          <button class="starter-feed-now-btn" id="starter-feed-now-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m-7-7h14"/></svg>
+            Log a Feeding
+          </button>
+        </div>
+      `;
+      wireStarterFeedNow();
       return;
     }
     // Sort by next occurrence so the soonest feeding is on top
@@ -7135,28 +8973,19 @@ Here is the recipe:
       reminder: r,
       next: nextStarterDate(r),
     })).sort((a, b) => a.next - b.next);
-    // Push notifications mode: when active, the backend handles the schedule
-    // automatically. Otherwise, the user is prompted to enable notifications.
-    const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
-      typeof Notification !== 'undefined' && Notification.permission === 'granted';
-    // Compute progress bar data for the soonest upcoming reminder.
-    // Progress runs from the most recent past feeding (any slot) to the next upcoming feeding.
-    // Hidden when the gap is < 24h, since that indicates we're in the "active feeding window"
-    // between two same-day slots (e.g. Fri 8 AM and Fri 7 PM).
+    // Progress bar between most recent past feeding and next upcoming feeding
     const now = new Date();
     const soonestNext = items[0].next;
     const prevFeed = mostRecentStarterFeed(enabledReminders);
     let progressPct = null;
     if (prevFeed) {
       const gapMs = soonestNext - prevFeed;
-      if (gapMs >= 86400000) { // 24h threshold
+      if (gapMs >= 86400000) {
         const elapsed = now - prevFeed;
         progressPct = Math.max(0, Math.min(1, elapsed / gapMs));
       }
     }
-    // Single merged card: "Feed Starter" with progress bar and a list of upcoming reminders.
-    // The top item is the soonest feeding (with "away" text). Subsequent items are listed
-    // below as supporting context. Progress bar matches the gap from previous feed to next.
+    // "Away" label for the soonest reminder
     const soonestItem = items[0];
     const soonestMsAway = soonestItem.next - new Date();
     let awayStr;
@@ -7164,8 +8993,7 @@ Here is the recipe:
       const hours = Math.max(1, Math.round(soonestMsAway / 3600000));
       awayStr = `in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
     } else {
-      const now2 = new Date();
-      const tomorrow = new Date(now2.getTime() + 86400000);
+      const tomorrow = new Date(now.getTime() + 86400000);
       if (soonestItem.next.toDateString() === tomorrow.toDateString()) {
         awayStr = 'Tomorrow';
       } else {
@@ -7173,41 +9001,80 @@ Here is the recipe:
         awayStr = `on ${fullDay}`;
       }
     }
+    // Render the schedule rows with day name + mono time, right-aligned
+    const scheduleRowsHtml = items.map(item => {
+      const d = new Date();
+      d.setHours(item.reminder.hour, item.reminder.minute, 0, 0);
+      const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return `
+        <div class="starter-schedule-row">
+          <span>${escapeHtml(DAY_NAMES[item.reminder.dayOfWeek])}</span>
+          <span class="when">${escapeHtml(timeStr)}</span>
+        </div>
+      `;
+    }).join('');
+    // Feed log — show the 3 most recent entries
+    const recentLog = feedLog.slice(0, 3);
+    const feedLogHtml = recentLog.length > 0 ? `
+      <div class="starter-feedlog">
+        <div class="starter-feedlog-header">
+          <span>Recent feedings</span>
+        </div>
+        ${recentLog.map(ts => {
+          const d = new Date(ts);
+          const ago = formatRelativeShort(d.getTime());
+          return `
+            <div class="starter-feedlog-row">
+              <span>${escapeHtml(ago)}</span>
+              <span class="when">${escapeHtml(d.toLocaleDateString([], { month: 'short', day: 'numeric' }))} ${escapeHtml(d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : '';
     c.innerHTML = `
-      <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 10px;">
+      <div class="starter-card">
         <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
-          <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em;">Feed Starter</div>
-          <div style="font-size: 12px; color: var(--leaven); font-weight: 600;">${escapeHtml(awayStr)}</div>
+          <div class="starter-card-title">Feed Starter</div>
+          <div class="starter-card-away">${escapeHtml(awayStr)}</div>
         </div>
         ${progressPct !== null ? `
           <div style="margin-top: 10px; height: 6px; background: var(--bg-warm); border-radius: 3px; overflow: hidden;">
             <div style="height: 100%; width: ${(progressPct * 100).toFixed(1)}%; background: var(--leaven); border-radius: 3px; transition: width 0.3s;"></div>
           </div>
         ` : ''}
-        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);">
-          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Schedule</div>
-          ${items.map(item => `
-            <div style="font-size: 13px; color: var(--ink-soft); padding: 3px 0;">${escapeHtml(fmtStarterSchedule(item.reminder))}</div>
-          `).join('')}
+        <div class="starter-schedule-list">
+          ${scheduleRowsHtml}
         </div>
+        ${feedLogHtml}
+        <button class="starter-feed-now-btn" id="starter-feed-now-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m-7-7h14"/></svg>
+          Log a Feeding Now
+        </button>
       </div>
-      <div style="display: flex; gap: 8px; margin-top: 4px;">
-        ${pushActive
-          ? `<div style="flex: 1; padding: 8px 12px; background: var(--bg-warm); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink-soft); text-align: center;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><line x1="13.73" y1="21" x2="10.27" y2="21"/></svg>
-              Reminders are sent automatically via push notifications
-            </div>`
-          : `<div style="flex: 1; padding: 8px 12px; background: var(--bg-warm); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink-soft); text-align: center;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-              Enable Notifications in Settings to get reminders
-            </div>`
-        }
-      </div>
-      ${pushActive
-        ? '<p class="help" style="margin-top: 6px; text-align: center;">No action needed \u2014 Crumb handles the schedule.</p>'
-        : '<p class="help" style="margin-top: 6px; text-align: center;">Starter feedings only show as reminders when push notifications are on.</p>'
-      }
     `;
+    wireStarterFeedNow();
+  }
+
+  /**
+   * Wire the Feed Now button — appends a timestamp to state.starter.feedLog,
+   * saves, and re-renders. Cap the log at 20 entries to keep state size bounded.
+   * Called both from the populated and empty-state branches of renderStarter.
+   */
+  function wireStarterFeedNow() {
+    const btn = document.getElementById('starter-feed-now-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (!state.starter) return;
+      if (!Array.isArray(state.starter.feedLog)) state.starter.feedLog = [];
+      // Prepend so most recent is first; cap at 20 entries
+      state.starter.feedLog.unshift(new Date().toISOString());
+      state.starter.feedLog = state.starter.feedLog.slice(0, 20);
+      haptic('success');
+      saveState();
+      toast('Feeding logged', 'success');
+      renderStarter();
+    });
   }
 
   // Open the starter schedule editor modal — renders the form, wires events.
@@ -7302,7 +9169,10 @@ Here is the recipe:
     if (viewId === 'view-recipes') renderRecipes();
     if (viewId === 'view-schedule') renderSchedule();
     if (viewId === 'view-history') renderHistory();
-    if (viewId === 'view-active-bakes') renderActiveBakes();
+    if (viewId === 'view-active-bakes') {
+      renderActiveBakes();
+      renderStarter();
+    }
     if (viewId === 'view-stats') renderStats();
     // Settings sub-pages each call the render functions they need. The landing
     // view also refreshes status so the row subtitles are accurate.
@@ -9471,7 +11341,7 @@ Here is the recipe:
         // Save the now-empty local state (this also re-pushes empty to Firebase via saveState's hook)
         saveState();
         // Reset the recipe filter so the empty state shows cleanly
-        state.recipeFilter = { text: '', categoryId: null };
+        state.recipeFilter = { text: '', categoryId: null, favoriteOnly: false };
         // Re-seed default categories so the user has something to start with
         seedIfEmpty();
         saveState();
@@ -9944,24 +11814,22 @@ Here is the recipe:
     });
   }
 
-  // Wire sort button — opens a picker for sort mode + density
+  // Wire sort button — opens a picker for sort mode only. Density is now a
+  // dedicated quick-toggle button in the filter bar (next to this one), so it
+  // doesn't need to live inside the sort menu anymore.
   const sortBtn = document.getElementById('recipe-sort-btn');
   if (sortBtn) {
     sortBtn.addEventListener('click', async () => {
       const current = state.recipeSort || 'alpha';
-      const currentDensity = state.recipeDensity || 'comfortable';
       const label = (mode, text) => current === mode ? `✓ ${text}` : text;
-      const dLabel = (mode, text) => currentDensity === mode ? `✓ ${text}` : text;
       const choice = await showConfirm({
-        title: 'View options',
-        message: 'Choose how recipes are sorted and how densely they\'re displayed.',
+        title: 'Sort recipes by',
+        message: 'How should recipes be ordered within each category?',
         buttons: [
           { label: label('alpha', 'Alphabetical (A → Z)'), style: current === 'alpha' ? 'primary' : 'default', value: 'sort:alpha' },
           { label: label('recent', 'Most recently baked'), style: current === 'recent' ? 'primary' : 'default', value: 'sort:recent' },
           { label: label('mostBaked', 'Most baked'), style: current === 'mostBaked' ? 'primary' : 'default', value: 'sort:mostBaked' },
           { label: label('duration', 'Shortest first'), style: current === 'duration' ? 'primary' : 'default', value: 'sort:duration' },
-          { label: dLabel('comfortable', 'Comfortable density'), style: currentDensity === 'comfortable' ? 'primary' : 'default', value: 'density:comfortable' },
-          { label: dLabel('compact', 'Compact density'), style: currentDensity === 'compact' ? 'primary' : 'default', value: 'density:compact' },
           { label: 'Cancel', style: 'ghost', value: null },
         ],
       });
@@ -9969,11 +11837,43 @@ Here is the recipe:
       if (choice.startsWith('sort:')) {
         const v = choice.slice(5);
         if (v !== current) { state.recipeSort = v; saveState(); renderRecipes(); }
-      } else if (choice.startsWith('density:')) {
-        const v = choice.slice(8);
-        if (v !== currentDensity) { state.recipeDensity = v; saveState(); renderRecipes(); }
       }
     });
+  }
+
+  /**
+   * Update the density button icon to reflect the current state. The icon morphs
+   * between compact (3 tight lines, no gaps) and comfortable (3 spaced lines) so
+   * the user can see at a glance which mode they're in and tap to swap.
+   */
+  function renderRecipeDensityButton() {
+    const iconEl = document.getElementById('recipe-density-icon');
+    const btn = document.getElementById('recipe-density-btn');
+    if (!iconEl || !btn) return;
+    const isCompact = state.recipeDensity === 'compact';
+    // Compact icon: three closely-spaced lines. Comfortable: three spaced lines
+    // with rectangles to suggest more vertical room per row.
+    if (isCompact) {
+      iconEl.innerHTML = '<path d="M3 7h18M3 12h18M3 17h18"/>';
+      btn.setAttribute('title', 'Compact density · tap for comfortable');
+    } else {
+      iconEl.innerHTML = '<rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/>';
+      btn.setAttribute('title', 'Comfortable density · tap for compact');
+    }
+  }
+
+  // Wire density toggle button — one-tap swap between compact and comfortable.
+  const densityBtn = document.getElementById('recipe-density-btn');
+  if (densityBtn) {
+    densityBtn.addEventListener('click', () => {
+      state.recipeDensity = state.recipeDensity === 'compact' ? 'comfortable' : 'compact';
+      haptic('light');
+      saveState();
+      renderRecipeDensityButton();
+      renderRecipes();
+    });
+    // Set initial icon state
+    renderRecipeDensityButton();
   }
 
   // Wire bulk-select toggle button — enters/exits selection mode
@@ -9986,6 +11886,76 @@ Here is the recipe:
       haptic('light');
       renderBulkActionBar();
       renderRecipes();
+    });
+  }
+
+  // ===== History tab: search input, clear button, sort picker =====
+  // Same debounce strategy as the Recipes search: render quickly (150ms) so the
+  // user sees feedback while typing, but save state much less aggressively
+  // (600ms after the last keystroke) to avoid a Firestore push per character.
+  let _historySearchTimer = null;
+  let _historySearchSaveTimer = null;
+  const historySearchInput = document.getElementById('history-search');
+  const historySearchClear = document.getElementById('history-search-clear');
+  const updateHistoryClearButton = () => {
+    if (!historySearchClear) return;
+    historySearchClear.style.display = (historySearchInput && historySearchInput.value) ? 'inline-flex' : 'none';
+  };
+  if (historySearchInput) {
+    historySearchInput.addEventListener('input', () => {
+      if (!state.historyFilter) state.historyFilter = { text: '', recipeId: null, scoreMin: 0, sort: 'newest' };
+      state.historyFilter.text = historySearchInput.value || '';
+      updateHistoryClearButton();
+      clearTimeout(_historySearchTimer);
+      _historySearchTimer = setTimeout(() => renderHistory(), 150);
+      clearTimeout(_historySearchSaveTimer);
+      _historySearchSaveTimer = setTimeout(() => saveState(), 600);
+    });
+    historySearchInput.addEventListener('blur', () => {
+      clearTimeout(_historySearchSaveTimer);
+      saveState();
+    });
+    updateHistoryClearButton();
+  }
+  if (historySearchClear) {
+    historySearchClear.addEventListener('click', () => {
+      if (historySearchInput) historySearchInput.value = '';
+      if (state.historyFilter) state.historyFilter.text = '';
+      updateHistoryClearButton();
+      saveState();
+      renderHistory();
+      if (historySearchInput) historySearchInput.focus();
+    });
+  }
+
+  // Wire history sort button — opens a picker. 4 sort modes:
+  //   newest (default): most recent bake first, grouped by date bucket
+  //   oldest: chronological order, grouped by date bucket
+  //   highestScore: best-rated first, ties broken by newest
+  //   recipe: grouped by recipe name (A-Z), newest within each group
+  const historySortBtn = document.getElementById('history-sort-btn');
+  if (historySortBtn) {
+    historySortBtn.addEventListener('click', async () => {
+      if (!state.historyFilter) state.historyFilter = { text: '', recipeId: null, scoreMin: 0, sort: 'newest' };
+      const current = state.historyFilter.sort || 'newest';
+      const label = (mode, text) => current === mode ? `✓ ${text}` : text;
+      const choice = await showConfirm({
+        title: 'Sort history by',
+        message: 'How should past bakes be ordered?',
+        buttons: [
+          { label: label('newest', 'Newest first'), style: current === 'newest' ? 'primary' : 'default', value: 'newest' },
+          { label: label('oldest', 'Oldest first'), style: current === 'oldest' ? 'primary' : 'default', value: 'oldest' },
+          { label: label('highestScore', 'Highest score first'), style: current === 'highestScore' ? 'primary' : 'default', value: 'highestScore' },
+          { label: label('recipe', 'Group by recipe'), style: current === 'recipe' ? 'primary' : 'default', value: 'recipe' },
+          { label: 'Cancel', style: 'ghost', value: null },
+        ],
+      });
+      if (!choice) return;
+      if (choice !== current) {
+        state.historyFilter.sort = choice;
+        saveState();
+        renderHistory();
+      }
     });
   }
 
