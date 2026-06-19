@@ -18,8 +18,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
-  import { getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, collection, getDocs, deleteDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
-  window.__firebase = { initializeApp, getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, collection, getDocs, deleteDoc, writeBatch };
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, clearIndexedDbPersistence, terminate, collection, getDocs, deleteDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
+  window.__firebase = { initializeApp, getFirestore, doc, getDoc, setDoc, onSnapshot, enableIndexedDbPersistence, clearIndexedDbPersistence, terminate, collection, getDocs, deleteDoc, writeBatch };
   window.dispatchEvent(new Event('firebase-ready'));
 </script>
 <style>
@@ -1897,8 +1897,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.18.1';
+  const APP_VERSION = '1.18.2';
   const CHANGELOG = [
+    { version: '1.18.2', date: '2026-06-13', notes: [
+      'New: Settings \u2192 Diagnostics \u2192 "Clear Firestore Cache & Reload" button. Recovery for the rare case when sync gets stuck spinning. Safe \u2014 cloud data is unaffected.',
+    ]},
     { version: '1.18.1', date: '2026-06-13', notes: [
       'Fix: in "Ready by" mode, the displayed finish time matched the time the user picked (was drifting earlier by the prep buffer duration, typically 10 minutes).',
     ]},
@@ -7777,6 +7780,50 @@ Here is the recipe:
     }
   }
 
+  // Recovery: clear Firestore's local IndexedDB persistence cache, then reload.
+  // Sometimes the cache gets into a wedged state (corrupted indices, partial writes
+  // after a network drop) and Firebase's normal sync can no longer make progress \u2014
+  // symptom is the "Syncing..." indicator stuck spinning indefinitely.
+  // This is safe: it only clears the local cache. The data in Firestore is untouched
+  // and will be re-fetched on the next page load.
+  async function clearFirestoreCacheAndReload() {
+    const proceed = await showConfirm({
+      title: 'Clear Firestore cache?',
+      message: 'This resets the local sync cache and reloads the app. Your recipes, bakes, and active baking state are stored in the cloud and will be re-downloaded \u2014 nothing is lost.',
+      buttons: [
+        { label: 'Clear & Reload', style: 'primary', value: 'go' },
+        { label: 'Cancel', style: 'ghost', value: 'cancel' },
+      ],
+    });
+    if (proceed !== 'go') return;
+    try {
+      const { terminate, clearIndexedDbPersistence } = window.__firebase;
+      // Tear down all listeners so Firebase can be terminated cleanly
+      stopSyncListener();
+      stopSafetyPushInterval();
+      if (firestoreDb) {
+        // terminate() shuts down the Firestore instance and returns when complete
+        await terminate(firestoreDb);
+        firestoreDb = null;
+        // clearIndexedDbPersistence() removes the underlying IndexedDB
+        try {
+          await clearIndexedDbPersistence(firestoreDb || {});
+        } catch (e) {
+          // If terminate already cleaned up, this may be a no-op or harmless error
+          console.log('[recovery] clearIndexedDbPersistence note:', e.message);
+        }
+      }
+      toast('Cache cleared. Reloading\u2026');
+      // Small delay so the toast is visible, then reload
+      setTimeout(() => {
+        try { window.location.reload(); } catch (e) { /* ignore */ }
+      }, 800);
+    } catch (e) {
+      console.error('[recovery] cache clear failed:', e);
+      toast(`Cache clear failed: ${e.message || 'unknown error'}. Try reinstalling the PWA.`);
+    }
+  }
+
   async function enableSync(code) {
     if (!isFirebaseConfigured()) {
       toast('Firebase not configured — see SETUP.md');
@@ -8144,8 +8191,20 @@ Here is the recipe:
             <div style="display: flex; justify-content: space-between;"><span>localStorage used</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-ls-size">—</span></div>
           </div>
         </div>
+        <!-- Recovery actions: rare but important when sync gets wedged. The cache clear
+             below resets Firebase's local IndexedDB persistence (which sometimes corrupts
+             after a long offline period or a partial write), which is the only known fix
+             for a stuck "Syncing..." spinner. Safe \u2014 doesn't touch Firestore data. -->
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Recovery</div>
+          <button class="btn btn-ghost btn-sm" id="diag-clear-fb-cache" style="width: 100%; font-size: 12px; padding: 8px;">Clear Firestore Cache &amp; Reload</button>
+          <p class="help" style="margin-top: 6px; font-size: 11px;">Use this if sync is stuck spinning. Safe \u2014 your data in the cloud is not affected.</p>
+        </div>
       </div>
     `;
+    // Wire recovery button
+    const clearFbBtn = document.getElementById('diag-clear-fb-cache');
+    if (clearFbBtn) clearFbBtn.addEventListener('click', clearFirestoreCacheAndReload);
     // Compute localStorage usage (async-ish; just sum string lengths)
     try {
       let total = 0;
