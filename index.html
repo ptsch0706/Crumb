@@ -67,10 +67,10 @@
   .tagline { font-size: 11px; color: var(--ink-mute); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
 
   /* Tab bar */
-  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
-  nav.tabs button { background: none; border: none; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--ink-mute); font-size: 10px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; min-width: 0; }
+  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(253, 248, 241, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); padding: 6px 0 calc(var(--safe-bot) + 6px); z-index: 50; }
+  nav.tabs button { background: none; border: none; padding: 6px 1px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--ink-mute); font-size: 9.5px; font-family: inherit; font-weight: 500; cursor: pointer; transition: color 0.15s; min-width: 0; }
   nav.tabs button.active { color: var(--crust); }
-  nav.tabs button svg { width: 20px; height: 20px; stroke-width: 1.8; }
+  nav.tabs button svg { width: 18px; height: 18px; stroke-width: 1.8; }
 
   /* Views */
   .view { display: none; padding: 0 20px; max-width: 100%; overflow-x: hidden; }
@@ -1916,8 +1916,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.19.0';
+  const APP_VERSION = '1.19.1';
   const CHANGELOG = [
+    { version: '1.19.1', date: '2026-06-14', notes: [
+      'Fix: tab bar was wrapping to a second row after adding the Today tab (grid was still set for 4 columns). Tightened spacing to fit all 5 tabs on one row.',
+      'Starter "Next feed" now shows whole days (e.g. "in 3 days") when more than 24 hours away, switching to an hour/minute countdown only once it\'s under a day out.',
+    ]},
     { version: '1.19.0', date: '2026-06-14', notes: [
       'New "Today" tab \u2014 now the default landing view. Shows your active bake(s) with live countdown, starter feed status, a quick stats strip, and recent bakes, all in one glance.',
       'With one active bake: hero card shows the recipe, current stage, and time to next action.',
@@ -5230,6 +5234,31 @@
     };
   }
 
+  // Formats time until a future date as whole days when more than a day away (matches
+  // how people naturally think about a weekly schedule \u2014 "in 3 days" rather than a
+  // precise-feeling "in 66 hours"), switching to a compact hour/minute countdown only
+  // once it's within 24 hours, when that precision actually becomes useful.
+  function formatDaysOrHoursUntil(date) {
+    const now = new Date();
+    const ms = date - now;
+    if (ms <= 0) return 'now';
+    if (ms < 24 * 3600 * 1000) {
+      const totalMin = Math.round(ms / 60000);
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      if (h > 0) return `in ${h}h ${m}m`;
+      return `in ${m}m`;
+    }
+    // Whole CALENDAR days between today and the target date (midnight-to-midnight),
+    // not a raw ms/86400000 division \u2014 so "this Saturday" from a Wednesday afternoon
+    // reads as "in 3 days" the way a person would count it, regardless of the exact
+    // time-of-day difference between now and the target.
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const days = Math.round((startOfTarget - startOfToday) / (24 * 3600 * 1000));
+    return `in ${days} day${days === 1 ? '' : 's'}`;
+  }
+
   // ============================================================
   // RECIPE EDITOR
   // ============================================================
@@ -6466,14 +6495,14 @@ Here is the recipe:
         if (!soonest || next < soonest.date) soonest = { date: next, reminder: r };
       }
       if (soonest) {
-        const f = formatLongCountdown(soonest.date - new Date(), soonest.date);
+        const timing = formatDaysOrHoursUntil(soonest.date);
         sections.push(`
           <div class="card" data-today-goto-starter style="cursor: pointer;">
             <div style="display: flex; align-items: center; gap: 10px;">
               <div style="font-size: 22px;">🫙</div>
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-mute);">Starter</div>
-                <div style="font-size: 14px; color: var(--ink); margin-top: 1px;">Next feed ${f.when}</div>
+                <div style="font-size: 14px; color: var(--ink); margin-top: 1px;">Next feed ${timing}</div>
               </div>
             </div>
           </div>
