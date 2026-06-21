@@ -61,7 +61,7 @@
   .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 
   /* Header */
-  header { padding: 12px 20px 8px; display: flex; align-items: baseline; justify-content: space-between; }
+  header { padding: 12px 20px 8px; display: flex; align-items: center; justify-content: space-between; }
   .logo { font-family: 'Fraunces', serif; font-weight: 600; font-size: 28px; letter-spacing: -0.03em; font-variation-settings: "opsz" 144; }
   .logo .ear { color: var(--crust); font-style: italic; }
   .tagline { font-size: 11px; color: var(--ink-mute); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
@@ -421,7 +421,16 @@
 
 <header>
   <div class="logo">Crumb<span class="ear">.</span></div>
-  <div class="tagline">Bread Workflows</div>
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <div class="tagline">Bread Workflows</div>
+    <!-- Settings lives in the header (not a specific tab) so it's reachable from
+         anywhere in the app, regardless of which tab is active. Previously this was
+         only on the Recipes tab, which became a discoverability problem once Today
+         (not Recipes) became the default landing tab in v1.19.0. -->
+    <button id="btn-open-settings" aria-label="Settings" style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft); padding: 0; flex-shrink: 0;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
 </header>
 
 <!-- TODAY VIEW (dashboard) — default landing view. Surfaces active bake(s), starter
@@ -440,9 +449,6 @@
       <button class="btn btn-primary btn-sm" id="btn-new-recipe" style="padding: 6px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="width: 14px; height: 14px;"><path d="M12 5v14m-7-7h14"/></svg>
         New Recipe
-      </button>
-      <button id="btn-open-settings" aria-label="Settings" style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft); padding: 0;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
     </div>
   </div>
@@ -1916,8 +1922,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.19.1';
+  const APP_VERSION = '1.19.2';
   const CHANGELOG = [
+    { version: '1.19.2', date: '2026-06-14', notes: [
+      'Settings gear moved from the Recipes tab into the persistent header \u2014 reachable from every tab now, not just Recipes. Fixes a discoverability gap from v1.19.0 when Today became the default landing tab.',
+    ]},
     { version: '1.19.1', date: '2026-06-14', notes: [
       'Fix: tab bar was wrapping to a second row after adding the Today tab (grid was still set for 4 columns). Tightened spacing to fit all 5 tabs on one row.',
       'Starter "Next feed" now shows whole days (e.g. "in 3 days") when more than 24 hours away, switching to an hour/minute countdown only once it\'s under a day out.',
