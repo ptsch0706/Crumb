@@ -424,8 +424,16 @@
   <div class="tagline">Bread Workflows</div>
 </header>
 
+<!-- TODAY VIEW (dashboard) — default landing view. Surfaces active bake(s), starter
+     status, a quick stats strip, and recent history so the user sees what matters
+     right now without navigating. Populated by renderToday(). -->
+<section class="view active" id="view-today">
+  <div id="today-content"></div>
+  <div class="wheat-deco">·  ·  ·</div>
+</section>
+
 <!-- RECIPES VIEW -->
-<section class="view active" id="view-recipes">
+<section class="view" id="view-recipes">
   <div style="display: flex; align-items: center; justify-content: space-between; margin: 24px 0 10px; padding: 0 4px;">
     <div class="section-title" style="margin: 0;">My Recipes</div>
     <div style="display: flex; gap: 8px; align-items: center;">
@@ -515,7 +523,11 @@
 
 <!-- TAB BAR -->
 <nav class="tabs">
-  <button class="active" data-view="view-recipes">
+  <button class="active" data-view="view-today" id="tab-today">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    Today
+  </button>
+  <button data-view="view-recipes">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
     Recipes
   </button>
@@ -746,6 +758,13 @@
       <button class="modal-close" data-close>✕</button>
     </div>
     <div class="modal-body">
+      <!-- Push-active status: shown INSTEAD of Send/Refresh Reminders when push notifications
+           are active, since the backend already schedules and updates reminders automatically.
+           Toggled via JS in the options-button click handler below. -->
+      <div id="opt-push-active-banner" style="display: none; padding: 10px 14px; background: var(--bg-warm); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink-soft); margin-bottom: 8px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><line x1="13.73" y1="21" x2="10.27" y2="21"/></svg>
+        Notifications are sent automatically via push \u2014 no need to send reminders manually.
+      </div>
       <button class="btn btn-block opt-btn" id="opt-send-reminders" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         <span style="flex: 1;">Send Reminders</span>
@@ -1897,8 +1916,18 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.18.2';
+  const APP_VERSION = '1.19.0';
   const CHANGELOG = [
+    { version: '1.19.0', date: '2026-06-14', notes: [
+      'New "Today" tab \u2014 now the default landing view. Shows your active bake(s) with live countdown, starter feed status, a quick stats strip, and recent bakes, all in one glance.',
+      'With one active bake: hero card shows the recipe, current stage, and time to next action.',
+      'With 2+ active bakes: compact list, tap to jump to the full Active tab.',
+      'No app restructuring \u2014 Recipes, Active, History, and Stats tabs all work exactly as before.',
+    ]},
+    { version: '1.18.3', date: '2026-06-13', notes: [
+      'Fix: ending a bake no longer launches the iOS Shortcuts app when push notifications are active. The Shortcut cleanup call was firing unconditionally whenever reminders had been sent at any point during the bake.',
+      'Bake Options menu now hides Send/Refresh Reminders when push is active, showing a status message instead \u2014 matching the starter reminders behavior from v1.18.0.',
+    ]},
     { version: '1.18.2', date: '2026-06-13', notes: [
       'New: Settings \u2192 Diagnostics \u2192 "Clear Firestore Cache & Reload" button. Recovery for the rare case when sync gets stuck spinning. Safe \u2014 cloud data is unaffected.',
     ]},
@@ -3802,7 +3831,14 @@
       }
     };
 
-    if (bake.remindersSent) {
+    // Only run the Shortcut cleanup if push notifications are NOT the active path.
+    // When push is active, cancelPushNotificationsForBake (called from removeActiveBake,
+    // invoked inside cleanupAndContinue) already tears down the backend's scheduled
+    // notifications \u2014 there's nothing left for the Shortcut to clean up, and launching
+    // shortcuts:// would just be a jarring, pointless app-switch for the user.
+    const pushActiveForCleanup = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
+      typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    if (bake.remindersSent && !pushActiveForCleanup) {
       const recipe = state.recipes.find(r => r.id === bake.recipeId);
       if (recipe) {
         // Send a cleanup payload to the Shortcut: replaceExisting=true with no milestones.
@@ -5134,6 +5170,10 @@
 
       const scheduleView = document.getElementById('view-schedule');
       const activeView = document.getElementById('view-active-bakes');
+      const todayView = document.getElementById('view-today');
+      if (todayView && todayView.classList.contains('active')) {
+        renderToday();
+      }
       if (scheduleView && scheduleView.classList.contains('active')) {
         // Only re-render if the currently-viewed recipe has an active bake
         const currentRecipe = getCurrentRecipe();
@@ -6255,6 +6295,292 @@ Here is the recipe:
     }
   }
 
+  // Finds the soonest upcoming action across a set of active bakes (or null if none
+  // need attention — e.g. all paused or finished). Shared by renderActiveBakes (the
+  // "what's next" banner) and renderToday (the dashboard hero card) so both surfaces
+  // agree on what "next" means.
+  function getNextBakeAction(bakes) {
+    let best = null;
+    for (const b of bakes) {
+      if (b.paused) continue;
+      const recipe = state.recipes.find(r => r.id === b.recipeId);
+      if (!recipe || recipe._deleted) continue;
+      const idx = getCurrentStageIdx(recipe, b);
+      if (idx === -1) continue;
+      // Prep window — the "next action" is when stage 1 will actually begin.
+      if (b.prepUntil && new Date(b.prepUntil) > new Date()) {
+        const target = new Date(b.prepUntil);
+        const candidate = {
+          recipe,
+          bake: b,
+          actionName: `Start: ${recipe.stages[0].name}`,
+          target,
+          msAway: target - new Date(),
+          awaitingStart: false,
+          color: getBakeColor(b.color),
+        };
+        if (!best || candidate.msAway < best.msAway) best = candidate;
+        continue;
+      }
+      const stage = recipe.stages[idx];
+      const curState = b.stageStates[idx];
+      const awaitingStart = stage.needsStart && !curState.startedAt;
+      const start = getStageScheduledStart(recipe, idx, b);
+      const end = new Date(start.getTime() + getStageDur(recipe, idx, b) * 60000);
+      const now = new Date();
+      // For wait stages we care about when they end (so user can do next action)
+      // For hands-on we care about when they start (or now if it's already begun)
+      // For needsStart awaiting confirmation, the "next action" is right now (tap Start)
+      const target = awaitingStart ? now : (stage.isWait ? end : (start > now ? start : end));
+      const msAway = target - now;
+      const nextStage = !stage.isWait ? stage : (idx + 1 < recipe.stages.length ? recipe.stages[idx + 1] : null);
+      const actionName = awaitingStart
+        ? `Start: ${stage.name}`
+        : (stage.isWait ? (nextStage ? nextStage.name : 'End of bake') : stage.name);
+      const candidate = {
+        recipe,
+        bake: b,
+        actionName,
+        target,
+        msAway,
+        awaitingStart,
+        color: getBakeColor(b.color),
+      };
+      if (!best || msAway < best.msAway) best = candidate;
+    }
+    return best;
+  }
+
+  // ============================================================
+  // TODAY VIEW (dashboard)
+  // ============================================================
+  // Default landing view. Surfaces, in priority order:
+  //   1. Active bake(s) — hero card for 1, compact list (linking to Active tab) for 2+
+  //   2. Starter status — next scheduled feed, if any reminder is enabled
+  //   3. Quick stats strip — bakes this month
+  //   4. Recent — last 1-2 finished bakes with their score
+  // Re-rendered every second by the bake ticker while this is the active view (so the
+  // hero card's countdown stays live), and on demand via switchView/pull-to-refresh.
+  function renderToday() {
+    const el = document.getElementById('today-content');
+    if (!el) return;
+    const bakes = liveActiveBakes();
+    const sections = [];
+
+    // --- 1. Active bake(s) ---
+    if (bakes.length === 0) {
+      sections.push(`
+        <div class="card" data-today-start-bake style="cursor: pointer; text-align: center; padding: 28px 20px;">
+          <div style="font-size: 32px; margin-bottom: 8px;">🥖</div>
+          <div style="font-family: 'Fraunces', serif; font-size: 17px; color: var(--ink); margin-bottom: 4px;">No active bake</div>
+          <div style="font-size: 13px; color: var(--ink-soft);">Tap to browse recipes and start one</div>
+        </div>
+      `);
+    } else if (bakes.length === 1) {
+      const b = bakes[0];
+      const recipe = state.recipes.find(r => r.id === b.recipeId);
+      if (!recipe || recipe._deleted) {
+        sections.push('');
+      } else {
+        const color = getBakeColor(b.color);
+        const next = getNextBakeAction([b]);
+        const idx = getCurrentStageIdx(recipe, b);
+        const allDone = idx === -1;
+        let bodyHtml;
+        if (allDone) {
+          bodyHtml = `<div style="font-size: 13px; color: var(--leaven); margin-top: 4px;">All stages complete \u2014 ready to save</div>`;
+        } else if (next) {
+          const ms = next.msAway;
+          const overdue = ms < 0 && !next.awaitingStart;
+          const isReadyNow = next.awaitingStart;
+          const label = overdue ? 'Action overdue' : (isReadyNow ? 'Ready when you are' : 'Next');
+          const timing = isReadyNow
+            ? 'Tap to start'
+            : (overdue
+              ? `${formatCountdown(Math.abs(ms))} ago`
+              : (() => {
+                  const f = formatLongCountdown(ms, next.target);
+                  return ms > 8 * 3600 * 1000 ? `at ${f.value} (${f.when})` : `in ${f.value}`;
+                })());
+          bodyHtml = `
+            <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: ${overdue ? 'var(--warn)' : color.hex}; margin-top: 8px;">${label}</div>
+            <div style="font-family: 'Fraunces', serif; font-size: 18px; color: var(--ink); line-height: 1.25; margin-top: 2px;">${escapeHtml(next.actionName)}</div>
+            <div style="font-size: 13px; color: var(--ink-soft); margin-top: 2px;">${timing}</div>
+          `;
+        } else {
+          bodyHtml = `<div style="font-size: 13px; color: var(--ink-soft); margin-top: 4px;">Paused</div>`;
+        }
+        sections.push(`
+          <div class="card" data-today-bake="${b.id}" style="cursor: pointer; border-left: 3px solid ${color.hex};">
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+              <div style="margin-top: 2px;">${renderRecipeIcon(recipe.icon, 32)}</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 500; letter-spacing: -0.01em;">${escapeHtml(recipe.name)}</div>
+                ${bodyHtml}
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)" style="margin-top: 4px; flex-shrink: 0;"><path d="M9 18l6-6-6-6"/></svg>
+            </div>
+          </div>
+        `);
+      }
+    } else {
+      // 2+ active bakes: compact stacked list, tapping any (or the card) jumps to the
+      // full Active Bakes tab rather than a specific bake's schedule \u2014 keeps this
+      // dashboard card simple and consistent regardless of which bake is "next".
+      const rows = bakes.map(b => {
+        const recipe = state.recipes.find(r => r.id === b.recipeId);
+        if (!recipe || recipe._deleted) return '';
+        const color = getBakeColor(b.color);
+        const next = getNextBakeAction([b]);
+        const timing = next
+          ? (next.awaitingStart ? 'Ready to start' : (next.msAway < 0 ? 'Overdue' : `in ${formatCountdown(next.msAway)}`))
+          : 'Paused';
+        return `
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line);">
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: ${color.hex}; flex-shrink: 0;"></div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 14px; color: var(--ink); font-weight: 500;">${escapeHtml(recipe.name)}</div>
+              <div style="font-size: 12px; color: var(--ink-soft);">${next ? escapeHtml(next.actionName) + ' \u00b7 ' : ''}${timing}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      sections.push(`
+        <div class="card" data-today-goto-active style="cursor: pointer;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+            <div style="font-family: 'Fraunces', serif; font-size: 17px;">${bakes.length} bakes in progress</div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+          ${rows}
+        </div>
+      `);
+    }
+
+    // --- 2. Starter status ---
+    const enabledReminders = ((state.starter && state.starter.reminders) || []).filter(r => r.enabled);
+    if (enabledReminders.length > 0) {
+      // Find the soonest next feed across all enabled reminders
+      let soonest = null;
+      for (const r of enabledReminders) {
+        const next = nextStarterFireDate(r);
+        if (!soonest || next < soonest.date) soonest = { date: next, reminder: r };
+      }
+      if (soonest) {
+        const f = formatLongCountdown(soonest.date - new Date(), soonest.date);
+        sections.push(`
+          <div class="card" data-today-goto-starter style="cursor: pointer;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="font-size: 22px;">🫙</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-mute);">Starter</div>
+                <div style="font-size: 14px; color: var(--ink); margin-top: 1px;">Next feed ${f.when}</div>
+              </div>
+            </div>
+          </div>
+        `);
+      }
+    }
+
+    // --- 3. Quick stats strip ---
+    const allBakes = liveItems(state.bakes);
+    if (allBakes.length > 0) {
+      const now = new Date();
+      const bakesThisMonth = allBakes.filter(b => {
+        const d = new Date(b.completedAt || b.startedAt);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      }).length;
+      sections.push(`
+        <div data-today-goto-stats style="cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; margin-bottom: 12px; font-size: 13px; color: var(--ink-soft);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+          ${bakesThisMonth} bake${bakesThisMonth === 1 ? '' : 's'} this month
+        </div>
+      `);
+    }
+
+    // --- 4. Recent (last 1-2 finished bakes) ---
+    if (allBakes.length > 0) {
+      const recent = allBakes.slice().sort((a, b) =>
+        new Date(b.completedAt || b.startedAt) - new Date(a.completedAt || a.startedAt)
+      ).slice(0, 2);
+      const recentRows = recent.map(b => {
+        const r = b.recipeSnapshot || state.recipes.find(x => x.id === b.recipeId);
+        const score = b.score || 0;
+        const scoreDisplay = score > 0
+          ? `<div style="display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 6px;">${[1,2,3,4,5].map(n => `<span style="color: ${n <= score ? 'var(--crust)' : 'var(--line)'}; font-size: 11px;">●</span>`).join('')}</div>`
+          : '';
+        const end = new Date(b.completedAt || b.startedAt);
+        return `
+          <div data-today-history="${b.id}" style="display: flex; align-items: center; gap: 10px; padding: 8px 0; cursor: pointer;">
+            <div>${renderRecipeIcon(r ? r.icon : DEFAULT_ICON, 24)}</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 13px; color: var(--ink);">${escapeHtml(r ? r.name : 'Recipe')}${scoreDisplay}</div>
+              <div style="font-size: 11px; color: var(--ink-mute);">${end.toLocaleDateString([], { month: 'short', day: 'numeric' })}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      sections.push(`
+        <div>
+          <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; padding: 0 4px;">Recent</div>
+          <div class="card" style="padding: 4px 14px;">${recentRows}</div>
+        </div>
+      `);
+    }
+
+    if (sections.length === 0) {
+      el.innerHTML = `
+        <div class="empty">
+          <div class="icon">🍞</div>
+          <div class="title">Welcome to Crumb</div>
+          <div class="body">Start your first bake from the Recipes tab to see it here.</div>
+        </div>`;
+      return;
+    }
+
+    el.innerHTML = `<div style="margin-top: 8px;">${sections.join('')}</div>`;
+
+    // --- Wire interactions ---
+    const startBakeCard = el.querySelector('[data-today-start-bake]');
+    if (startBakeCard) startBakeCard.addEventListener('click', () => switchView('view-recipes'));
+
+    const singleBakeCard = el.querySelector('[data-today-bake]');
+    if (singleBakeCard) {
+      singleBakeCard.addEventListener('click', () => {
+        const bakeId = singleBakeCard.dataset.todayBake;
+        const bake = bakes.find(b => b.id === bakeId);
+        if (!bake) return;
+        state.focusedBakeId = bake.id;
+        state.currentRecipeId = bake.recipeId;
+        saveState();
+        switchView('view-schedule');
+      });
+    }
+
+    const gotoActiveCard = el.querySelector('[data-today-goto-active]');
+    if (gotoActiveCard) gotoActiveCard.addEventListener('click', () => switchView('view-active-bakes'));
+
+    const gotoStarterCard = el.querySelector('[data-today-goto-starter]');
+    if (gotoStarterCard) {
+      gotoStarterCard.addEventListener('click', () => {
+        switchView('view-active-bakes');
+        // Scroll to the starter section after the view renders
+        setTimeout(() => {
+          const starterEl = document.getElementById('starter-content');
+          if (starterEl) starterEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
+      });
+    }
+
+    const gotoStatsEl = el.querySelector('[data-today-goto-stats]');
+    if (gotoStatsEl) gotoStatsEl.addEventListener('click', () => switchView('view-stats'));
+
+    el.querySelectorAll('[data-today-history]').forEach(rowEl => {
+      rowEl.addEventListener('click', () => {
+        openHistoryDetail(rowEl.dataset.todayHistory);
+      });
+    });
+  }
+
   function renderActiveBakes() {
     const list = document.getElementById('active-bakes-list');
     const bakes = liveActiveBakes();
@@ -6270,57 +6596,7 @@ Here is the recipe:
     }
 
     // "What's next" banner — finds the soonest upcoming action across all active bakes
-    const nextAction = (() => {
-      let best = null;
-      for (const b of bakes) {
-        if (b.paused) continue;
-        const recipe = state.recipes.find(r => r.id === b.recipeId);
-        if (!recipe || recipe._deleted) continue;
-        const idx = getCurrentStageIdx(recipe, b);
-        if (idx === -1) continue;
-        // Prep window — the "next action" is when stage 1 will actually begin.
-        if (b.prepUntil && new Date(b.prepUntil) > new Date()) {
-          const target = new Date(b.prepUntil);
-          const candidate = {
-            recipe,
-            bake: b,
-            actionName: `Start: ${recipe.stages[0].name}`,
-            target,
-            msAway: target - new Date(),
-            awaitingStart: false,
-            color: getBakeColor(b.color),
-          };
-          if (!best || candidate.msAway < best.msAway) best = candidate;
-          continue;
-        }
-        const stage = recipe.stages[idx];
-        const curState = b.stageStates[idx];
-        const awaitingStart = stage.needsStart && !curState.startedAt;
-        const start = getStageScheduledStart(recipe, idx, b);
-        const end = new Date(start.getTime() + getStageDur(recipe, idx, b) * 60000);
-        const now = new Date();
-        // For wait stages we care about when they end (so user can do next action)
-        // For hands-on we care about when they start (or now if it's already begun)
-        // For needsStart awaiting confirmation, the "next action" is right now (tap Start)
-        const target = awaitingStart ? now : (stage.isWait ? end : (start > now ? start : end));
-        const msAway = target - now;
-        const nextStage = !stage.isWait ? stage : (idx + 1 < recipe.stages.length ? recipe.stages[idx + 1] : null);
-        const actionName = awaitingStart
-          ? `Start: ${stage.name}`
-          : (stage.isWait ? (nextStage ? nextStage.name : 'End of bake') : stage.name);
-        const candidate = {
-          recipe,
-          bake: b,
-          actionName,
-          target,
-          msAway,
-          awaitingStart,
-          color: getBakeColor(b.color),
-        };
-        if (!best || msAway < best.msAway) best = candidate;
-      }
-      return best;
-    })();
+    const nextAction = getNextBakeAction(bakes);
 
     const nextBanner = nextAction ? (() => {
       const ms = nextAction.msAway;
@@ -6758,6 +7034,7 @@ Here is the recipe:
       bulkSelectedIds.clear();
       renderBulkActionBar();
     }
+    if (viewId === 'view-today') renderToday();
     if (viewId === 'view-recipes') renderRecipes();
     if (viewId === 'view-schedule') renderSchedule();
     if (viewId === 'view-history') renderHistory();
@@ -6766,7 +7043,7 @@ Here is the recipe:
     // Safety net: any time we navigate to a view that displays bake countdowns, make sure
     // the ticker is running. Recovers from cases where iOS killed setInterval in the
     // background and our other restart paths missed it.
-    if (viewId === 'view-schedule' || viewId === 'view-active-bakes') {
+    if (viewId === 'view-today' || viewId === 'view-schedule' || viewId === 'view-active-bakes') {
       ensureBakeTickerRunning();
     }
   }
@@ -6812,6 +7089,18 @@ Here is the recipe:
       ? '<polygon points="6,4 20,12 6,20" fill="currentColor"/>' // play
       : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; // pause bars
     document.getElementById('opt-refresh-dot').style.display = ab.needsReminderRefresh ? '' : 'none';
+    // Push-active gate: when push notifications are live, hide the Send/Refresh Reminders
+    // buttons (the backend already handles this automatically) and show a status banner
+    // instead. Falls back to the Shortcut buttons when push isn't available so users who
+    // haven't enabled notifications yet still have a working reminder path.
+    const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
+      typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    const pushBanner = document.getElementById('opt-push-active-banner');
+    const sendBtn = document.getElementById('opt-send-reminders');
+    const refreshBtn = document.getElementById('opt-refresh-reminders');
+    if (pushBanner) pushBanner.style.display = pushActive ? '' : 'none';
+    if (sendBtn) sendBtn.style.display = pushActive ? 'none' : '';
+    if (refreshBtn) refreshBtn.style.display = pushActive ? 'none' : '';
     // Disable step-back if at first stage. Also disable during prep (no stages have run).
     const anyDone = ab.stageStates.some(s => s.done);
     const stepBack = document.getElementById('opt-step-back');
@@ -8879,6 +9168,7 @@ Here is the recipe:
     saveState();
   }
   renderRecipes();
+  renderToday();
   updateActiveTabBadge();
   if (liveActiveBakes().length > 0) {
     // Pre-populate alertedStageEnds so we don't beep for stages that became overdue
@@ -9118,7 +9408,8 @@ Here is the recipe:
       // Re-render the active view so any synced changes appear
       const activeView = document.querySelector('.view.active');
       if (activeView) {
-        if (activeView.id === 'view-recipes') renderRecipes();
+        if (activeView.id === 'view-today') renderToday();
+        else if (activeView.id === 'view-recipes') renderRecipes();
         else if (activeView.id === 'view-history') renderHistory();
         else if (activeView.id === 'view-active-bakes') renderActiveBakes();
       }
@@ -9131,7 +9422,7 @@ Here is the recipe:
       // Only enable PTR on the main scrollable views (not modals, not when inside a modal)
       const activeView = document.querySelector('.view.active');
       if (!activeView) return;
-      const allowedViews = ['view-recipes', 'view-history', 'view-active-bakes'];
+      const allowedViews = ['view-today', 'view-recipes', 'view-history', 'view-active-bakes'];
       if (!allowedViews.includes(activeView.id)) return;
       // Skip if a modal is open
       if (document.querySelector('.modal-backdrop.show')) return;
@@ -9324,6 +9615,10 @@ Here is the recipe:
     // Force-refresh any visible bake countdowns — they're stale since the ticker skipped
     // re-rendering while we were hidden. Without this, a backgrounded app can show "5m
     // remaining" for hours after the timer actually hit zero.
+    const todayViewEl = document.getElementById('view-today');
+    if (todayViewEl && todayViewEl.classList.contains('active')) {
+      renderToday();
+    }
     const scheduleView = document.getElementById('view-schedule');
     if (scheduleView && scheduleView.classList.contains('active')) {
       const currentRecipe = getCurrentRecipe();
