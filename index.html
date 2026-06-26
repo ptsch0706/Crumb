@@ -1451,12 +1451,32 @@
       // Nothing in the future — still call /schedule with empty list to clear any
       // stale entries for this bake on the backend.
     }
+    // Liveness check immediately before sending: if the bake was discarded/ended in the
+    // moment between being asked to schedule and actually sending (e.g. a queued debounce
+    // timer firing after the user already canceled), don't bother \u2014 avoids a known race
+    // where a fast start-then-discard sequence could otherwise leave orphaned notifications
+    // if the schedule and cancel requests landed out of order on the backend.
+    const stillLive = () => {
+      const cur = state.activeBakes.find(b => b.id === bake.id);
+      return cur && !cur._deleted;
+    };
+    if (!stillLive()) return { ok: false, error: 'Bake no longer active' };
     try {
       const result = await pushBackendPost('/schedule', {
         deviceId: getDeviceId(),
         bakeId: bake.id,
         items,
       });
+      // Second liveness check AFTER the round-trip: if the bake was discarded WHILE this
+      // request was in flight, the items we just wrote are now orphaned (the discard's
+      // /cancel call may have already run and found nothing to delete). Immediately
+      // follow up with a cancel for this bake to self-heal rather than leaving stray
+      // notifications sitting in the backend until the user notices.
+      if (!stillLive()) {
+        cancelPushNotificationsForBake(bake.id).catch(e =>
+          console.warn('[push] post-schedule cleanup cancel failed:', e));
+        return { ok: false, error: 'Bake ended during scheduling; cleaned up' };
+      }
       return { ok: true, scheduled: result.scheduled };
     } catch (e) {
       console.error('[push] schedule failed:', e);
@@ -1475,6 +1495,42 @@
       return { ok: true };
     } catch (e) {
       console.error('[push] cancel failed:', e);
+      return { ok: false, error: String(e.message || e) };
+    }
+  }
+
+  /**
+   * Lists EVERY pending (unsent) notification currently on the backend for this device,
+   * regardless of whether the PWA still has a local record of the bake it belongs to.
+   * Used by the Diagnostics "View All Pending Notifications" tool to surface orphaned
+   * notifications \u2014 e.g. left behind by a bake that was discarded immediately after
+   * being started, before the schedule and cancel requests were guaranteed to land in
+   * order on the backend (a known race; see schedulePushNotificationsForBake for the
+   * mitigation on the writing side).
+   */
+  async function listPendingPushNotifications() {
+    if (!state.syncCode) return { ok: false, error: 'Sync code required' };
+    try {
+      const result = await pushBackendPost('/list', { deviceId: getDeviceId() });
+      return { ok: true, items: result.items || [] };
+    } catch (e) {
+      console.error('[push] list failed:', e);
+      return { ok: false, error: String(e.message || e) };
+    }
+  }
+
+  /**
+   * Cancels every non-starter notification on the backend for this device in one call.
+   * Leaves starter feed reminders untouched. Used by the Diagnostics recovery tool to
+   * clear stray/orphaned bake notifications without disturbing the starter schedule.
+   */
+  async function cancelAllNonStarterPush() {
+    if (!state.syncCode) return { ok: false, error: 'Sync code required' };
+    try {
+      const result = await pushBackendPost('/cancel', { deviceId: getDeviceId(), excludeStarter: true });
+      return { ok: true, cancelled: result.cancelled || 0 };
+    } catch (e) {
+      console.error('[push] bulk cancel failed:', e);
       return { ok: false, error: String(e.message || e) };
     }
   }
@@ -1922,8 +1978,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.19.2';
+  const APP_VERSION = '1.19.3';
   const CHANGELOG = [
+    { version: '1.19.3', date: '2026-06-14', notes: [
+      'Fix: a bake discarded immediately after starting could leave its push notifications behind on the backend (a race between the schedule and cancel requests). Scheduling now double-checks the bake is still active before and after sending.',
+      'New: Settings \u2192 Diagnostics \u2192 "View All Pending Notifications" \u2014 lists everything queued on the backend, including notifications left behind by bakes that no longer exist locally, with a one-tap "Clear Bake Notifications (Keep Starter)" button.',
+    ]},
     { version: '1.19.2', date: '2026-06-14', notes: [
       'Settings gear moved from the Recipes tab into the persistent header \u2014 reachable from every tab now, not just Recipes. Fixes a discoverability gap from v1.19.0 when Today became the default landing tab.',
     ]},
@@ -8151,6 +8211,99 @@ Here is the recipe:
     }
   }
 
+  /**
+   * Diagnostics tool: fetches every pending notification from the backend (grouped by
+   * bake) and renders them inline in the Diagnostics panel, with a one-tap way to clear
+   * all non-starter notifications. This is the recovery path for orphaned notifications
+   * left behind by a bake that was discarded right after starting \u2014 the bake no longer
+   * exists locally so the normal per-bake cancel can't reach it, but it's still sitting
+   * in the backend's queue.
+   */
+  async function showPendingNotifications() {
+    const btn = document.getElementById('diag-view-pending');
+    const container = document.getElementById('diag-pending-list');
+    if (!container) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading\u2026'; }
+    const result = await listPendingPushNotifications();
+    if (btn) { btn.disabled = false; btn.textContent = 'View All Pending Notifications'; }
+    if (!result.ok) {
+      toast(`Couldn't load notifications: ${result.error}`);
+      return;
+    }
+    const items = result.items;
+    container.style.display = '';
+    if (items.length === 0) {
+      container.innerHTML = `<p class="help" style="margin: 0;">Nothing pending \u2014 the queue is empty.</p>`;
+      return;
+    }
+    // Group by bake_id. Synthetic starter ids look like "starter:<reminderId>"; everything
+    // else is a real (or orphaned) bake id.
+    const groups = new Map(); // bakeId -> items[]
+    for (const item of items) {
+      if (!groups.has(item.bakeId)) groups.set(item.bakeId, []);
+      groups.get(item.bakeId).push(item);
+    }
+    let nonStarterCount = 0;
+    const rows = Array.from(groups.entries()).map(([bakeId, groupItems]) => {
+      const isStarter = bakeId.startsWith('starter:');
+      const soonest = groupItems.reduce((min, it) => Math.min(min, it.fireAt), Infinity);
+      const timing = formatDaysOrHoursUntil(new Date(soonest));
+      let label;
+      if (isStarter) {
+        label = 'Starter feed reminders';
+      } else {
+        // Try to resolve a live bake's recipe name; if the bake no longer exists locally,
+        // this is exactly the orphaned case the user is trying to find and clear.
+        const liveBake = (state.activeBakes || []).find(b => b.id === bakeId && !b._deleted);
+        const recipe = liveBake ? state.recipes.find(r => r.id === liveBake.recipeId) : null;
+        label = recipe ? recipe.name : 'Unknown bake (no longer in app)';
+        nonStarterCount += groupItems.length;
+      }
+      return `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12px;">
+          <div style="min-width: 0; flex: 1;">
+            <div style="color: ${isStarter ? 'var(--ink-soft)' : 'var(--ink)'};">${escapeHtml(label)}</div>
+            <div style="color: var(--ink-mute); font-size: 11px;">${groupItems.length} notification${groupItems.length === 1 ? '' : 's'} \u00b7 next ${timing}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    container.innerHTML = `
+      <div style="border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg-warm);">
+        ${rows}
+      </div>
+      ${nonStarterCount > 0
+        ? `<button class="btn btn-ghost btn-sm" id="diag-clear-non-starter" style="width: 100%; font-size: 12px; padding: 8px; margin-top: 8px; color: var(--warn); border-color: var(--warn);">Clear ${nonStarterCount} Bake Notification${nonStarterCount === 1 ? '' : 's'} (Keep Starter)</button>`
+        : ''}
+    `;
+    const clearBtn = document.getElementById('diag-clear-non-starter');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', async () => {
+        const proceed = await showConfirm({
+          title: 'Clear bake notifications?',
+          message: 'This removes every pending bake notification from the backend. Starter feed reminders are not affected. This can\'t be undone, but any active bake will simply reschedule its own notifications the next time it advances.',
+          buttons: [
+            { label: 'Clear Bake Notifications', style: 'danger', value: 'go' },
+            { label: 'Cancel', style: 'ghost', value: 'cancel' },
+          ],
+        });
+        if (proceed !== 'go') return;
+        clearBtn.disabled = true;
+        clearBtn.textContent = 'Clearing\u2026';
+        const result = await cancelAllNonStarterPush();
+        if (result.ok) {
+          toast(`Cleared ${result.cancelled} notification${result.cancelled === 1 ? '' : 's'}`);
+          haptic('medium');
+          showPendingNotifications(); // refresh the list
+        } else {
+          toast(`Failed to clear: ${result.error}`);
+          clearBtn.disabled = false;
+          clearBtn.textContent = `Clear ${nonStarterCount} Bake Notification${nonStarterCount === 1 ? '' : 's'} (Keep Starter)`;
+        }
+      });
+    }
+  }
+
   async function enableSync(code) {
     if (!isFirebaseConfigured()) {
       toast('Firebase not configured — see SETUP.md');
@@ -8509,6 +8662,14 @@ Here is the recipe:
             <div style="display: flex; justify-content: space-between;"><span>Subscribed</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-push-subscribed">checking…</span></div>
             <div style="display: flex; justify-content: space-between;"><span>Pending notifs</span><span style="font-family: 'JetBrains Mono', monospace;" id="diag-push-pending">—</span></div>
           </div>
+          <!-- "Pending notifs" above only counts bakes the PWA currently knows about (live
+               active bakes). It can't see notifications left behind by a bake that no longer
+               exists locally \u2014 e.g. one discarded right after starting, before its schedule
+               and cancel requests were guaranteed to land in order on the backend. This button
+               queries the backend directly for EVERYTHING pending, regardless of whether the
+               PWA still has a local record of it. -->
+          <button class="btn btn-ghost btn-sm" id="diag-view-pending" style="width: 100%; font-size: 12px; padding: 8px; margin-top: 8px;">View All Pending Notifications</button>
+          <div id="diag-pending-list" style="display: none; margin-top: 8px;"></div>
         </div>
         <div>
           <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">App</div>
@@ -8532,6 +8693,9 @@ Here is the recipe:
     // Wire recovery button
     const clearFbBtn = document.getElementById('diag-clear-fb-cache');
     if (clearFbBtn) clearFbBtn.addEventListener('click', clearFirestoreCacheAndReload);
+    // Wire pending-notifications viewer
+    const viewPendingBtn = document.getElementById('diag-view-pending');
+    if (viewPendingBtn) viewPendingBtn.addEventListener('click', showPendingNotifications);
     // Compute localStorage usage (async-ish; just sum string lengths)
     try {
       let total = 0;
