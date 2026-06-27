@@ -220,6 +220,7 @@
   .ing-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; border-bottom: 1px dashed var(--line); gap: 12px; }
   .ing-row:last-child { border-bottom: none; }
   .ing-row .name { color: var(--ink-soft); flex: 1; }
+  .ing-pct { color: var(--ink-mute); font-size: 11px; font-weight: 400; }
   .ing-row .qty { font-family: 'JetBrains Mono', monospace; color: var(--ink); font-weight: 500; text-align: right; flex-shrink: 0; }
   /* Convertible weight qtys are tappable. The dotted underline signals "interactive" the
      way a defined-term tooltip does on the web, without making it feel like a button. */
@@ -940,6 +941,31 @@
       <div style="margin-top: 16px; display: flex; gap: 8px;">
         <button class="btn btn-primary btn-block" id="starter-save">Save</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- LOG STARTER FEED MODAL — optional detail (ratio + note) for a feed log entry.
+     The primary "I Fed It" action on the starter card logs instantly with no modal;
+     this is only for adding detail, reached via a secondary "Add details" tap. -->
+<div class="modal-backdrop" id="modal-starter-feed">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Log Starter Feed</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="help" style="margin-bottom: 14px;">Optional \u2014 leave blank for a quick log with just the time.</p>
+      <div class="field">
+        <label>Ratio (starter : flour : water)</label>
+        <input type="text" id="feed-ratio" placeholder="e.g. 1:1:1" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Note</label>
+        <input type="text" id="feed-note" placeholder="e.g. doubled in 4 hours" autocomplete="off">
+      </div>
+      <button class="btn btn-primary btn-block" id="feed-save">Log Feed</button>
+      <button class="btn btn-block btn-ghost" id="feed-cancel" style="margin-top: 8px;">Cancel</button>
     </div>
   </div>
 </div>
@@ -1978,8 +2004,18 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.20.1';
+  const APP_VERSION = '1.21.1';
   const CHANGELOG = [
+    { version: '1.21.1', date: '2026-06-25', notes: [
+      'Today tab: the no-active-bake state is now a real call to action \u2014 shows "Last baked X days ago" and a "Pick Your Next Bake" button that jumps to Recipes, instead of just saying "No active bake."',
+      'Today tab: starter card now has a one-tap "I Fed It" button \u2014 log a feed without leaving the dashboard.',
+    ]},
+    { version: '1.21.0', date: '2026-06-25', notes: [
+      'New: baker\'s percentages shown automatically next to each ingredient \u2014 every weighed ingredient as a share of total flour weight.',
+      'New: starter feeding log. Tap "I Fed It" for a one-tap log, or "Add details" to record the ratio and a note. Shows your last 5 feeds and uses real feed history (not just the reminder schedule) to track progress toward the next feed.',
+      'Today dashboard\'s starter card now shows "Last fed" alongside "Next feed" when you\'ve logged at least one feed.',
+      'Fix: ensureStarterDefaults() was being called but had never been defined \u2014 a latent bug that could have thrown an error during sync in a rare edge case. Now properly implemented and shared across every place starter data gets normalized.',
+    ]},
     { version: '1.20.1', date: '2026-06-25', notes: [
       'Fix: Bake Options showed literal "\\u2014" text instead of a dash when push notifications were active. It was sitting in static page HTML rather than app-generated text, so the escape sequence was never being interpreted.',
     ]},
@@ -2236,34 +2272,10 @@
       if (typeof state.notificationsEnabled !== 'boolean') state.notificationsEnabled = false;
       if (!state.recipeFilter || typeof state.recipeFilter !== 'object') state.recipeFilter = { text: '', categoryId: null };
       if (!['alpha', 'recent', 'mostBaked', 'duration'].includes(state.recipeSort)) state.recipeSort = 'alpha';
-      // Starter schema migration: ensure the object and its 2 reminders exist with valid shape.
-      if (!state.starter || typeof state.starter !== 'object') {
-        state.starter = {
-          reminders: [
-            { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
-            { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
-          ],
-          remindersSentAt: null,
-        };
-      }
-      if (!Array.isArray(state.starter.reminders) || state.starter.reminders.length !== 2) {
-        state.starter.reminders = [
-          { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
-          { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
-        ];
-      }
-      // Validate each reminder shape
-      for (let i = 0; i < 2; i++) {
-        const r = state.starter.reminders[i] || {};
-        state.starter.reminders[i] = {
-          id: r.id || `starter-${i + 1}`,
-          enabled: r.enabled === true,
-          name: typeof r.name === 'string' ? r.name : 'Feed starter',
-          dayOfWeek: (typeof r.dayOfWeek === 'number' && r.dayOfWeek >= 0 && r.dayOfWeek <= 6) ? r.dayOfWeek : (i === 0 ? 6 : 3),
-          hour: (typeof r.hour === 'number' && r.hour >= 0 && r.hour <= 23) ? r.hour : 9,
-          minute: (typeof r.minute === 'number' && r.minute >= 0 && r.minute <= 59) ? r.minute : 0,
-        };
-      }
+      // Starter schema migration: ensure the object, its 2 reminders, and feedLog all
+      // exist with a valid shape. Function declarations are hoisted, so calling
+      // ensureStarterDefaults() here — even though it's defined later in the file — is safe.
+      ensureStarterDefaults();
 
       // Migrate legacy single activeBake to activeBakes array
       if (state.activeBake && typeof state.activeBake === 'object' && state.activeBake.recipeId) {
@@ -2570,6 +2582,46 @@
     const parsed = parseWeight(raw);
     if (!parsed) return raw;
     return formatWeightAs(parsed, override);
+  }
+
+  // Computes baker's percentages for a recipe's ingredients: each weighed ingredient's
+  // weight as a percentage of TOTAL flour weight (sum of every ingredient whose name
+  // contains "flour", case-insensitive — handles multi-flour recipes correctly, since
+  // each flour's own percentage is relative to the combined flour total, not 100% each).
+  // Returns a Map from ingredient name -> percentage (number). Non-weight ingredients
+  // (parseWeight returns null — "2 tsp", "1 egg") are omitted entirely, matching standard
+  // baker's percentage convention, which only applies to weighed ingredients.
+  //
+  // This is the SIMPLE form of baker's percentage — a sourdough starter is treated as
+  // one line item, not decomposed into its own flour/water contribution ("true hydration").
+  // That's what most home bakers expect and matches how ingredient lists are normally written.
+  // Percentages are scale-invariant (the ratios don't change with batch size), so this can
+  // be computed once from the recipe's base (unscaled) ingredient list.
+  function computeBakersPercentages(ingredients) {
+    const out = new Map();
+    if (!Array.isArray(ingredients) || ingredients.length === 0) return out;
+    const weights = ingredients.map(ing => {
+      const parsed = parseWeight(ing.qty || '');
+      return { name: ing.name, grams: parsed ? parsed.value : null };
+    });
+    const totalFlourGrams = weights.reduce((sum, w) => {
+      if (w.grams == null || !w.name) return sum;
+      return /flour/i.test(w.name) ? sum + w.grams : sum;
+    }, 0);
+    if (totalFlourGrams <= 0) return out; // no flour found — percentages would be meaningless
+    for (const w of weights) {
+      if (w.grams == null) continue;
+      out.set(w.name, (w.grams / totalFlourGrams) * 100);
+    }
+    return out;
+  }
+
+  // Formats a baker's percentage for display: whole number above 10%, one decimal below
+  // (so a small addition like 2% salt doesn't just round to "2%" losing useful precision
+  // at a glance, while a 100% flour or 70% water value stays clean without decimals).
+  function formatBakersPct(pct) {
+    if (pct >= 10) return `${Math.round(pct)}%`;
+    return `${(Math.round(pct * 10) / 10)}%`;
   }
 
   // Auto-detect which recipe ingredients are mentioned in a given stage's text.
@@ -3668,8 +3720,11 @@
             <button class="scale-opt ${![0.5, 1, 2, 3].includes(state.scaleFactor) ? 'active' : ''}" data-scale="custom">${![0.5, 1, 2, 3].includes(state.scaleFactor) ? state.scaleFactor + '×' : '…'}</button>
           </div>
         </div>
-        <div class="ing-list">
-          ${recipe.ingredients.map(ing => {
+        ${(() => {
+          // Computed once per render (not per ingredient) — percentages are scale-invariant,
+          // so this only needs the recipe's base ingredient list, not the scaled quantities.
+          const bakersPct = computeBakersPercentages(recipe.ingredients);
+          const rows = recipe.ingredients.map(ing => {
             // Apply scale to the raw qty first, then check for unit override.
             // If overridden, parse the scaled qty and reformat in the override unit.
             const scaledQty = scaleQuantity(ing.qty || '', state.scaleFactor);
@@ -3680,14 +3735,19 @@
             // Otherwise tapping a "1 tsp" ingredient would do nothing — better to make it
             // visually un-tappable so the affordance matches behavior.
             const isWeight = !!parseWeight(scaledQty);
+            const pct = bakersPct.get(ing.name);
             return `
               <div class="ing-row">
-                <span class="name">${escapeHtml(ing.name)}</span>
+                <span class="name">${escapeHtml(ing.name)}${pct != null ? `<span class="ing-pct"> · ${formatBakersPct(pct)}</span>` : ''}</span>
                 <span class="qty ${isWeight ? 'qty-convertible' : ''}" data-ing-name="${escapeAttr(ing.name)}">${escapeHtml(displayedQty || '')}</span>
               </div>
             `;
-          }).join('')}
-        </div>
+          }).join('');
+          return `
+            <div class="ing-list">${rows}</div>
+            ${bakersPct.size > 0 ? `<p class="help" style="margin-top: -4px;">Baker's percentage \u2014 each ingredient as a share of total flour weight.</p>` : ''}
+          `;
+        })()}
         ${state.scaleFactor !== 1 ? `<p class="help" style="margin-top: -4px; margin-bottom: 12px;">Scaled ${state.scaleFactor}× from original. Stage durations stay the same — fermentation doesn't care about batch size.</p>` : ''}
       ` : ''}
 
@@ -6566,11 +6626,28 @@ Here is the recipe:
 
     // --- 1. Active bake(s) ---
     if (bakes.length === 0) {
+      // "Days since last bake" nudge — only shown when there IS prior history (a brand
+      // new user with zero finished bakes gets the plain CTA, no nudge that would just
+      // read as a confusing "0 days" or reference a bake that never happened).
+      const allBakesForNudge = liveItems(state.bakes);
+      let daysSinceLine = '';
+      if (allBakesForNudge.length > 0) {
+        const mostRecent = allBakesForNudge.reduce((latest, b) => {
+          const d = new Date(b.completedAt || b.startedAt);
+          return (!latest || d > latest) ? d : latest;
+        }, null);
+        if (mostRecent) {
+          const days = Math.floor((new Date() - mostRecent) / 86400000);
+          const daysStr = days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+          daysSinceLine = `<div style="font-size: 13px; color: var(--ink-soft); margin-bottom: 14px;">Last baked ${daysStr}</div>`;
+        }
+      }
       sections.push(`
-        <div class="card" data-today-start-bake style="cursor: pointer; text-align: center; padding: 28px 20px;">
+        <div class="card" style="text-align: center; padding: 28px 20px;">
           <div style="font-size: 32px; margin-bottom: 8px;">🥖</div>
-          <div style="font-family: 'Fraunces', serif; font-size: 17px; color: var(--ink); margin-bottom: 4px;">No active bake</div>
-          <div style="font-size: 13px; color: var(--ink-soft);">Tap to browse recipes and start one</div>
+          <div style="font-family: 'Fraunces', serif; font-size: 17px; color: var(--ink); margin-bottom: 4px;">Nothing baking right now</div>
+          ${daysSinceLine}
+          <button class="btn btn-primary" data-today-start-bake style="margin-top: ${daysSinceLine ? '0' : '10px'};">Pick Your Next Bake</button>
         </div>
       `);
     } else if (bakes.length === 1) {
@@ -6664,6 +6741,21 @@ Here is the recipe:
       }
       if (soonest) {
         const timing = formatDaysOrHoursUntil(soonest.date);
+        const realLastFeed = lastLoggedStarterFeed();
+        let lastFedLine = '';
+        if (realLastFeed) {
+          const msAgo = new Date() - realLastFeed;
+          let agoStr;
+          if (msAgo < 3600000) agoStr = 'less than an hour ago';
+          else if (msAgo < 86400000) {
+            const h = Math.round(msAgo / 3600000);
+            agoStr = `${h} hour${h === 1 ? '' : 's'} ago`;
+          } else {
+            const d = Math.round(msAgo / 86400000);
+            agoStr = d === 1 ? 'yesterday' : `${d} days ago`;
+          }
+          lastFedLine = `<div style="font-size: 11px; color: var(--ink-mute); margin-top: 1px;">Last fed ${agoStr}</div>`;
+        }
         sections.push(`
           <div class="card" data-today-goto-starter style="cursor: pointer;">
             <div style="display: flex; align-items: center; gap: 10px;">
@@ -6671,7 +6763,9 @@ Here is the recipe:
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-mute);">Starter</div>
                 <div style="font-size: 14px; color: var(--ink); margin-top: 1px;">Next feed ${timing}</div>
+                ${lastFedLine}
               </div>
+              <button class="btn btn-sm btn-primary" data-today-feed-now style="flex-shrink: 0; padding: 6px 12px; font-size: 12px;">I Fed It</button>
             </div>
           </div>
         `);
@@ -6765,6 +6859,19 @@ Here is the recipe:
           const starterEl = document.getElementById('starter-content');
           if (starterEl) starterEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 50);
+      });
+    }
+
+    // "I Fed It" button on the Today starter card — stopPropagation so tapping it doesn't
+    // also trigger the parent card's click-to-navigate-to-Active-tab handler above.
+    const feedNowToday = el.querySelector('[data-today-feed-now]');
+    if (feedNowToday) {
+      feedNowToday.addEventListener('click', (e) => {
+        e.stopPropagation();
+        logStarterFeed(null, null);
+        haptic('success');
+        toast('Starter feed logged');
+        renderToday();
       });
     }
 
@@ -6932,6 +7039,63 @@ Here is the recipe:
   const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  // Normalizes state.starter to a complete, valid shape: exactly 2 reminder slots
+  // (each with valid id/enabled/name/dayOfWeek/hour/minute) plus a feedLog array.
+  // Called after any wholesale replacement of state.starter (sync fetch, listener
+  // merge, data reset) so a remote object from an older app version — or one missing
+  // fields entirely — doesn't leave the rest of the app working with an incomplete shape.
+  const MAX_STARTER_FEED_LOG = 30; // ~7 months at weekly cadence; keeps the parent doc tiny
+  function ensureStarterDefaults() {
+    if (!state.starter || typeof state.starter !== 'object') {
+      state.starter = { reminders: [], remindersSentAt: null, feedLog: [] };
+    }
+    if (!Array.isArray(state.starter.reminders) || state.starter.reminders.length !== 2) {
+      state.starter.reminders = [
+        { id: 'starter-1', enabled: false, name: 'Feed starter', dayOfWeek: 6, hour: 9, minute: 0 },
+        { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
+      ];
+    }
+    for (let i = 0; i < 2; i++) {
+      const r = state.starter.reminders[i] || {};
+      state.starter.reminders[i] = {
+        id: r.id || `starter-${i + 1}`,
+        enabled: r.enabled === true,
+        name: typeof r.name === 'string' ? r.name : 'Feed starter',
+        dayOfWeek: (typeof r.dayOfWeek === 'number' && r.dayOfWeek >= 0 && r.dayOfWeek <= 6) ? r.dayOfWeek : (i === 0 ? 6 : 3),
+        hour: (typeof r.hour === 'number' && r.hour >= 0 && r.hour <= 23) ? r.hour : 9,
+        minute: (typeof r.minute === 'number' && r.minute >= 0 && r.minute <= 59) ? r.minute : 0,
+      };
+    }
+    if (!Array.isArray(state.starter.feedLog)) state.starter.feedLog = [];
+  }
+
+  // Logs a starter feed. ratio/note are optional strings; omit for a quick zero-friction
+  // log (just the timestamp). Caps the log at MAX_STARTER_FEED_LOG most-recent entries —
+  // starter feedLog lives in the small parent Firestore doc alongside activeBakes, so it
+  // needs to stay bounded indefinitely rather than growing forever.
+  function logStarterFeed(ratio, note) {
+    ensureStarterDefaults();
+    const entry = {
+      id: uid(),
+      fedAt: new Date().toISOString(),
+      ratio: (ratio && ratio.trim()) ? ratio.trim() : null,
+      note: (note && note.trim()) ? note.trim() : null,
+    };
+    state.starter.feedLog.unshift(entry); // newest first
+    if (state.starter.feedLog.length > MAX_STARTER_FEED_LOG) {
+      state.starter.feedLog.length = MAX_STARTER_FEED_LOG;
+    }
+    saveState();
+    return entry;
+  }
+
+  // Most recent ACTUAL logged feed (Date object), or null if nothing has been logged yet.
+  function lastLoggedStarterFeed() {
+    const log = (state.starter && state.starter.feedLog) || [];
+    if (log.length === 0) return null;
+    return new Date(log[0].fedAt);
+  }
+
   // Given a starter reminder { dayOfWeek, hour, minute }, return the JS Date of its
   // next occurrence (>= now). If the day/time already passed this week, returns next week's.
   function nextStarterDate(reminder) {
@@ -6982,11 +7146,44 @@ Here is the recipe:
     if (!c) return;
     const reminders = (state.starter && state.starter.reminders) || [];
     const enabledReminders = reminders.filter(r => r.enabled);
+    const feedLog = (state.starter && state.starter.feedLog) || [];
+
+    // Feed-log UI (the "I Fed It" action + recent history) is independent of whether
+    // reminders are set up — a user might want to log feeds without ever using reminders.
+    const feedActionsHtml = `
+      <div style="display: flex; gap: 8px; margin-top: ${enabledReminders.length > 0 ? '10px' : '0'};">
+        <button class="btn btn-primary btn-sm" id="starter-feed-now" style="flex: 1;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M5 13l4 4L19 7"/></svg>
+          I Fed It
+        </button>
+        <button class="btn btn-ghost btn-sm" id="starter-feed-details" style="flex-shrink: 0; padding: 6px 12px; font-size: 12px;">Add details</button>
+      </div>
+      ${feedLog.length > 0 ? `
+        <div style="margin-top: 10px;">
+          ${feedLog.slice(0, 5).map(entry => {
+            const d = new Date(entry.fedAt);
+            const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const detailBits = [entry.ratio, entry.note].filter(Boolean).join(' \u00b7 ');
+            return `
+              <div style="font-size: 12px; color: var(--ink-soft); padding: 4px 0; display: flex; justify-content: space-between; gap: 8px;">
+                <span style="flex-shrink: 0; color: var(--ink-mute);">${escapeHtml(dateStr)}, ${escapeHtml(timeStr)}</span>
+                ${detailBits ? `<span style="text-align: right; min-width: 0;">${escapeHtml(detailBits)}</span>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
+    `;
+
     if (enabledReminders.length === 0) {
       c.innerHTML = `
         <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px;">
-          <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5;">No starter reminders set up yet. Tap <strong>Edit Schedule</strong> above to add a weekly feeding routine.</div>
+          <div style="font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; margin-bottom: 6px;">Starter</div>
+          <div style="font-size: 13px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 4px;">No reminders set up yet. Tap <strong>Edit Schedule</strong> above for a weekly feeding routine, or just log feeds as you go.</div>
+          ${feedActionsHtml}
         </div>`;
+      wireStarterFeedButtons();
       return;
     }
     // Sort by next occurrence so the soonest feeding is on top
@@ -7002,12 +7199,15 @@ Here is the recipe:
     const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
       typeof Notification !== 'undefined' && Notification.permission === 'granted';
     // Compute progress bar data for the soonest upcoming reminder.
-    // Progress runs from the most recent past feeding (any slot) to the next upcoming feeding.
+    // Progress runs from the most recent feeding (any slot) to the next upcoming feeding.
+    // Prefer an ACTUALLY LOGGED feed over the schedule-inferred guess — real data beats
+    // assuming the user fed it exactly when a reminder told them to.
     // Hidden when the gap is < 24h, since that indicates we're in the "active feeding window"
     // between two same-day slots (e.g. Fri 8 AM and Fri 7 PM).
     const now = new Date();
     const soonestNext = items[0].next;
-    const prevFeed = mostRecentStarterFeed(enabledReminders);
+    const realLastFeed = lastLoggedStarterFeed();
+    const prevFeed = realLastFeed || mostRecentStarterFeed(enabledReminders);
     let progressPct = null;
     if (prevFeed) {
       const gapMs = soonestNext - prevFeed;
@@ -7035,6 +7235,20 @@ Here is the recipe:
         awayStr = `on ${fullDay}`;
       }
     }
+    // "Last fed" line — only shown when we have a REAL logged feed (not the inferred guess,
+    // which would be misleading to present as fact since it's just an assumption).
+    let lastFedStr = null;
+    if (realLastFeed) {
+      const msAgo = now - realLastFeed;
+      if (msAgo < 3600000) lastFedStr = 'less than an hour ago';
+      else if (msAgo < 86400000) {
+        const h = Math.round(msAgo / 3600000);
+        lastFedStr = `${h} hour${h === 1 ? '' : 's'} ago`;
+      } else {
+        const d = Math.round(msAgo / 86400000);
+        lastFedStr = d === 1 ? 'yesterday' : `${d} days ago`;
+      }
+    }
     c.innerHTML = `
       <div style="background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
@@ -7046,12 +7260,14 @@ Here is the recipe:
             <div style="height: 100%; width: ${(progressPct * 100).toFixed(1)}%; background: var(--leaven); border-radius: 3px; transition: width 0.3s;"></div>
           </div>
         ` : ''}
+        ${lastFedStr ? `<div style="font-size: 11px; color: var(--ink-mute); margin-top: 6px;">Last fed ${escapeHtml(lastFedStr)}</div>` : ''}
         <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);">
           <div style="font-size: 11px; font-weight: 600; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Schedule</div>
           ${items.map(item => `
             <div style="font-size: 13px; color: var(--ink-soft); padding: 3px 0;">${escapeHtml(fmtStarterSchedule(item.reminder))}</div>
           `).join('')}
         </div>
+        ${feedActionsHtml}
       </div>
       <div style="display: flex; gap: 8px; margin-top: 4px;">
         ${pushActive
@@ -7070,6 +7286,35 @@ Here is the recipe:
     // Wire send button (only present in non-push mode)
     const sendBtn = document.getElementById('starter-send-reminders');
     if (sendBtn) sendBtn.addEventListener('click', sendStarterReminders);
+    wireStarterFeedButtons();
+  }
+
+  // Wires the "I Fed It" quick-log button and "Add details" modal trigger. Called from
+  // both branches of renderStarter (with and without enabled reminders) since feed
+  // logging works independently of whether reminders are set up.
+  function wireStarterFeedButtons() {
+    const feedNowBtn = document.getElementById('starter-feed-now');
+    if (feedNowBtn) {
+      feedNowBtn.addEventListener('click', () => {
+        logStarterFeed(null, null);
+        haptic('success');
+        toast('Starter feed logged');
+        renderStarter();
+        // Today dashboard shows starter status too — keep it in sync if visible
+        const todayView = document.getElementById('view-today');
+        if (todayView && todayView.classList.contains('active')) renderToday();
+      });
+    }
+    const detailsBtn = document.getElementById('starter-feed-details');
+    if (detailsBtn) {
+      detailsBtn.addEventListener('click', () => {
+        const ratioInput = document.getElementById('feed-ratio');
+        const noteInput = document.getElementById('feed-note');
+        if (ratioInput) ratioInput.value = '';
+        if (noteInput) noteInput.value = '';
+        showModal('modal-starter-feed');
+      });
+    }
   }
 
   // Build and send the starter reminder payload to the Crumb Timers Shortcut.
@@ -8215,9 +8460,9 @@ Here is the recipe:
         }
         if (data.starter && typeof data.starter === 'object') {
           state.starter = data.starter;
-          if (!Array.isArray(state.starter.reminders) || state.starter.reminders.length !== 2) {
-            ensureStarterDefaults();
-          }
+          // Always normalize (not just when reminders look wrong) — remote data from an
+          // older app version may have valid reminders but be missing feedLog entirely.
+          ensureStarterDefaults();
         }
         // BACKWARD COMPATIBILITY: if remote parent still has legacy recipes/bakes/categories
         // fields (older device hasn't migrated yet), merge them. They'll get migrated to
@@ -8461,6 +8706,7 @@ Here is the recipe:
           if (Array.isArray(data.activeBakes)) state.activeBakes = data.activeBakes;
           else if (data.activeBake !== undefined) state.activeBakes = data.activeBake ? [data.activeBake] : [];
           if (data.starter && typeof data.starter === 'object') state.starter = data.starter;
+          ensureStarterDefaults();
         } else {
           // Merge so neither side loses
           if (remoteRecipes.length > 0) state.recipes = mergeById(state.recipes, remoteRecipes);
@@ -8480,6 +8726,7 @@ Here is the recipe:
               state.starter.reminders.some(r => r && r.enabled);
             if (!localHasEnabled) state.starter = data.starter;
           }
+          ensureStarterDefaults();
         }
         // Clean up any duplicate categories that came in
         dedupeCategories();
@@ -9021,6 +9268,7 @@ Here is the recipe:
             { id: 'starter-2', enabled: false, name: 'Feed starter', dayOfWeek: 3, hour: 9, minute: 0 },
           ],
           remindersSentAt: null,
+          feedLog: [], // wiping data clears the feed history too, consistent with recipes/bakes
         };
         stopBakeTicker();
         // Clear the pre-sync backup too — no point keeping it after a deliberate wipe
@@ -9549,6 +9797,26 @@ Here is the recipe:
   const starterSaveBtn = document.getElementById('starter-save');
   if (starterSaveBtn) {
     starterSaveBtn.addEventListener('click', saveStarterEditor);
+  }
+  // Log Starter Feed modal — "Save" logs the entry with whatever ratio/note was entered
+  // (both optional), "Cancel" just closes without logging.
+  const feedSaveBtn = document.getElementById('feed-save');
+  if (feedSaveBtn) {
+    feedSaveBtn.addEventListener('click', () => {
+      const ratio = document.getElementById('feed-ratio').value;
+      const note = document.getElementById('feed-note').value;
+      logStarterFeed(ratio, note);
+      hideModal('modal-starter-feed');
+      haptic('success');
+      toast('Starter feed logged');
+      renderStarter();
+      const todayView = document.getElementById('view-today');
+      if (todayView && todayView.classList.contains('active')) renderToday();
+    });
+  }
+  const feedCancelBtn = document.getElementById('feed-cancel');
+  if (feedCancelBtn) {
+    feedCancelBtn.addEventListener('click', () => hideModal('modal-starter-feed'));
   }
   document.getElementById('bulk-cancel-btn').addEventListener('click', () => {
     exitBulkSelectMode();
