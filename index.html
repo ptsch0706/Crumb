@@ -1978,8 +1978,13 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.19.3';
+  const APP_VERSION = '1.20.0';
   const CHANGELOG = [
+    { version: '1.20.0', date: '2026-06-25', notes: [
+      'New: stages can be marked "Optional" in the recipe editor \u2014 e.g. a "rest before baking" step that\'s only needed if the dough was refrigerated.',
+      'When scheduling a bake, optional stages show an Include/Skip toggle. Skipping one removes it from the total time, finish estimate, and timeline \u2014 it\'s treated as if it doesn\'t exist for that bake.',
+      'History shows "\u00b7 not needed" on any stage that was opted out, distinct from a stage skipped ahead mid-bake.',
+    ]},
     { version: '1.19.3', date: '2026-06-14', notes: [
       'Fix: a bake discarded immediately after starting could leave its push notifications behind on the backend (a race between the schedule and cancel requests). Scheduling now double-checks the bake is still active before and after sending.',
       'New: Settings \u2192 Diagnostics \u2192 "View All Pending Notifications" \u2014 lists everything queued on the backend, including notifications left behind by bakes that no longer exist locally, with a one-tap "Clear Bake Notifications (Keep Starter)" button.',
@@ -2529,6 +2534,30 @@
   // conversions ("how many oz is that?") not lasting preferences.
   const _ingredientUnitOverride = new Map();
 
+  // Transient set of optional stages the user has toggled OFF for the bake they're
+  // currently scheduling (not started yet). Keyed by `${recipeId}:${stageIdx}`. Default
+  // (not in the set) means INCLUDED — matches pre-feature behavior so existing recipes
+  // with no optional stages are completely unaffected. Not persisted: a fresh page load
+  // always starts every optional stage included, since "do I need this step this time"
+  // is a per-bake decision, not a lasting preference.
+  const _scheduleOptionalOff = new Set();
+  function optionalStageKey(recipeId, stageIdx) { return `${recipeId}:${stageIdx}`; }
+  function isOptionalStageOff(recipeId, stageIdx) { return _scheduleOptionalOff.has(optionalStageKey(recipeId, stageIdx)); }
+  function toggleOptionalStage(recipeId, stageIdx) {
+    const key = optionalStageKey(recipeId, stageIdx);
+    if (_scheduleOptionalOff.has(key)) _scheduleOptionalOff.delete(key);
+    else _scheduleOptionalOff.add(key);
+  }
+  // Returns the Set of stage indices (numbers) currently toggled off for this recipe —
+  // the shape totalMinutes/buildTimeline/startBake expect.
+  function getExcludedStageIdxs(recipe) {
+    const out = new Set();
+    recipe.stages.forEach((s, i) => {
+      if (s.optional && isOptionalStageOff(recipe.id, i)) out.add(i);
+    });
+    return out;
+  }
+
   // Returns the qty string for an ingredient, applying any active unit override.
   // If no override, returns the qty in its original (already-grams-by-default) form.
   function displayQty(ing) {
@@ -2579,10 +2608,16 @@
   // ============================================================
   // SCHEDULING ENGINE
   // ============================================================
-  function buildTimeline(recipe, startTime) {
+  // Shared empty Set so totalMinutes/buildTimeline avoid allocating a new Set on every
+  // call when no stages are excluded (the common case for recipes with no optional stages).
+  const EMPTY_IDX_SET = new Set();
+
+  function buildTimeline(recipe, startTime, excludeIdxs) {
+    const exclude = excludeIdxs || EMPTY_IDX_SET;
     const items = [];
     let t = new Date(startTime);
     for (let i = 0; i < recipe.stages.length; i++) {
+      if (exclude.has(i)) continue; // optional stage toggled off for this bake — contributes no time
       const stage = recipe.stages[i];
       const start = new Date(t);
       const end = new Date(t.getTime() + stage.durMin * 60000);
@@ -2613,8 +2648,12 @@
     return items;
   }
 
-  function totalMinutes(recipe) {
-    return recipe.stages.reduce((s, x) => s + (x.durMin || 0) + (x.needsStart ? (x.prepBufferMin || 0) : 0), 0);
+  function totalMinutes(recipe, excludeIdxs) {
+    const exclude = excludeIdxs || EMPTY_IDX_SET;
+    return recipe.stages.reduce((s, x, i) => {
+      if (exclude.has(i)) return s;
+      return s + (x.durMin || 0) + (x.needsStart ? (x.prepBufferMin || 0) : 0);
+    }, 0);
   }
 
   // ============================================================
@@ -3091,7 +3130,8 @@
           : (driftMin > 0
             ? `<span style="color: var(--warn); font-size: 11px;">+${formatDur(driftMin)} late</span>`
             : `<span style="color: var(--leaven); font-size: 11px;">−${formatDur(Math.abs(driftMin))} early</span>`));
-      const skipped = st.skipped;
+      const skipped = st.skipped && !st.optedOut;
+      const optedOut = st.optedOut;
       const autoAdv = st.autoAdvanced;
       const overrideTag = (typeof st.durMinOverride === 'number')
         ? `<span style="font-size: 10px; color: var(--crust); margin-left: 6px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;">adjusted</span>`
@@ -3101,7 +3141,7 @@
           <div style="display: flex; gap: 8px; align-items: flex-start; margin-bottom: 4px;">
             <div style="width: 22px; height: 22px; border-radius: 50%; background: ${st.done ? 'var(--leaven)' : 'var(--bg-warm)'}; color: ${st.done ? 'white' : 'var(--ink-mute)'}; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">${i + 1}</div>
             <div style="flex: 1; min-width: 0;">
-              <div style="font-size: 14px; color: var(--ink); font-weight: 500;">${escapeHtml(s.name)}${overrideTag}${s.isWait ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· wait</span>' : ''}${skipped ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· skipped</span>' : ''}${autoAdv ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· auto</span>' : ''}</div>
+              <div style="font-size: 14px; color: var(--ink); font-weight: 500;">${escapeHtml(s.name)}${overrideTag}${s.isWait ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· wait</span>' : ''}${optedOut ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· not needed</span>' : (skipped ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· skipped</span>' : '')}${autoAdv ? ' <span style="font-size: 10px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.04em;">· auto</span>' : ''}</div>
               ${s.detail ? `<div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px;">${escapeHtml(s.detail)}</div>` : ''}
             </div>
           </div>
@@ -3540,6 +3580,10 @@
       return;
     }
 
+    // Optional stages the user has toggled off for THIS scheduling session (not yet
+    // started). Affects total time, finish time, and the rendered timeline below.
+    const excludedIdxs = getExcludedStageIdxs(recipe);
+
     let startTime;
     if (state.scheduleMode === 'finish' && state.scheduleFinish) {
       // Sum just the stage durations \u2014 the prep buffer is NOT part of the bake's
@@ -3547,13 +3591,13 @@
       // Using totalMinutes() here would over-count by prepBufferMin and shift the displayed
       // finish time earlier than what the user picked. See buildTimeline() which also
       // excludes prepBufferMin \u2014 we want startTime + timeline span = the picked finish.
-      const timelineSpanMin = recipe.stages.reduce((s, x) => s + (x.durMin || 0), 0);
+      const timelineSpanMin = recipe.stages.reduce((s, x, i) => excludedIdxs.has(i) ? s : s + (x.durMin || 0), 0);
       startTime = new Date(state.scheduleFinish.getTime() - timelineSpanMin * 60000);
     } else {
       startTime = state.scheduleStart || new Date();
     }
 
-    const timeline = buildTimeline(recipe, startTime);
+    const timeline = buildTimeline(recipe, startTime, excludedIdxs);
     const finishTime = timeline[timeline.length - 1].endAt;
     const pacing = computeRecipePacing(recipe); // null or per-stage array
     const totalDrift = pacing ? pacing.reduce((sum, p) => sum + (p ? p.medianDriftMin : 0), 0) : 0;
@@ -3565,7 +3609,7 @@
     container.innerHTML = `
       <div class="schedule-header">
         <div class="schedule-title" style="display: flex; align-items: center; gap: 10px;">${renderRecipeIcon(recipe.icon, 36)}<span>${escapeHtml(recipe.name)}</span></div>
-        <div class="schedule-meta">${recipe.stages.length} stages · ${formatDur(totalMinutes(recipe))} total · finishes ${formatRelativeDay(finishTime)}</div>
+        <div class="schedule-meta">${recipe.stages.length - excludedIdxs.size} stage${(recipe.stages.length - excludedIdxs.size) === 1 ? '' : 's'}${excludedIdxs.size > 0 ? ` (${excludedIdxs.size} skipped)` : ''} · ${formatDur(totalMinutes(recipe, excludedIdxs))} total · finishes ${formatRelativeDay(finishTime)}</div>
         ${(() => {
           const yieldText = recipe.yield ? escapeHtml(recipe.yield) : '';
           const h = computeHydration(recipe.ingredients);
@@ -3642,6 +3686,26 @@
           }).join('')}
         </div>
         ${state.scaleFactor !== 1 ? `<p class="help" style="margin-top: -4px; margin-bottom: 12px;">Scaled ${state.scaleFactor}× from original. Stage durations stay the same — fermentation doesn't care about batch size.</p>` : ''}
+      ` : ''}
+
+      ${recipe.stages.some(s => s.optional) ? `
+        <div class="section-title">Optional Steps</div>
+        <p class="help" style="margin-top: -6px;">Decide whether each applies this time \u2014 it affects the total time and finish estimate below.</p>
+        <div style="margin-bottom: 12px;">
+          ${recipe.stages.map((s, i) => {
+            if (!s.optional) return '';
+            const isOff = isOptionalStageOff(recipe.id, i);
+            return `
+              <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius-sm); margin-bottom: 6px;">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 13px; color: var(--ink); font-weight: 500;">${escapeHtml(s.name)}</div>
+                  ${s.detail ? `<div style="font-size: 11px; color: var(--ink-soft); margin-top: 2px;">${escapeHtml(s.detail)}</div>` : ''}
+                </div>
+                <button class="btn btn-sm ${isOff ? 'btn-ghost' : 'btn-primary'}" data-toggle-optional="${i}" style="padding: 6px 14px; font-size: 11px; flex-shrink: 0;">${isOff ? 'Skip' : 'Included'}</button>
+              </div>
+            `;
+          }).join('')}
+        </div>
       ` : ''}
 
       <div class="section-title">Timeline</div>
@@ -3728,6 +3792,17 @@
       startBake(recipe, startTime);
     });
 
+    // Optional-stage include/skip toggles. Re-renders the whole schedule view so the
+    // total time, finish time, and timeline list all reflect the new choice immediately.
+    container.querySelectorAll('[data-toggle-optional]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.toggleOptional, 10);
+        toggleOptionalStage(recipe.id, idx);
+        haptic('light');
+        renderSchedule();
+      });
+    });
+
     // Scale option clicks
     container.querySelectorAll('.scale-opt').forEach(b => {
       b.addEventListener('click', async () => {
@@ -3792,11 +3867,23 @@
       });
       if (choice !== 'yes') return;
     }
+    // Optional stages the user toggled off in the schedule preview get pre-marked done
+    // (with no nominal duration consumed) right from the start, so every downstream
+    // timing function — getStageScheduledStart, getCurrentStageIdx, push scheduling —
+    // treats them as already complete. getStageScheduledStart in particular uses a done
+    // stage's doneAt timestamp directly rather than its durMin, so marking doneAt equal
+    // to the bake's own start time makes the stage contribute exactly zero elapsed time.
+    const excludedIdxs = getExcludedStageIdxs(recipe);
     const newBake = {
       id: uid(),
       recipeId: recipe.id,
       startedAt: startTime.toISOString(),
-      stageStates: recipe.stages.map(() => ({ done: false, doneAt: null })),
+      stageStates: recipe.stages.map((stage, i) => {
+        if (excludedIdxs.has(i)) {
+          return { done: true, doneAt: startTime.toISOString(), skipped: true, optedOut: true };
+        }
+        return { done: false, doneAt: null };
+      }),
       scaleFactor: state.scaleFactor || 1,
       color: pickNextBakeColor(),
       _updatedAt: Date.now(),
@@ -3819,9 +3906,13 @@
     // For wait stages, mark them auto-complete at the planned end. For hands-on stages, we
     // can't know if the user did them or not, so we still mark them done at the planned end
     // (the user can adjust individual stage done-times via the edit button).
+    // Stages already marked done above (opted-out optional stages) are skipped here and
+    // contribute no elapsed time — `elapsed` stays put so the NEXT real stage's planned
+    // window is computed as if the optional one never existed.
     const now = Date.now();
     let elapsed = startTime.getTime();
     for (let i = 0; i < recipe.stages.length; i++) {
+      if (newBake.stageStates[i].done) continue; // opted-out optional stage — zero elapsed time
       const stageEnd = elapsed + recipe.stages[i].durMin * 60000;
       if (stageEnd <= now) {
         newBake.stageStates[i].done = true;
@@ -5672,6 +5763,10 @@
               <span style="color: var(--ink-mute);">min</span>
             </div>
           ` : ''}
+          <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" ${s.optional ? 'checked' : ''} data-i="${i}" data-k="optional" style="width: auto;"> Optional stage
+          </label>
+          ${s.optional ? `<p class="help" style="margin: 0 0 0 20px; font-size: 10px;">You'll be asked whether to include this stage each time you start a bake \u2014 e.g. a "rest before baking" step that's only needed if the dough was refrigerated.</p>` : ''}
         </div>
         ${ctSectionHtml}
       </div>
@@ -5683,7 +5778,7 @@
       inp.addEventListener('input', (e) => {
         const i = +e.target.dataset.i, k = e.target.dataset.k;
         if (k === 'durMin' || k === 'prepBufferMin') state.editingRecipe.stages[i][k] = parseInt(e.target.value) || 0;
-        else if (k === 'isWait' || k === 'needsStart') {
+        else if (k === 'isWait' || k === 'needsStart' || k === 'optional') {
           state.editingRecipe.stages[i][k] = e.target.checked;
           // When toggling needsStart, set a default prep buffer if not present
           if (k === 'needsStart' && e.target.checked && state.editingRecipe.stages[i].prepBufferMin == null) {
@@ -5958,6 +6053,7 @@ Here is the recipe:
         isWait: !!s.isWait,
         needsStart: !!s.needsStart,
         prepBufferMin: s.needsStart ? (parseInt(s.prepBufferMin) || 5) : 0,
+        optional: !!s.optional,
       })) : [],
     };
 
