@@ -769,7 +769,7 @@
            Toggled via JS in the options-button click handler below. -->
       <div id="opt-push-active-banner" style="display: none; padding: 10px 14px; background: var(--bg-warm); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--ink-soft); margin-bottom: 8px;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><line x1="13.73" y1="21" x2="10.27" y2="21"/></svg>
-        Notifications are sent automatically via push \u2014 no need to send reminders manually.
+        Notifications are sent automatically via push — no need to send reminders manually.
       </div>
       <button class="btn btn-block opt-btn" id="opt-send-reminders" style="text-align: left; display: flex; align-items: center; gap: 12px; padding: 14px 16px;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
@@ -1978,8 +1978,11 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.20.0';
+  const APP_VERSION = '1.20.1';
   const CHANGELOG = [
+    { version: '1.20.1', date: '2026-06-25', notes: [
+      'Fix: Bake Options showed literal "\\u2014" text instead of a dash when push notifications were active. It was sitting in static page HTML rather than app-generated text, so the escape sequence was never being interpreted.',
+    ]},
     { version: '1.20.0', date: '2026-06-25', notes: [
       'New: stages can be marked "Optional" in the recipe editor \u2014 e.g. a "rest before baking" step that\'s only needed if the dough was refrigerated.',
       'When scheduling a bake, optional stages show an Include/Skip toggle. Skipping one removes it from the total time, finish estimate, and timeline \u2014 it\'s treated as if it doesn\'t exist for that bake.',
