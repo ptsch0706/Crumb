@@ -2004,8 +2004,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.21.1';
+  const APP_VERSION = '1.21.2';
   const CHANGELOG = [
+    { version: '1.21.2', date: '2026-07-01', notes: [
+      'Fix (important): skipping a mid-recipe optional stage no longer corrupts the timing of every stage after it. The timing engine was anchoring to the skipped stage\'s internal timestamp (the bake\'s start time), yanking the clock backward and making downstream stages appear hours overdue \u2014 with push notifications inheriting the wrong times.',
+      'Fix: History bake detail no longer shows phantom "late/early" drift on stages after a skipped optional stage, and the skipped stage itself shows no drift label (just "not needed").',
+      'Fix: the prep-window screen now names the first stage that will actually run and counts only real upcoming stages, instead of assuming stage 1 always happens.',
+      'Fix: the Today tab no longer rebuilds itself every second when nothing is baking \u2014 saves battery and stops the "I Fed It" button from occasionally eating a tap mid-rebuild.',
+    ]},
     { version: '1.21.1', date: '2026-06-25', notes: [
       'Today tab: the no-active-bake state is now a real call to action \u2014 shows "Last baked X days ago" and a "Pick Your Next Bake" button that jumps to Recipes, instead of just saying "No active bake."',
       'Today tab: starter card now has a one-tap "I Fed It" button \u2014 log a feed without leaving the dashboard.',
@@ -3166,9 +3172,14 @@
     let t = start;
     for (let i = 0; i < recipe.stages.length; i++) {
       const stageStart = new Date(t);
-      const dur = (stageStates[i] && typeof stageStates[i].durMinOverride === 'number')
-        ? stageStates[i].durMinOverride
-        : recipe.stages[i].durMin;
+      // Opted-out optional stages contributed zero time to the actual bake, so their
+      // planned duration is zero here too — otherwise every stage AFTER one would show
+      // phantom drift equal to the skipped stage's nominal duration.
+      const optedOutHere = stageStates[i] && stageStates[i].optedOut;
+      const dur = optedOutHere ? 0
+        : (stageStates[i] && typeof stageStates[i].durMinOverride === 'number')
+          ? stageStates[i].durMinOverride
+          : recipe.stages[i].durMin;
       const stageEnd = new Date(t.getTime() + dur * 60000);
       plannedTimes.push({ start: stageStart, end: stageEnd, dur });
       t = stageEnd;
@@ -3176,7 +3187,10 @@
     const timelineHtml = recipe.stages.map((s, i) => {
       const st = stageStates[i] || {};
       const planned = plannedTimes[i];
-      const actualDoneAt = st.doneAt ? new Date(st.doneAt) : null;
+      // No drift label for opted-out stages — their doneAt is the bake's start time
+      // (an implementation detail, not a real completion moment), so any drift number
+      // computed from it would be meaningless noise next to the "not needed" tag.
+      const actualDoneAt = (st.doneAt && !st.optedOut) ? new Date(st.doneAt) : null;
       const driftMin = actualDoneAt ? Math.round((actualDoneAt - planned.end) / 60000) : null;
       const driftLabel = driftMin === null
         ? '<span style="color: var(--ink-mute);">—</span>'
@@ -4437,6 +4451,13 @@
     let t = baseStart;
     for (let i = 0; i < stageIdx; i++) {
       const st = ab.stageStates[i];
+      // Opted-out optional stages contribute NOTHING to the timeline — skip them entirely.
+      // Their doneAt is set to the bake's start time (see startBake), which is usually
+      // EARLIER than where the clock already is by the time the walk reaches them. Without
+      // this guard, a mid-recipe opted-out stage would yank the clock backward to the bake
+      // start, making every downstream stage appear hours overdue and corrupting push
+      // notification fire times.
+      if (st && st.optedOut) continue;
       if (st.done && st.doneAt) {
         t = new Date(st.doneAt);
       } else {
@@ -4621,7 +4642,13 @@
       const prepEnd = new Date(ab.prepUntil);
       const msToStart = prepEnd - new Date();
       if (msToStart > 0) {
-        const firstStage = recipe.stages[0];
+        // First stage that will ACTUALLY run — an opted-out optional stage 1 is already
+        // marked done, so naming it here would announce a step that isn't happening.
+        // Same for the "N stages ahead" count: only count stages not already done
+        // (which at prep time means exactly the opted-out ones).
+        const firstIdx = ab.stageStates.findIndex(s => !s.done);
+        const firstStage = recipe.stages[firstIdx >= 0 ? firstIdx : 0];
+        const aheadCount = ab.stageStates.filter(s => !s.done).length;
         const fmtCount = formatLongCountdown(msToStart, prepEnd);
         container.innerHTML = `
           <div class="bake-banner" style="border-color: ${color.hex}; background: ${color.soft}; color: ${color.hex};">
@@ -4629,7 +4656,7 @@
             <button id="btn-end-bake" style="background: ${color.hex}; color: white; border: none; padding: 6px 14px; border-radius: 100px; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;">End Bake</button>
           </div>
           <div class="bake-hero waiting" style="--bake-accent: ${color.hex}; --bake-accent-soft: ${color.soft};">
-            <div class="status">Scheduled · ${recipe.stages.length} stages ahead</div>
+            <div class="status">Scheduled · ${aheadCount} stage${aheadCount === 1 ? '' : 's'} ahead</div>
             <div class="stage-name">Prep the Bake</div>
             <div class="stage-detail">Get your ingredients and tools ready. The first stage (${escapeHtml(firstStage.name)}) starts automatically when this timer hits zero.</div>
             <div class="countdown-box">
@@ -5399,7 +5426,20 @@
       const activeView = document.getElementById('view-active-bakes');
       const todayView = document.getElementById('view-today');
       if (todayView && todayView.classList.contains('active')) {
-        renderToday();
+        // Per-second re-render is only needed when a live countdown is on screen (an
+        // active bake's hero card). With no active bakes, the Today content only changes
+        // at hour/day granularity (starter timing, "last baked" nudge), so rebuilding the
+        // DOM every second is pure waste — and worse, it destroys and recreates the
+        // "I Fed It" button every second, which can eat a tap that lands mid-rebuild.
+        // Idle days get at most one refresh per minute instead.
+        if (liveActiveBakes().length > 0) {
+          renderToday();
+        } else {
+          if (!window._lastIdleTodayRender || Date.now() - window._lastIdleTodayRender > 60000) {
+            window._lastIdleTodayRender = Date.now();
+            renderToday();
+          }
+        }
       }
       if (scheduleView && scheduleView.classList.contains('active')) {
         // Only re-render if the currently-viewed recipe has an active bake
@@ -6564,13 +6604,16 @@ Here is the recipe:
       if (!recipe || recipe._deleted) continue;
       const idx = getCurrentStageIdx(recipe, b);
       if (idx === -1) continue;
-      // Prep window — the "next action" is when stage 1 will actually begin.
+      // Prep window — the "next action" is when the first REAL stage will begin.
+      // `idx` is the first not-done stage, which correctly skips any opted-out
+      // optional stages (they're pre-marked done at bake start) — so use it rather
+      // than hardcoding stages[0], which could name a stage that isn't happening.
       if (b.prepUntil && new Date(b.prepUntil) > new Date()) {
         const target = new Date(b.prepUntil);
         const candidate = {
           recipe,
           bake: b,
-          actionName: `Start: ${recipe.stages[0].name}`,
+          actionName: `Start: ${recipe.stages[idx].name}`,
           target,
           msAway: target - new Date(),
           awaitingStart: false,
