@@ -947,15 +947,21 @@
 
 <!-- LOG STARTER FEED MODAL — optional detail (ratio + note) for a feed log entry.
      The primary "I Fed It" action on the starter card logs instantly with no modal;
-     this is only for adding detail, reached via a secondary "Add details" tap. -->
+     this modal handles both adding detail to a new entry AND editing/deleting an
+     existing one — which mode it's in is set by JS before the modal opens (title and
+     the Delete button's visibility change accordingly). -->
 <div class="modal-backdrop" id="modal-starter-feed">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">Log Starter Feed</div>
+      <div class="modal-title" id="feed-modal-title">Log Starter Feed</div>
       <button class="modal-close" data-close>✕</button>
     </div>
     <div class="modal-body">
-      <p class="help" style="margin-bottom: 14px;">Optional \u2014 leave blank for a quick log with just the time.</p>
+      <p class="help" id="feed-modal-help" style="margin-bottom: 14px;">Optional \u2014 leave blank for a quick log with just the time.</p>
+      <div class="field">
+        <label>Date &amp; time</label>
+        <input type="datetime-local" id="feed-datetime">
+      </div>
       <div class="field">
         <label>Ratio (starter : flour : water)</label>
         <input type="text" id="feed-ratio" placeholder="e.g. 1:1:1" autocomplete="off">
@@ -966,6 +972,21 @@
       </div>
       <button class="btn btn-primary btn-block" id="feed-save">Log Feed</button>
       <button class="btn btn-block btn-ghost" id="feed-cancel" style="margin-top: 8px;">Cancel</button>
+      <button class="btn btn-ghost btn-block" id="feed-delete" style="margin-top: 8px; color: var(--warn); display: none;">Delete This Entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- STARTER FEED LOG MODAL — full scrollable history, opened via "View all N feeds"
+     on the starter card. Each row opens modal-starter-feed above in edit mode. -->
+<div class="modal-backdrop" id="modal-starter-feed-log">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Starter Feed Log</div>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="starter-feed-log-list"></div>
     </div>
   </div>
 </div>
@@ -2004,8 +2025,14 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.21.3';
+  const APP_VERSION = '1.21.4';
   const CHANGELOG = [
+    { version: '1.21.4', date: '2026-07-03', notes: [
+      'New: full starter feed log viewer. Tap "View all N feeds" on the starter card to see your whole history \u2014 tap any entry to edit its date/time, ratio, or note, or delete it.',
+      'Fix: the starter card was still counting down to "next feed" even right after you\'d already fed it for that same-day slot. Now shows "Fed today" instead until the next distinct feeding day.',
+      'Fix: a fast double-tap on "I Fed It" could log two entries instead of one \u2014 the button now disables itself the instant it\'s tapped, closing that gap.',
+      'Feed log entries now sync correctly when edited or deleted across devices \u2014 uses the same safe merge system as recipes and bakes, so a deletion can\'t be silently undone by a stale sync update from another device.',
+    ]},
     { version: '1.21.3', date: '2026-07-03', notes: [
       'Fix (important): a logged starter feed could silently vanish moments after tapping "I Fed It." Incoming sync updates were replacing the starter data wholesale, so a stale update arriving in the brief window before your feed reached the cloud would erase it \u2014 from memory AND then permanently. Starter data now uses the same timestamp-based last-write-wins protection as bakes.',
       'Feed logs from multiple devices now merge together (by entry) instead of one device\'s log replacing the other\'s \u2014 a logged feed is a fact that happened and can no longer be erased by sync.',
@@ -2326,6 +2353,10 @@
   // timestamp block inside saveState. `null` means "no snapshot yet", so the first save
   // after load treats the starter as changed and stamps it, which is harmless.
   let _lastStarterSnapshot = null;
+  // Tracks which feed log entry the "Log Starter Feed" modal is currently editing.
+  // null means the modal is in ADD mode (creating a new entry, defaulting to "now").
+  // Set by openEditFeedModal() before the modal opens; cleared when it closes.
+  let _editingFeedEntryId = null;
 
   function saveState() {
     const now = Date.now();
@@ -6811,11 +6842,20 @@ Here is the recipe:
         if (!soonest || next < soonest.date) soonest = { date: next, reminder: r };
       }
       if (soonest) {
-        const timing = formatDaysOrHoursUntil(soonest.date);
         const realLastFeed = lastLoggedStarterFeed();
+        const now = new Date();
+        // Same "already fed for today's slot" check as the Active tab's starter card —
+        // see renderStarter for the full reasoning. Keeping the two checks independent
+        // (rather than sharing one function) because they use different "next occurrence"
+        // helpers (nextStarterFireDate here vs. nextStarterDate on the Active tab) that
+        // happen to compute the same thing but were written in separate sessions.
+        const alreadyFedForSoonest = !!(realLastFeed &&
+          realLastFeed.toDateString() === now.toDateString() &&
+          soonest.date.toDateString() === now.toDateString());
+        const timing = alreadyFedForSoonest ? 'Fed today' : formatDaysOrHoursUntil(soonest.date);
         let lastFedLine = '';
         if (realLastFeed) {
-          const msAgo = new Date() - realLastFeed;
+          const msAgo = now - realLastFeed;
           let agoStr;
           if (msAgo < 3600000) agoStr = 'less than an hour ago';
           else if (msAgo < 86400000) {
@@ -6833,7 +6873,7 @@ Here is the recipe:
               <div style="font-size: 22px;">🫙</div>
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-mute);">Starter</div>
-                <div style="font-size: 14px; color: var(--ink); margin-top: 1px;">Next feed ${timing}</div>
+                <div style="font-size: 14px; color: var(--ink); margin-top: 1px;">${alreadyFedForSoonest ? escapeHtml(timing) : `Next feed ${escapeHtml(timing)}`}</div>
                 ${lastFedLine}
               </div>
               <button class="btn btn-sm btn-primary" data-today-feed-now style="flex-shrink: 0; padding: 6px 12px; font-size: 12px;">I Fed It</button>
@@ -6939,6 +6979,10 @@ Here is the recipe:
     if (feedNowToday) {
       feedNowToday.addEventListener('click', (e) => {
         e.stopPropagation();
+        // Same double-tap guard as the Active tab's "I Fed It" button — see that
+        // handler's comment (wireStarterFeedButtons) for the full explanation.
+        if (feedNowToday.disabled) return;
+        feedNowToday.disabled = true;
         logStarterFeed(null, null);
         haptic('success');
         toast('Starter feed logged');
@@ -7152,67 +7196,108 @@ Here is the recipe:
     _lastStarterSnapshot = JSON.stringify(semantic);
   }
 
-  // Accepts an incoming remote starter object using last-write-wins on _updatedAt,
-  // with one refinement: feed logs are merged by UNION (by entry id) regardless of which
-  // side wins. LWW alone decides whose schedule/settings apply, but a feed someone logged
-  // is a fact that happened — it should never be erasable by the other device's (or a
-  // stale echo's) copy of the object simply because that copy carried a newer timestamp.
+  // Removes the oldest LIVE (non-deleted) feed log entries beyond MAX_STARTER_FEED_LOG.
+  // Uses tombstone() rather than actually removing them from the array — same pattern as
+  // recipes/bakes/categories elsewhere in the app — so the removal correctly propagates
+  // to other devices on next sync instead of just vanishing locally and then potentially
+  // reappearing when a device that hadn't seen the cap-trim yet syncs back in.
+  function enforceFeedLogCap() {
+    if (!state.starter || !Array.isArray(state.starter.feedLog)) return;
+    const live = state.starter.feedLog.filter(e => e && !e._deleted);
+    if (live.length <= MAX_STARTER_FEED_LOG) return;
+    const sortedNewestFirst = live.slice().sort((a, b) => new Date(b.fedAt) - new Date(a.fedAt));
+    const excess = sortedNewestFirst.slice(MAX_STARTER_FEED_LOG);
+    for (const entry of excess) tombstone(entry);
+  }
+
+  // Accepts an incoming remote starter object. The reminder schedule / settings use
+  // simple last-write-wins on the object's own _updatedAt. The feed log is handled
+  // separately and more carefully: each entry is merged with mergeById — the SAME
+  // per-item last-write-wins merge used for recipes/bakes/categories elsewhere in this
+  // file. That's what makes edits and deletes (tombstones) converge correctly across
+  // devices: a plain "newer object wins" rule would let a stale copy of the whole starter
+  // object silently resurrect an entry you just deleted, or overwrite an edit, just
+  // because it happened to arrive with a newer overall timestamp.
   function acceptRemoteStarter(remoteStarter) {
     if (!remoteStarter || typeof remoteStarter !== 'object') return;
     const localTs = (state.starter && typeof state.starter._updatedAt === 'number') ? state.starter._updatedAt : 0;
     const remoteTs = (typeof remoteStarter._updatedAt === 'number') ? remoteStarter._updatedAt : 0;
-    // Union of both feed logs, deduped by entry id, newest first, capped.
     const localLog = (state.starter && Array.isArray(state.starter.feedLog)) ? state.starter.feedLog : [];
     const remoteLog = Array.isArray(remoteStarter.feedLog) ? remoteStarter.feedLog : [];
-    const byId = new Map();
-    for (const e of [...localLog, ...remoteLog]) {
-      if (e && e.id && !byId.has(e.id)) byId.set(e.id, e);
-    }
-    const mergedLog = Array.from(byId.values())
-      .sort((a, b) => new Date(b.fedAt) - new Date(a.fedAt))
-      .slice(0, MAX_STARTER_FEED_LOG);
+    const mergedLog = mergeById(localLog, remoteLog);
     const cleanAdopt = remoteTs > localTs;
     if (cleanAdopt) {
       state.starter = remoteStarter;
     }
-    // Whichever side won, it gets the merged feed log.
     state.starter.feedLog = mergedLog;
     ensureStarterDefaults();
-    // If we adopted remote AND the merge added nothing beyond what remote already had,
-    // re-anchor the snapshot so the next saveState doesn't stamp a fresh timestamp over
-    // data we just accepted. If the union DID add local-only entries (or local won),
-    // leave the snapshot stale on purpose — the next save then bumps _updatedAt and
-    // pushes, which is exactly how both sides converge on the union.
-    if (cleanAdopt && mergedLog.length === remoteLog.length) {
+    enforceFeedLogCap();
+    // Re-anchor the snapshot only if the result is identical to what remote already had —
+    // meaning nothing local-only survived the merge. This comparison is approximate (array
+    // order can differ after merging without the CONTENT differing), so it may occasionally
+    // skip re-anchoring when it technically could — the only cost is one extra harmless
+    // push next save, which is a fine trade for a much simpler check.
+    if (cleanAdopt && JSON.stringify(state.starter.feedLog) === JSON.stringify(remoteLog)) {
       resnapshotStarter();
     }
   }
 
   // Logs a starter feed. ratio/note are optional strings; omit for a quick zero-friction
-  // log (just the timestamp). Caps the log at MAX_STARTER_FEED_LOG most-recent entries —
-  // starter feedLog lives in the small parent Firestore doc alongside activeBakes, so it
-  // needs to stay bounded indefinitely rather than growing forever.
-  function logStarterFeed(ratio, note) {
+  // log (just the timestamp). fedAt defaults to now but can be backdated (used by the
+  // edit flow, and available if you forget to log right away).
+  function logStarterFeed(ratio, note, fedAt) {
     ensureStarterDefaults();
     const entry = {
       id: uid(),
-      fedAt: new Date().toISOString(),
+      fedAt: (fedAt instanceof Date ? fedAt : new Date()).toISOString(),
       ratio: (ratio && ratio.trim()) ? ratio.trim() : null,
       note: (note && note.trim()) ? note.trim() : null,
+      _updatedAt: Date.now(),
     };
-    state.starter.feedLog.unshift(entry); // newest first
-    if (state.starter.feedLog.length > MAX_STARTER_FEED_LOG) {
-      state.starter.feedLog.length = MAX_STARTER_FEED_LOG;
-    }
+    state.starter.feedLog.unshift(entry);
+    enforceFeedLogCap();
     saveState();
     return entry;
   }
 
+  // Edits an existing feed log entry in place. updates can include any of
+  // { fedAt (Date), ratio (string|null), note (string|null) }. Bumps _updatedAt so the
+  // change wins over any older copy of this entry during sync.
+  function editStarterFeed(id, updates) {
+    ensureStarterDefaults();
+    const entry = state.starter.feedLog.find(e => e && e.id === id && !e._deleted);
+    if (!entry) return null;
+    if (updates.fedAt instanceof Date) entry.fedAt = updates.fedAt.toISOString();
+    if ('ratio' in updates) entry.ratio = (updates.ratio && updates.ratio.trim()) ? updates.ratio.trim() : null;
+    if ('note' in updates) entry.note = (updates.note && updates.note.trim()) ? updates.note.trim() : null;
+    entry._updatedAt = Date.now();
+    saveState();
+    return entry;
+  }
+
+  // Deletes (tombstones) a feed log entry. Soft-delete, not array removal — see
+  // enforceFeedLogCap's comment for why this matters for multi-device sync.
+  function deleteStarterFeed(id) {
+    ensureStarterDefaults();
+    const entry = state.starter.feedLog.find(e => e && e.id === id);
+    if (!entry) return false;
+    tombstone(entry);
+    saveState();
+    return true;
+  }
+
+  // Returns the live (non-deleted) feed log entries, sorted newest-first by fedAt.
+  // Explicit sort rather than relying on array order — after a multi-device merge the
+  // array's storage order isn't guaranteed to match chronological order.
+  function liveStarterFeedLog() {
+    const log = liveItems((state.starter && state.starter.feedLog) || []);
+    return log.slice().sort((a, b) => new Date(b.fedAt) - new Date(a.fedAt));
+  }
+
   // Most recent ACTUAL logged feed (Date object), or null if nothing has been logged yet.
   function lastLoggedStarterFeed() {
-    const log = (state.starter && state.starter.feedLog) || [];
-    if (log.length === 0) return null;
-    return new Date(log[0].fedAt);
+    const log = liveStarterFeedLog();
+    return log.length > 0 ? new Date(log[0].fedAt) : null;
   }
 
   // Given a starter reminder { dayOfWeek, hour, minute }, return the JS Date of its
@@ -7265,7 +7350,7 @@ Here is the recipe:
     if (!c) return;
     const reminders = (state.starter && state.starter.reminders) || [];
     const enabledReminders = reminders.filter(r => r.enabled);
-    const feedLog = (state.starter && state.starter.feedLog) || [];
+    const liveLog = liveStarterFeedLog(); // newest-first, tombstones already excluded
 
     // Feed-log UI (the "I Fed It" action + recent history) is independent of whether
     // reminders are set up — a user might want to log feeds without ever using reminders.
@@ -7277,21 +7362,23 @@ Here is the recipe:
         </button>
         <button class="btn btn-ghost btn-sm" id="starter-feed-details" style="flex-shrink: 0; padding: 6px 12px; font-size: 12px;">Add details</button>
       </div>
-      ${feedLog.length > 0 ? `
+      ${liveLog.length > 0 ? `
         <div style="margin-top: 10px;">
-          ${feedLog.slice(0, 5).map(entry => {
+          ${liveLog.slice(0, 5).map(entry => {
             const d = new Date(entry.fedAt);
             const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
             const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             const detailBits = [entry.ratio, entry.note].filter(Boolean).join(' \u00b7 ');
             return `
-              <div style="font-size: 12px; color: var(--ink-soft); padding: 4px 0; display: flex; justify-content: space-between; gap: 8px;">
-                <span style="flex-shrink: 0; color: var(--ink-mute);">${escapeHtml(dateStr)}, ${escapeHtml(timeStr)}</span>
-                ${detailBits ? `<span style="text-align: right; min-width: 0;">${escapeHtml(detailBits)}</span>` : ''}
-              </div>
+              <button data-feed-entry="${escapeAttr(entry.id)}" style="width: 100%; background: none; border: none; padding: 5px 0; cursor: pointer; font-family: inherit; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: var(--ink-mute); flex-shrink: 0;">${escapeHtml(dateStr)}, ${escapeHtml(timeStr)}</span>
+                ${detailBits ? `<span style="font-size: 12px; color: var(--ink-soft); text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(detailBits)}</span>` : '<span></span>'}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)" stroke-width="2" style="flex-shrink: 0;"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </button>
             `;
           }).join('')}
         </div>
+        <button id="starter-view-all-feeds" style="width: 100%; background: none; border: none; padding: 6px 0 0; cursor: pointer; font-family: inherit; font-size: 12px; color: var(--ink-soft); text-align: center;">View all ${liveLog.length} feed${liveLog.length === 1 ? '' : 's'} \u2192</button>
       ` : ''}
     `;
 
@@ -7317,41 +7404,50 @@ Here is the recipe:
     // automatically. The Shortcut/Reminders button is hidden in favor of a status indicator.
     const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
       typeof Notification !== 'undefined' && Notification.permission === 'granted';
-    // Compute progress bar data for the soonest upcoming reminder.
-    // Progress runs from the most recent feeding (any slot) to the next upcoming feeding.
-    // Prefer an ACTUALLY LOGGED feed over the schedule-inferred guess — real data beats
-    // assuming the user fed it exactly when a reminder told them to.
-    // Hidden when the gap is < 24h, since that indicates we're in the "active feeding window"
-    // between two same-day slots (e.g. Fri 8 AM and Fri 7 PM).
     const now = new Date();
-    const soonestNext = items[0].next;
+    const soonestItem = items[0];
     const realLastFeed = lastLoggedStarterFeed();
-    const prevFeed = realLastFeed || mostRecentStarterFeed(enabledReminders);
-    let progressPct = null;
-    if (prevFeed) {
-      const gapMs = soonestNext - prevFeed;
-      if (gapMs >= 86400000) { // 24h threshold
-        const elapsed = now - prevFeed;
-        progressPct = Math.max(0, Math.min(1, elapsed / gapMs));
+    // "Already fed for today's upcoming slot" — true when a real feed was logged on the
+    // SAME CALENDAR DAY as the soonest upcoming reminder. This deliberately doesn't try
+    // to match the feed time against the reminder's exact time; feeding earlier or later
+    // than the reminder still counts as having handled today's feeding. Without this
+    // check, the card would say "next feed in 30 minutes" even seconds after you'd
+    // already fed it for that same slot.
+    const alreadyFedForSoonest = !!(realLastFeed &&
+      realLastFeed.toDateString() === now.toDateString() &&
+      soonestItem.next.toDateString() === now.toDateString());
+    let awayStr;
+    if (alreadyFedForSoonest) {
+      awayStr = 'Fed today';
+    } else {
+      const soonestMsAway = soonestItem.next - now;
+      if (soonestMsAway < 86400000) {
+        const hours = Math.max(1, Math.round(soonestMsAway / 3600000));
+        awayStr = `in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+      } else {
+        const tomorrow = new Date(now.getTime() + 86400000);
+        if (soonestItem.next.toDateString() === tomorrow.toDateString()) {
+          awayStr = 'Tomorrow';
+        } else {
+          const fullDay = soonestItem.next.toLocaleDateString(undefined, { weekday: 'long' });
+          awayStr = `on ${fullDay}`;
+        }
       }
     }
-    // Single merged card: "Feed Starter" with progress bar and a list of upcoming reminders.
-    // The top item is the soonest feeding (with "away" text). Subsequent items are listed
-    // below as supporting context. Progress bar matches the gap from previous feed to next.
-    const soonestItem = items[0];
-    const soonestMsAway = soonestItem.next - new Date();
-    let awayStr;
-    if (soonestMsAway < 86400000) {
-      const hours = Math.max(1, Math.round(soonestMsAway / 3600000));
-      awayStr = `in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
-    } else {
-      const now2 = new Date();
-      const tomorrow = new Date(now2.getTime() + 86400000);
-      if (soonestItem.next.toDateString() === tomorrow.toDateString()) {
-        awayStr = 'Tomorrow';
-      } else {
-        const fullDay = soonestItem.next.toLocaleDateString(undefined, { weekday: 'long' });
-        awayStr = `on ${fullDay}`;
+    // Progress bar toward the soonest upcoming reminder. Suppressed entirely when
+    // alreadyFedForSoonest is true — showing "progress toward" something already done
+    // reads as confusing, not informative. Otherwise: prefer an ACTUALLY LOGGED feed over
+    // the schedule-inferred guess (real data beats assuming the user fed it exactly when
+    // a reminder told them to), and hide it when the gap is under 24h (that indicates
+    // we're between two same-day slots, where a "progress" bar doesn't mean much).
+    let progressPct = null;
+    if (!alreadyFedForSoonest) {
+      const prevFeed = realLastFeed || mostRecentStarterFeed(enabledReminders);
+      if (prevFeed) {
+        const gapMs = soonestItem.next - prevFeed;
+        if (gapMs >= 86400000) {
+          progressPct = Math.max(0, Math.min(1, (now - prevFeed) / gapMs));
+        }
       }
     }
     // "Last fed" line — only shown when we have a REAL logged feed (not the inferred guess,
@@ -7408,13 +7504,23 @@ Here is the recipe:
     wireStarterFeedButtons();
   }
 
-  // Wires the "I Fed It" quick-log button and "Add details" modal trigger. Called from
-  // both branches of renderStarter (with and without enabled reminders) since feed
-  // logging works independently of whether reminders are set up.
+  // Wires the "I Fed It" quick-log button, "Add details" modal trigger, "View all feeds"
+  // link, and each recent-entry row's edit trigger. Called from both branches of
+  // renderStarter (with and without enabled reminders) since feed logging works
+  // independently of whether reminders are set up.
   function wireStarterFeedButtons() {
     const feedNowBtn = document.getElementById('starter-feed-now');
     if (feedNowBtn) {
       feedNowBtn.addEventListener('click', () => {
+        // Guard against accidental double-logging from a fast double-tap. The button is
+        // about to be destroyed and rebuilt by renderStarter()/renderToday() anyway, but
+        // that rebuild only happens AFTER logStarterFeed() finishes — so a second tap
+        // landing in that brief window (before the old button is replaced) would fire
+        // this handler a second time on the same element. Disabling synchronously,
+        // before doing anything else, closes that window: a disabled button doesn't
+        // dispatch click events at all.
+        if (feedNowBtn.disabled) return;
+        feedNowBtn.disabled = true;
         logStarterFeed(null, null);
         haptic('success');
         toast('Starter feed logged');
@@ -7426,14 +7532,81 @@ Here is the recipe:
     }
     const detailsBtn = document.getElementById('starter-feed-details');
     if (detailsBtn) {
-      detailsBtn.addEventListener('click', () => {
-        const ratioInput = document.getElementById('feed-ratio');
-        const noteInput = document.getElementById('feed-note');
-        if (ratioInput) ratioInput.value = '';
-        if (noteInput) noteInput.value = '';
-        showModal('modal-starter-feed');
+      detailsBtn.addEventListener('click', openAddFeedModal);
+    }
+    const viewAllBtn = document.getElementById('starter-view-all-feeds');
+    if (viewAllBtn) {
+      viewAllBtn.addEventListener('click', () => {
+        renderStarterFeedLogModal();
+        showModal('modal-starter-feed-log');
       });
     }
+    // Each recent-feed row opens the edit modal for that specific entry.
+    document.querySelectorAll('[data-feed-entry]').forEach(row => {
+      row.addEventListener('click', () => openEditFeedModal(row.dataset.feedEntry));
+    });
+  }
+
+  // Opens the feed modal in ADD mode: blank ratio/note, date/time defaulted to now.
+  function openAddFeedModal() {
+    _editingFeedEntryId = null;
+    document.getElementById('feed-modal-title').textContent = 'Log Starter Feed';
+    document.getElementById('feed-modal-help').textContent = 'Optional \u2014 leave blank for a quick log with just the time.';
+    document.getElementById('feed-datetime').value = formatDateTimeLocal(new Date());
+    document.getElementById('feed-ratio').value = '';
+    document.getElementById('feed-note').value = '';
+    document.getElementById('feed-save').textContent = 'Log Feed';
+    document.getElementById('feed-delete').style.display = 'none';
+    showModal('modal-starter-feed');
+  }
+
+  // Opens the feed modal in EDIT mode for an existing entry: fields pre-filled, Delete
+  // button visible. If opened from a row inside the feed log list modal, that modal
+  // stays open underneath (the app supports stacked modals) and gets refreshed after
+  // Save/Delete so it reflects the change once the edit modal is closed.
+  function openEditFeedModal(entryId) {
+    const entry = (state.starter.feedLog || []).find(e => e && e.id === entryId && !e._deleted);
+    if (!entry) return;
+    _editingFeedEntryId = entryId;
+    document.getElementById('feed-modal-title').textContent = 'Edit Starter Feed';
+    document.getElementById('feed-modal-help').textContent = 'Adjust the time, ratio, or note \u2014 or delete this entry below.';
+    document.getElementById('feed-datetime').value = formatDateTimeLocal(new Date(entry.fedAt));
+    document.getElementById('feed-ratio').value = entry.ratio || '';
+    document.getElementById('feed-note').value = entry.note || '';
+    document.getElementById('feed-save').textContent = 'Save Changes';
+    document.getElementById('feed-delete').style.display = '';
+    showModal('modal-starter-feed');
+  }
+
+  // Renders the full feed log list inside modal-starter-feed-log. Each row opens the
+  // edit modal on tap. Re-called after any edit/delete so the list stays current without
+  // requiring the user to close and reopen it.
+  function renderStarterFeedLogModal() {
+    const el = document.getElementById('starter-feed-log-list');
+    if (!el) return;
+    const log = liveStarterFeedLog();
+    if (log.length === 0) {
+      el.innerHTML = `<p class="help">No feeds logged yet.</p>`;
+      return;
+    }
+    el.innerHTML = log.map(entry => {
+      const d = new Date(entry.fedAt);
+      const dateStr = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const detailBits = [entry.ratio, entry.note].filter(Boolean).join(' \u00b7 ');
+      return `
+        <button data-feed-entry="${escapeAttr(entry.id)}" style="width: 100%; background: none; border: none; border-bottom: 1px solid var(--line); padding: 10px 0; cursor: pointer; font-family: inherit; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+          <div style="min-width: 0;">
+            <div style="font-size: 13px; color: var(--ink);">${escapeHtml(dateStr)}, ${escapeHtml(timeStr)}</div>
+            ${detailBits ? `<div style="font-size: 12px; color: var(--ink-soft); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(detailBits)}</div>` : ''}
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-mute)" stroke-width="2" style="flex-shrink: 0;"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </button>
+      `;
+    }).join('');
+    el.querySelectorAll('[data-feed-entry]').forEach(row => {
+      row.addEventListener('click', () => openEditFeedModal(row.dataset.feedEntry));
+    });
   }
 
   // Build and send the starter reminder payload to the Crumb Timers Shortcut.
@@ -8226,6 +8399,9 @@ Here is the recipe:
     state.bakes = prune(state.bakes, cutoff);
     state.categories = prune(state.categories, cutoff);
     state.activeBakes = prune(state.activeBakes, activeBakeCutoff);
+    if (state.starter && Array.isArray(state.starter.feedLog)) {
+      state.starter.feedLog = prune(state.starter.feedLog, cutoff);
+    }
     return pruned;
   }
 
@@ -9927,25 +10103,70 @@ Here is the recipe:
   if (starterSaveBtn) {
     starterSaveBtn.addEventListener('click', saveStarterEditor);
   }
-  // Log Starter Feed modal — "Save" logs the entry with whatever ratio/note was entered
-  // (both optional), "Cancel" just closes without logging.
+  // Log Starter Feed modal — dual purpose (see openAddFeedModal/openEditFeedModal).
+  // "Save" either creates a new entry (_editingFeedEntryId is null) or updates the
+  // entry being edited. "Delete" (edit mode only) tombstones it after a confirm.
+  // "Cancel" just closes without saving.
   const feedSaveBtn = document.getElementById('feed-save');
   if (feedSaveBtn) {
     feedSaveBtn.addEventListener('click', () => {
+      if (feedSaveBtn.disabled) return; // guard against double-tap, same reasoning as starter-feed-now
+      feedSaveBtn.disabled = true;
+      const dtVal = document.getElementById('feed-datetime').value;
+      // A blank/invalid datetime-local value falls back to "now" rather than silently
+      // failing — better to log something reasonable than to lose the tap entirely.
+      const fedAt = dtVal ? new Date(dtVal) : new Date();
       const ratio = document.getElementById('feed-ratio').value;
       const note = document.getElementById('feed-note').value;
-      logStarterFeed(ratio, note);
-      hideModal('modal-starter-feed');
+      if (_editingFeedEntryId) {
+        editStarterFeed(_editingFeedEntryId, { fedAt, ratio, note });
+        toast('Feed entry updated');
+      } else {
+        logStarterFeed(ratio, note, fedAt);
+        toast('Starter feed logged');
+      }
       haptic('success');
-      toast('Starter feed logged');
+      hideModal('modal-starter-feed');
+      feedSaveBtn.disabled = false;
+      _editingFeedEntryId = null;
       renderStarter();
       const todayView = document.getElementById('view-today');
       if (todayView && todayView.classList.contains('active')) renderToday();
+      // If the log-list modal is the one visibly open behind this (edit flow), refresh it
+      const logModal = document.getElementById('modal-starter-feed-log');
+      if (logModal && logModal.classList.contains('show')) renderStarterFeedLogModal();
     });
   }
   const feedCancelBtn = document.getElementById('feed-cancel');
   if (feedCancelBtn) {
-    feedCancelBtn.addEventListener('click', () => hideModal('modal-starter-feed'));
+    feedCancelBtn.addEventListener('click', () => {
+      _editingFeedEntryId = null;
+      hideModal('modal-starter-feed');
+    });
+  }
+  const feedDeleteBtn = document.getElementById('feed-delete');
+  if (feedDeleteBtn) {
+    feedDeleteBtn.addEventListener('click', async () => {
+      if (!_editingFeedEntryId) return;
+      const choice = await showConfirm({
+        title: 'Delete this feed entry?',
+        message: 'This can\'t be undone.',
+        buttons: [
+          { label: 'Delete', style: 'danger', value: 'go' },
+          { label: 'Cancel', style: 'ghost', value: 'cancel' },
+        ],
+      });
+      if (choice !== 'go') return;
+      deleteStarterFeed(_editingFeedEntryId);
+      _editingFeedEntryId = null;
+      haptic('medium');
+      toast('Feed entry deleted');
+      hideModal('modal-starter-feed');
+      renderStarter();
+      const todayView = document.getElementById('view-today');
+      if (todayView && todayView.classList.contains('active')) renderToday();
+      renderStarterFeedLogModal();
+    });
   }
   document.getElementById('bulk-cancel-btn').addEventListener('click', () => {
     exitBulkSelectMode();
