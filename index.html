@@ -2004,8 +2004,12 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.21.2';
+  const APP_VERSION = '1.21.3';
   const CHANGELOG = [
+    { version: '1.21.3', date: '2026-07-03', notes: [
+      'Fix (important): a logged starter feed could silently vanish moments after tapping "I Fed It." Incoming sync updates were replacing the starter data wholesale, so a stale update arriving in the brief window before your feed reached the cloud would erase it \u2014 from memory AND then permanently. Starter data now uses the same timestamp-based last-write-wins protection as bakes.',
+      'Feed logs from multiple devices now merge together (by entry) instead of one device\'s log replacing the other\'s \u2014 a logged feed is a fact that happened and can no longer be erased by sync.',
+    ]},
     { version: '1.21.2', date: '2026-07-01', notes: [
       'Fix (important): skipping a mid-recipe optional stage no longer corrupts the timing of every stage after it. The timing engine was anchoring to the skipped stage\'s internal timestamp (the bake\'s start time), yanking the clock backward and making downstream stages appear hours overdue \u2014 with push notifications inheriting the wrong times.',
       'Fix: History bake detail no longer shows phantom "late/early" drift on stages after a skipped optional stage, and the skipped stage itself shows no drift label (just "not needed").',
@@ -2282,6 +2286,11 @@
       // exist with a valid shape. Function declarations are hoisted, so calling
       // ensureStarterDefaults() here — even though it's defined later in the file — is safe.
       ensureStarterDefaults();
+      // Anchor the change-detection snapshot to the loaded content, so the first save of
+      // the session doesn't count "loading existing data" as a change and stamp a fresh
+      // timestamp — which would make this device always look newest and defeat the
+      // last-write-wins comparison in acceptRemoteStarter.
+      resnapshotStarter();
 
       // Migrate legacy single activeBake to activeBakes array
       if (state.activeBake && typeof state.activeBake === 'object' && state.activeBake.recipeId) {
@@ -2313,6 +2322,10 @@
   // last-write-wins sync: an idle tab could "win" timestamp wars over an active one
   // just by saving (e.g. changing a setting), causing stale stageStates to resurrect.
   const _bakeSnapshots = new Map(); // id -> JSON string of bake as last saved
+  // Serialized starter content (minus _updatedAt) at the last save — see the starter
+  // timestamp block inside saveState. `null` means "no snapshot yet", so the first save
+  // after load treats the starter as changed and stamps it, which is harmless.
+  let _lastStarterSnapshot = null;
 
   function saveState() {
     const now = Date.now();
@@ -2338,6 +2351,21 @@
         if (!state.activeBakes.some(b => b && b.id === id)) {
           _bakeSnapshots.delete(id);
         }
+      }
+    }
+    // Starter timestamp — same snapshot-diff technique as bakes above. state.starter gets
+    // a _updatedAt that bumps ONLY when its content genuinely changed (feed logged,
+    // schedule edited, reminders sent). The sync listener uses this for last-write-wins:
+    // without it, any incoming Firestore snapshot wholesale-replaced the starter object,
+    // and a stale echo arriving in the ~400ms window after "I Fed It" (before the debounced
+    // push landed) would silently wipe the just-logged feed from memory — then push the
+    // wiped version back to the cloud, losing it permanently.
+    if (state.starter && typeof state.starter === 'object') {
+      const { _updatedAt: _prevStarterTs, ...starterSemantic } = state.starter;
+      const starterSig = JSON.stringify(starterSemantic);
+      if (starterSig !== _lastStarterSnapshot) {
+        state.starter._updatedAt = now;
+        _lastStarterSnapshot = starterSig;
       }
     }
     const payload = {
@@ -7112,6 +7140,54 @@ Here is the recipe:
     if (!Array.isArray(state.starter.feedLog)) state.starter.feedLog = [];
   }
 
+  // Re-anchors the saveState snapshot to the CURRENT starter content, so the next save
+  // won't mistake it for a user change and bump _updatedAt. Called at boot (loaded data
+  // isn't "a change") and after cleanly adopting a remote starter (adopted data isn't
+  // "a change" either). Without this, every app launch would stamp a fresh timestamp,
+  // making the local copy always look newest and defeating the last-write-wins check —
+  // the exact failure mode behind the old v1.16.2 bake-resurrection bug.
+  function resnapshotStarter() {
+    if (!state.starter || typeof state.starter !== 'object') { _lastStarterSnapshot = null; return; }
+    const { _updatedAt: _ts, ...semantic } = state.starter;
+    _lastStarterSnapshot = JSON.stringify(semantic);
+  }
+
+  // Accepts an incoming remote starter object using last-write-wins on _updatedAt,
+  // with one refinement: feed logs are merged by UNION (by entry id) regardless of which
+  // side wins. LWW alone decides whose schedule/settings apply, but a feed someone logged
+  // is a fact that happened — it should never be erasable by the other device's (or a
+  // stale echo's) copy of the object simply because that copy carried a newer timestamp.
+  function acceptRemoteStarter(remoteStarter) {
+    if (!remoteStarter || typeof remoteStarter !== 'object') return;
+    const localTs = (state.starter && typeof state.starter._updatedAt === 'number') ? state.starter._updatedAt : 0;
+    const remoteTs = (typeof remoteStarter._updatedAt === 'number') ? remoteStarter._updatedAt : 0;
+    // Union of both feed logs, deduped by entry id, newest first, capped.
+    const localLog = (state.starter && Array.isArray(state.starter.feedLog)) ? state.starter.feedLog : [];
+    const remoteLog = Array.isArray(remoteStarter.feedLog) ? remoteStarter.feedLog : [];
+    const byId = new Map();
+    for (const e of [...localLog, ...remoteLog]) {
+      if (e && e.id && !byId.has(e.id)) byId.set(e.id, e);
+    }
+    const mergedLog = Array.from(byId.values())
+      .sort((a, b) => new Date(b.fedAt) - new Date(a.fedAt))
+      .slice(0, MAX_STARTER_FEED_LOG);
+    const cleanAdopt = remoteTs > localTs;
+    if (cleanAdopt) {
+      state.starter = remoteStarter;
+    }
+    // Whichever side won, it gets the merged feed log.
+    state.starter.feedLog = mergedLog;
+    ensureStarterDefaults();
+    // If we adopted remote AND the merge added nothing beyond what remote already had,
+    // re-anchor the snapshot so the next saveState doesn't stamp a fresh timestamp over
+    // data we just accepted. If the union DID add local-only entries (or local won),
+    // leave the snapshot stale on purpose — the next save then bumps _updatedAt and
+    // pushes, which is exactly how both sides converge on the union.
+    if (cleanAdopt && mergedLog.length === remoteLog.length) {
+      resnapshotStarter();
+    }
+  }
+
   // Logs a starter feed. ratio/note are optional strings; omit for a quick zero-friction
   // log (just the timestamp). Caps the log at MAX_STARTER_FEED_LOG most-recent entries —
   // starter feedLog lives in the small parent Firestore doc alongside activeBakes, so it
@@ -8502,10 +8578,10 @@ Here is the recipe:
           state.activeBakes = data.activeBake ? [data.activeBake] : [];
         }
         if (data.starter && typeof data.starter === 'object') {
-          state.starter = data.starter;
-          // Always normalize (not just when reminders look wrong) — remote data from an
-          // older app version may have valid reminders but be missing feedLog entirely.
-          ensureStarterDefaults();
+          // Last-write-wins + feed-log union — NOT wholesale replacement. A stale snapshot
+          // (echo of an earlier write) arriving in the debounce window after "I Fed It"
+          // used to overwrite the local starter and silently erase the just-logged feed.
+          acceptRemoteStarter(data.starter);
         }
         // BACKWARD COMPATIBILITY: if remote parent still has legacy recipes/bakes/categories
         // fields (older device hasn't migrated yet), merge them. They'll get migrated to
@@ -8750,6 +8826,9 @@ Here is the recipe:
           else if (data.activeBake !== undefined) state.activeBakes = data.activeBake ? [data.activeBake] : [];
           if (data.starter && typeof data.starter === 'object') state.starter = data.starter;
           ensureStarterDefaults();
+          // Freshly adopted remote data isn't a local "change" — anchor the snapshot so
+          // the first save afterward doesn't stamp a new timestamp over it.
+          resnapshotStarter();
         } else {
           // Merge so neither side loses
           if (remoteRecipes.length > 0) state.recipes = mergeById(state.recipes, remoteRecipes);
@@ -8765,9 +8844,16 @@ Here is the recipe:
             state.activeBakes = data.activeBake ? [data.activeBake] : [];
           }
           if (data.starter && typeof data.starter === 'object') {
-            const localHasEnabled = state.starter && Array.isArray(state.starter.reminders) &&
-              state.starter.reminders.some(r => r && r.enabled);
-            if (!localHasEnabled) state.starter = data.starter;
+            // Timestamp-based last-write-wins (plus feed-log union) when the remote copy
+            // carries a _updatedAt. Older remote data without one falls back to the prior
+            // heuristic: keep local only if it has an enabled reminder (i.e., real setup).
+            if (typeof data.starter._updatedAt === 'number') {
+              acceptRemoteStarter(data.starter);
+            } else {
+              const localHasEnabled = state.starter && Array.isArray(state.starter.reminders) &&
+                state.starter.reminders.some(r => r && r.enabled);
+              if (!localHasEnabled) state.starter = data.starter;
+            }
           }
           ensureStarterDefaults();
         }
