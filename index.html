@@ -1757,6 +1757,20 @@
    * because several mutations may happen in a single user action.
    */
   const _rescheduleDebounce = new Map(); // bakeId -> timeout id
+  // Actually performs the reschedule for one bake. Extracted into its own function so
+  // both the normal debounced path (markBakeRemindersStale's setTimeout) and the
+  // emergency flush path (flushPendingReminderReschedules, below) run the exact same
+  // logic — no risk of the two drifting apart over time.
+  function runReminderReschedule(bakeId) {
+    _rescheduleDebounce.delete(bakeId);
+    const bake = state.activeBakes.find(b => b.id === bakeId && !b._deleted);
+    if (!bake) return;
+    const recipe = state.recipes.find(r => r.id === bake.recipeId);
+    if (!recipe) return;
+    schedulePushNotificationsForBake(bake, recipe).then(r => {
+      if (r.ok) console.log(`[push] re-scheduled ${r.scheduled} for ${recipe.name}`);
+    });
+  }
   function markBakeRemindersStale(bake) {
     if (!bake) return;
     bake.needsReminderRefresh = true;
@@ -1765,16 +1779,70 @@
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     const existing = _rescheduleDebounce.get(bake.id);
     if (existing) clearTimeout(existing);
-    const timeout = setTimeout(() => {
-      _rescheduleDebounce.delete(bake.id);
-      const recipe = state.recipes.find(r => r.id === bake.recipeId);
-      if (!recipe || bake._deleted) return;
-      schedulePushNotificationsForBake(bake, recipe).then(r => {
-        if (r.ok) console.log(`[push] re-scheduled ${r.scheduled} for ${recipe.name}`);
-      });
-    }, 500);
+    const timeout = setTimeout(() => runReminderReschedule(bake.id), 500);
     _rescheduleDebounce.set(bake.id, timeout);
   }
+
+  /**
+   * Immediately runs any pending (still-debouncing) reminder reschedules, skipping the
+   * rest of their 500ms wait. Called the moment the page is about to go to background.
+   *
+   * WHY THIS EXISTS: iOS can suspend a backgrounded PWA's JavaScript almost instantly —
+   * much faster than the 500ms debounce window above. If you adjust a timer (or skip a
+   * stage, etc.) and then immediately lock your phone or switch apps, the pending
+   * setTimeout() might simply never get to run. The push backend never learns about the
+   * new timing, so it fires the OLD notification at the OLD time — which is exactly the
+   * "I changed an 8-hour stage to 10 hours and still got notified at 8 hours" bug.
+   *
+   * This flushes the update out the door immediately when backgrounding starts, rather
+   * than waiting. It's a big reliability improvement but not a mathematical guarantee:
+   * iOS still ultimately decides how much time backgrounded code gets to finish a
+   * network request. In practice, visibilitychange-triggered work like this is a
+   * well-established pattern (the same technique many apps use to flush analytics data)
+   * and should succeed the vast majority of the time.
+   */
+  function flushPendingReminderReschedules() {
+    if (_rescheduleDebounce.size === 0) return;
+    for (const [bakeId, timeoutId] of Array.from(_rescheduleDebounce.entries())) {
+      clearTimeout(timeoutId);
+      runReminderReschedule(bakeId);
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPendingReminderReschedules();
+  });
+
+  // Re-pushes the CURRENT schedule for every live active bake to the push backend,
+  // unconditionally — regardless of whether anything seems stale. This is the fix for
+  // "my currently-running bake's notification is still wrong from before the fix" —
+  // simply having the updated app code doesn't retroactively correct a schedule that
+  // was already sitting wrong on the server from an earlier bug; something has to
+  // actively re-send it. Cheap to run (small payload, and the backend fully replaces
+  // old rows rather than appending), so it's safe to call this liberally: at boot, and
+  // every time the app returns to the foreground (see the visibilitychange listener
+  // right below this function).
+  function resyncAllActiveBakeSchedules() {
+    if (!IS_INSTALLED_PWA || !state.notificationsEnabled || !state.syncCode) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    for (const bake of liveActiveBakes()) {
+      const recipe = state.recipes.find(r => r.id === bake.recipeId);
+      if (recipe) {
+        schedulePushNotificationsForBake(bake, recipe).then(r => {
+          if (r.ok) console.log(`[push] resynced ${r.scheduled} for ${recipe.name}`);
+        });
+      }
+    }
+  }
+
+  // Second line of defense against the "adjusted timer, notification still fired at the
+  // old time" class of bug: the moment the app comes back to the FOREGROUND, re-push the
+  // schedule for every live bake. This catches the rare case where even the "flush on
+  // hide" above didn't make it — e.g. no network signal in that exact instant, or iOS
+  // freezing things before the request could even begin.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    resyncAllActiveBakeSchedules();
+  });
 
   // ============================================================
   // STATE
@@ -2025,8 +2093,16 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.21.4';
+  const APP_VERSION = '1.21.6';
   const CHANGELOG = [
+    { version: '1.21.6', date: '2026-07-05', notes: [
+      'Fix: any bake already running with a stale notification schedule (from before v1.21.5) now automatically corrects itself the moment you open the updated app \u2014 no need to background and reopen it, adjust anything, or do anything manually. The self-check runs once right at startup, not just on later background/foreground transitions.',
+    ]},
+    { version: '1.21.5', date: '2026-07-05', notes: [
+      'Fix (important): adjusting a timer mid-bake could leave the OLD notification time active on the backend if you backgrounded the app (locked your phone, switched apps) within about half a second of saving the change. Notifications were firing at the original time instead of the adjusted one.',
+      'The reschedule now flushes immediately the instant the app detects it\'s going to background, instead of waiting out its normal short delay \u2014 closing the window where iOS could freeze the app before the update reached the server.',
+      'Added a second safety net: reopening the app now re-verifies every active bake\'s notification schedule automatically, so even a worst-case failure self-corrects the next time you open Crumb.',
+    ]},
     { version: '1.21.4', date: '2026-07-03', notes: [
       'New: full starter feed log viewer. Tap "View all N feeds" on the starter card to see your whole history \u2014 tap any entry to edit its date/time, ratio, or note, or delete it.',
       'Fix: the starter card was still counting down to "next feed" even right after you\'d already fed it for that same-day slot. Now shows "Fed today" instead until the next distinct feeding day.',
@@ -10458,6 +10534,15 @@ Here is the recipe:
           startPushHeartbeat();
           // Run an immediate heartbeat to detect any missing schedules
           pushBackendHeartbeat();
+          // Re-verify every active bake's schedule at boot, not just on later
+          // foreground-return events. Without this, the FIRST time you open the app
+          // after an update — including the update that fixes a scheduling bug — nothing
+          // would automatically correct an already-wrong schedule left on the server from
+          // before the fix, since a plain page load doesn't fire a "visibility changed"
+          // event (that only fires on subsequent background/foreground transitions).
+          // This makes "just open the updated app" enough to self-heal, with no need to
+          // background and re-open it first.
+          resyncAllActiveBakeSchedules();
           // Sync starter reminders to the backend. The heartbeat only checks bakes,
           // so starter reminders need a separate idempotent sync at boot. This also
           // covers the first-time path where the user enabled notifications in a
