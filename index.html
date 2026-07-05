@@ -846,6 +846,10 @@
         </div>
       </div>
       <div id="at-shift-info" style="background: var(--bg-warm); border-radius: var(--radius); padding: 12px; margin-bottom: 14px; font-size: 13px; color: var(--ink-soft); line-height: 1.5;"></div>
+      <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 14px; cursor: pointer;">
+        <input type="checkbox" id="at-apply-recipe" style="width: auto; margin-top: 2px;">
+        <span style="font-size: 13px; color: var(--ink-soft); line-height: 1.4;">Also update the recipe permanently <span style="display: block; font-size: 11px; color: var(--ink-mute); margin-top: 2px;">Future bakes of this recipe will use the new time. Leave unchecked to change it just for this bake.</span></span>
+      </label>
       <button class="btn btn-primary btn-block" id="at-save">Save</button>
       <button class="btn btn-block btn-ghost" id="at-cancel" style="margin-top: 8px;">Cancel</button>
     </div>
@@ -1354,6 +1358,19 @@
   // HTTP client for the crumb-push Cloudflare Worker.
   // Provides: subscribe / unsubscribe / schedule / cancel / heartbeat / health.
   //
+
+  // Whether push notifications are actually live right now — every one of these must be
+  // true: running as the installed PWA (not a Safari tab), the user has toggled
+  // notifications on, sync is configured (push is tied to a sync code), and iOS has
+  // actually granted permission (the toggle can be "on" while permission is still denied,
+  // e.g. if it was revoked later in iPhone Settings). This exact 4-part check used to be
+  // copy-pasted at every call site that needed to know "is push handling reminders right
+  // now" — consolidated here so all of them can never drift out of sync with each other.
+  // A future change to what "push is active" means only needs to happen in one place.
+  function isPushNotificationsActive() {
+    return IS_INSTALLED_PWA && !!state.notificationsEnabled && !!state.syncCode &&
+      typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  }
   // Auth: every request is HMAC-signed with the sync code (must match the backend's
   // auth.js verification). Without a sync code, push features are inert.
   //
@@ -2186,8 +2203,16 @@
   // - MINOR (X.+1.0): new features, UI additions, non-breaking improvements
   // - MAJOR (+1.0.0): schema changes, fundamental redesigns, breaking behavior
   // Most recent entry first. Add new entries at the top when shipping changes.
-  const APP_VERSION = '1.22.1';
+  const APP_VERSION = '1.22.3';
   const CHANGELOG = [
+    { version: '1.22.3', date: '2026-07-05', notes: [
+      'Adjust Timer now offers a choice: apply the change just to the current bake (as before), or check "Also update the recipe permanently" so future bakes use the new duration too.',
+      'A permanent change is recorded in the recipe\'s Version History, so it can be undone if checked by mistake.',
+    ]},
+    { version: '1.22.2', date: '2026-07-05', notes: [
+      'Fix: the flashing red dot on the Options button (on an active bake) no longer appears when push notifications are active. It was a leftover pre-push signal meaning "your old Shortcut-based reminders are stale" \u2014 meaningless once push handles rescheduling automatically, but it was never taught to check for that.',
+      'Consolidated the "is push active" check (used in 7 places across the app) into one shared function, so this kind of thing can\'t happen again in only some of those places the next time something changes.',
+    ]},
     { version: '1.22.1', date: '2026-07-05', notes: [
       'Settings topics (Notifications, Cloud Sync, Data, About) now open within the same Settings sheet instead of as separate pop-up screens \u2014 tap a topic to drill in, tap the new back arrow (or the X) to return, matching how a native Settings app behaves.',
     ]},
@@ -4252,8 +4277,7 @@
     // Fire-and-forget — failures here just mean notifications won't fire; the in-app
     // alert path (alertStageComplete + maybeSendSystemNotification) still works while
     // the app is open.
-    if (IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
-        typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    if (isPushNotificationsActive()) {
       schedulePushNotificationsForBake(newBake, recipe).then(r => {
         if (r.ok) console.log(`[push] scheduled ${r.scheduled} notifications for ${recipe.name}`);
         else console.warn('[push] schedule failed:', r.error);
@@ -4312,9 +4336,7 @@
     // invoked inside cleanupAndContinue) already tears down the backend's scheduled
     // notifications \u2014 there's nothing left for the Shortcut to clean up, and launching
     // shortcuts:// would just be a jarring, pointless app-switch for the user.
-    const pushActiveForCleanup = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
-      typeof Notification !== 'undefined' && Notification.permission === 'granted';
-    if (bake.remindersSent && !pushActiveForCleanup) {
+    if (bake.remindersSent && !isPushNotificationsActive()) {
       const recipe = state.recipes.find(r => r.id === bake.recipeId);
       if (recipe) {
         // Send a cleanup payload to the Shortcut: replaceExisting=true with no milestones.
@@ -4724,22 +4746,31 @@
 
     const minutesInput = document.getElementById('at-minutes');
     const info = document.getElementById('at-shift-info');
+    const applyToRecipeCheckbox = document.getElementById('at-apply-recipe');
     minutesInput.value = String(minRemaining);
+    // Always reset to unchecked when the modal opens — "this bake only" stays the safe
+    // default every time, so a permanent recipe change only happens when the user
+    // deliberately opts in for that specific adjustment.
+    applyToRecipeCheckbox.checked = false;
 
     const updateInfo = () => {
       const newRemaining = parseInt(minutesInput.value, 10);
       if (isNaN(newRemaining) || newRemaining < 0) { info.textContent = 'Enter a number ≥ 0'; return; }
       const diffMin = newRemaining - minRemaining;
+      const willApplyToRecipe = applyToRecipeCheckbox.checked;
       if (diffMin === 0) {
         info.textContent = 'No change.';
       } else if (diffMin > 0) {
-        info.textContent = `Adds ${formatDur(diffMin)} to this stage. All upcoming stages shift ${formatDur(diffMin)} later.`;
+        info.textContent = `Adds ${formatDur(diffMin)} to this stage. All upcoming stages shift ${formatDur(diffMin)} later.` +
+          (willApplyToRecipe ? ` The recipe's "${curStage.name}" duration will also change to ${formatDur(currentDur + diffMin)} for future bakes.` : '');
       } else {
-        info.textContent = `Cuts ${formatDur(Math.abs(diffMin))} from this stage. All upcoming stages shift ${formatDur(Math.abs(diffMin))} earlier.`;
+        info.textContent = `Cuts ${formatDur(Math.abs(diffMin))} from this stage. All upcoming stages shift ${formatDur(Math.abs(diffMin))} earlier.` +
+          (willApplyToRecipe ? ` The recipe's "${curStage.name}" duration will also change to ${formatDur(currentDur + diffMin)} for future bakes.` : '');
       }
     };
     updateInfo();
     minutesInput.oninput = updateInfo;
+    applyToRecipeCheckbox.onchange = updateInfo;
 
     document.getElementById('at-minus').onclick = () => {
       const cur = parseInt(minutesInput.value, 10) || 0;
@@ -4757,16 +4788,35 @@
       if (isNaN(newRemaining) || newRemaining < 0) { toast('Enter a valid number'); return; }
       const diffMin = newRemaining - minRemaining;
       if (diffMin === 0) { hideModal('modal-adjust-timer'); startBakeTicker(); return; }
-      // Adjust the current stage's effective duration on this bake
       const newDur = Math.max(0, currentDur + diffMin);
-      bake.stageStates[curIdx].durMinOverride = newDur;
+      const applyToRecipe = applyToRecipeCheckbox.checked;
+
+      if (applyToRecipe) {
+        // Snapshot the recipe's state BEFORE this edit so Version History can roll it
+        // back if the permanent change turns out to be a mistake — the exact same
+        // safety net a normal recipe edit gets from the recipe editor's Save button.
+        const beforeSnapshot = JSON.parse(JSON.stringify(recipe));
+        recipe.stages[curIdx].durMin = newDur;
+        recordRecipeVersion(beforeSnapshot, recipe);
+        touchUpdated(recipe); // bump _updatedAt so this wins any sync merge
+        // Clear any per-bake override for this stage — the recipe's own duration IS the
+        // new value now, so there's nothing left to override. getStageDur() already
+        // falls back to recipe.stages[idx].durMin whenever no override is present, so
+        // this bake picks up the new duration automatically without needing one.
+        delete bake.stageStates[curIdx].durMinOverride;
+      } else {
+        // This-bake-only (the default): store the new duration as a per-bake override.
+        // The recipe itself is untouched — future bakes still use its original timing.
+        bake.stageStates[curIdx].durMinOverride = newDur;
+      }
+
       // Don't auto-advance current stage even if it would be "complete" — let the user mark done
       if (Math.abs(diffMin) > 1) markBakeRemindersStale(bake);
       saveState();
       hideModal('modal-adjust-timer');
       renderActiveBake(recipe, bake);
       startBakeTicker();
-      toast('Timer adjusted');
+      toast(applyToRecipe ? 'Timer adjusted — recipe updated for future bakes too' : 'Timer adjusted for this bake');
     };
 
     document.getElementById('at-cancel').onclick = () => {
@@ -4981,7 +5031,11 @@
         const optsBtn = document.getElementById('btn-bake-options');
         if (optsBtn) {
           optsBtn.style.display = '';
-          optsBtn.classList.toggle('needs-refresh', !!ab.needsReminderRefresh);
+          // The badge only means something when push notifications AREN'T handling
+          // reminders automatically — once push is active, this timeline-shift flag no
+          // longer needs a visible nudge at all, so the badge is suppressed regardless
+          // of the flag's value. See isPushNotificationsActive() for the full reasoning.
+          optsBtn.classList.toggle('needs-refresh', !!ab.needsReminderRefresh && !isPushNotificationsActive());
         }
         ensureBakeTickerRunning();
         return;
@@ -5551,11 +5605,13 @@
     };
     container.addEventListener('click', container._bakeClickHandler);
 
-    // Show Options button on this view (with notif dot if reminders need refresh)
+    // Show Options button on this view. The red badge is a leftover pre-push signal
+    // meaning "your Shortcut-based reminders are stale" — suppressed whenever push
+    // notifications are active, since there's nothing left for the user to manually do.
     const optsBtn = document.getElementById('btn-bake-options');
     if (optsBtn) {
       optsBtn.style.display = '';
-      optsBtn.classList.toggle('needs-refresh', !!ab.needsReminderRefresh);
+      optsBtn.classList.toggle('needs-refresh', !!ab.needsReminderRefresh && !isPushNotificationsActive());
     }
     // Make sure the ticker is running so the countdown keeps updating. Idempotent — no-op
     // if it's already alive. Recovers from iOS background throttling that can kill setInterval.
@@ -7578,8 +7634,7 @@ Here is the recipe:
       : null;
     // Push notifications mode: when active, the backend handles the schedule
     // automatically. The Shortcut/Reminders button is hidden in favor of a status indicator.
-    const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
-      typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    const pushActive = isPushNotificationsActive();
     const now = new Date();
     const soonestItem = items[0];
     const realLastFeed = lastLoggedStarterFeed();
@@ -7919,7 +7974,7 @@ Here is the recipe:
     // Push the new schedule to the backend. Fire-and-forget; failures here just
     // mean push notifications won't fire (the in-app starter view still works).
     // syncAll handles enabled→schedule and disabled→cancel cases.
-    if (IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode) {
+    if (isPushNotificationsActive()) {
       syncAllStarterRemindersToPush().then(() => {
         console.log('[push] starter reminders synced to backend');
       }).catch(e => console.warn('[push] starter sync failed:', e));
@@ -7998,13 +8053,16 @@ Here is the recipe:
     document.getElementById('opt-pause-icon').innerHTML = isPaused
       ? '<polygon points="6,4 20,12 6,20" fill="currentColor"/>' // play
       : '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; // pause bars
-    document.getElementById('opt-refresh-dot').style.display = ab.needsReminderRefresh ? '' : 'none';
     // Push-active gate: when push notifications are live, hide the Send/Refresh Reminders
     // buttons (the backend already handles this automatically) and show a status banner
     // instead. Falls back to the Shortcut buttons when push isn't available so users who
     // haven't enabled notifications yet still have a working reminder path.
-    const pushActive = IS_INSTALLED_PWA && state.notificationsEnabled && state.syncCode &&
-      typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    const pushActive = isPushNotificationsActive();
+    // The little red dot on "Refresh Reminders" only ever meant "your Shortcut-based
+    // reminders are stale" — meaningless once push is handling everything automatically,
+    // so it's explicitly suppressed here too (on top of its parent button already being
+    // hidden below) so it can never light up on its own regardless of future changes.
+    document.getElementById('opt-refresh-dot').style.display = (ab.needsReminderRefresh && !pushActive) ? '' : 'none';
     const pushBanner = document.getElementById('opt-push-active-banner');
     const sendBtn = document.getElementById('opt-send-reminders');
     const refreshBtn = document.getElementById('opt-refresh-reminders');
